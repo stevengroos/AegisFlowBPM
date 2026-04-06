@@ -1,0 +1,40 @@
+@import "tailwindcss";
+@import 'react-querybuilder/dist/query-builder.css';
+@custom-variant dark (&:where(.dark, .dark *));
+@media print {
+  /* 1. Ocultar todo por defecto al imprimir */
+  body * {
+    visibility: hidden;
+  }
+
+  /* 2. Quitar márgenes de la página y colores de fondo del navegador */
+  @page {
+    margin: 1cm;
+    size: A4 portrait; /* O landscape si lo prefieres horizontal */
+  }
+
+  /* 3. Hacer visible SOLO la zona de impresión (nuestro dashboard) */
+  .printable-area, .printable-area * {
+    visibility: visible;
+  }
+
+  /* 4. Posicionar la zona de impresión en la esquina superior izquierda de la hoja */
+  .printable-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    /* Quitar sombras y bordes innecesarios para el papel */
+    box-shadow: none !important;
+    border: none !important;
+    background-color: white !important; /* Forzar fondo blanco para ahorrar tinta */
+  }
+
+  /* 5. Asegurar que los gráficos no se partan a la mitad entre hojas */
+  .recharts-wrapper, .chart-container {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}

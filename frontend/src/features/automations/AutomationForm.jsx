@@ -1,0 +1,489 @@
+import React, { useState, useEffect } from 'react';
+import api from '../../api/axios';
+import { Zap, Save, X, Code, Play, Filter, ArrowRight, Database, Plus, Trash2, ArrowLeft, Loader2, BellRing, User, Copy } from 'lucide-react';
+import { useNotification } from '../../context/NotificationContext';
+import Select from 'react-select';
+
+const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModules, allForms, companyRoles, companyProfiles, moduleSections, onSave, onCancel, setHasUnsavedChanges }) => {
+  const { notify, confirm } = useNotification();
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [targetModuleFields, setTargetModuleFields] = useState([]);
+  
+  const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    const observer = new MutationObserver(() => setIsDarkMode(document.documentElement.classList.contains('dark')));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  // 🔥 Estilos consistentes para React-Select 🔥
+  const customSingleSelectStyles = {
+    control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.75rem', padding: '0.1rem', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black', '&:hover': { borderColor: isDarkMode ? '#4b5563' : '#9ca3af' } }),
+    singleValue: (provided) => ({ ...provided, color: isDarkMode ? '#f9fafb' : '#111827' }),
+    menu: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb', borderRadius: '0.75rem', overflow: 'hidden', zIndex: 99999 }),
+    menuPortal: base => ({ ...base, zIndex: 99999 }),
+    option: (provided, state) => ({ ...provided, fontSize: '0.875rem', backgroundColor: state.isSelected ? (isDarkMode ? '#374151' : '#eff6ff') : state.isFocused ? (isDarkMode ? '#111827' : '#f9fafb') : 'transparent', color: state.isSelected ? (isDarkMode ? '#60a5fa' : '#1d4ed8') : (isDarkMode ? '#d1d5db' : '#1f2937'), cursor: 'pointer' }),
+  };
+
+  const customMultiSelectStyles = {
+    control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.75rem', padding: '0.1rem', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black' }),
+    menu: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb', borderRadius: '0.75rem', overflow: 'hidden', zIndex: 999999 }),
+    menuPortal: base => ({ ...base, zIndex: 999999 }), 
+    option: (provided, state) => ({ ...provided, fontSize: '0.875rem', backgroundColor: state.isSelected ? (isDarkMode ? '#374151' : '#eff6ff') : state.isFocused ? (isDarkMode ? '#111827' : '#f9fafb') : 'transparent', color: state.isSelected ? (isDarkMode ? '#60a5fa' : '#1d4ed8') : (isDarkMode ? '#d1d5db' : '#1f2937'), cursor: 'pointer' }),
+    multiValue: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#374151' : '#eff6ff', borderRadius: '0.5rem' }),
+    multiValueLabel: (provided) => ({ ...provided, color: isDarkMode ? '#93c5fd' : '#1d4ed8', fontWeight: 'bold' }),
+    multiValueRemove: (provided) => ({ ...provided, color: isDarkMode ? '#9ca3af' : '#6b7280', ':hover': { backgroundColor: isDarkMode ? '#ef4444' : '#fee2e2', color: isDarkMode ? 'white' : '#ef4444' } }),
+  };
+
+  // 🔥 Helper para el Multicast: Generar opciones para el Select 🔥
+  const notificationOptions = [
+    { label: 'Usuarios Específicos', options: (companyUsers||[]).map(u => ({ value: `user_${u.id}`, label: `👤 ${u.first_name ? u.first_name + ' ' + (u.last_name || '') : u.email}` })) },
+    { label: 'Roles (Jerarquía)', options: (companyRoles||[]).map(r => ({ value: `role_${r.id}`, label: `🏢 Rol: ${r.name}` })) },
+    { label: 'Perfiles (Permisos)', options: (companyProfiles||[]).map(p => ({ value: `profile_${p.id}`, label: `🛡️ Perfil: ${p.name}` })) }
+  ];
+
+  const getSelectedNotificationTargets = () => {
+     const cfg = rule.action_config || {};
+     let selected = [];
+     if(cfg.notify_users) selected = [...selected, ...cfg.notify_users.map(id => notificationOptions[0].options.find(o => o.value === `user_${id}`))];
+     if(cfg.notify_roles) selected = [...selected, ...cfg.notify_roles.map(id => notificationOptions[1].options.find(o => o.value === `role_${id}`))];
+     if(cfg.notify_profiles) selected = [...selected, ...cfg.notify_profiles.map(id => notificationOptions[2].options.find(o => o.value === `profile_${id}`))];
+     return selected.filter(Boolean);
+  };
+
+  const handleNotificationTargetsChange = (selectedOptions) => {
+     const cfg = { notify_users: [], notify_roles: [], notify_profiles: [] };
+     selectedOptions.forEach(opt => {
+        const [type, id] = opt.value.split('_');
+        if(type === 'user') cfg.notify_users.push(parseInt(id));
+        if(type === 'role') cfg.notify_roles.push(parseInt(id));
+        if(type === 'profile') cfg.notify_profiles.push(parseInt(id));
+     });
+     updateRule({ action_config: cfg });
+  };
+
+  // 🔥 INICIALIZACIÓN BLINDADA CONTRA CRASHEOS 🔥
+  const [rule, setRule] = useState(() => {
+    if (!initialRule) {
+      return {
+        name: '', event_type: 'ON_UPDATE', trigger_field: '', condition_field: '',
+        condition_operator: '==', condition_value: '', action_type: 'UPDATE_FIELD',
+        target_field: '', action_value: '', function_code: '', action_config: { mapping: {} }
+      };
+    }
+
+    let safeConfig = { mapping: {} };
+    if (typeof initialRule.action_config === 'string') {
+      try { safeConfig = JSON.parse(initialRule.action_config); } catch (e) { }
+    } else if (typeof initialRule.action_config === 'object' && initialRule.action_config !== null) {
+      safeConfig = { ...initialRule.action_config };
+    }
+    if (!safeConfig.mapping) safeConfig.mapping = {};
+
+    return {
+      name: initialRule.name || '',
+      event_type: initialRule.event_type || 'ON_UPDATE',
+      trigger_field: initialRule.trigger_field || '',
+      condition_field: initialRule.condition_field || '',
+      condition_operator: initialRule.condition_operator || '==',
+      condition_value: initialRule.condition_value || '',
+      action_type: initialRule.action_type || 'UPDATE_FIELD',
+      target_field: initialRule.target_field || '',
+      action_value: initialRule.action_value || '',
+      function_code: initialRule.function_code || '',
+      action_config: safeConfig
+    };
+  });
+
+  const updateRule = (updates) => {
+    setRule(prev => ({ ...prev, ...updates }));
+    setHasChanges(true);
+    if (setHasUnsavedChanges) setHasUnsavedChanges(true);
+  };
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasChanges) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasChanges]);
+
+  useEffect(() => {
+     const controller = new AbortController();
+     if (rule.action_type === 'CREATE_RECORD' && rule.action_config?.module_id) {
+         api.get(`/api/v1/fields/?module_id=${rule.action_config.module_id}`, { signal: controller.signal })
+            .then(res => setTargetModuleFields(res.data?.filter(f => f.is_active) || []))
+            .catch(err => { if (err.name !== 'CanceledError') console.error(err); });
+     } else {
+         setTargetModuleFields([]);
+     }
+     return () => controller.abort();
+  }, [rule.action_config?.module_id, rule.action_type]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!rule.name.trim()) return notify.warning("El nombre de la regla es obligatorio.");
+
+    setIsSaving(true);
+    try {
+      const payload = { ...rule, module_id: moduleId };
+      if (payload.action_type === 'CHANGE_OWNER') payload.target_field = 'assigned_to';
+      // Limpieza de Action Configs no usados
+      if (!['CREATE_RECORD', 'SEND_NOTIFICATION'].includes(payload.action_type)) {
+         payload.action_config = {}; 
+      }
+
+      if (initialRule?.id) {
+        await api.put(`/api/v1/automations/${initialRule.id}`, payload);
+        notify.success("Regla actualizada con éxito.");
+      } else {
+        await api.post('/api/v1/automations/', payload);
+        notify.success("Regla creada con éxito.");
+      }
+      
+      setHasChanges(false);
+      if (setHasUnsavedChanges) setHasUnsavedChanges(false);
+      onSave(); 
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al guardar la automatización.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCloseAttempt = async () => {
+    if (hasChanges) {
+      const isConfirmed = await confirm({
+        title: 'Cambios sin guardar',
+        message: '¿Estás seguro de que deseas descartar los cambios y salir?',
+        confirmText: 'Descartar y salir',
+        variant: 'danger'
+      });
+      if (!isConfirmed) return;
+    }
+    setHasChanges(false);
+    if (setHasUnsavedChanges) setHasUnsavedChanges(false);
+    onCancel();
+  };
+
+  // Funciones de Mapeo
+  const handleAddMappingRow = () => {
+      const currentConfig = { ...(rule.action_config || { mapping: {} }) }; 
+      if (!currentConfig.mapping) currentConfig.mapping = {};
+      const mappedKeys = Object.keys(currentConfig.mapping);
+      const availableTarget = targetModuleFields.find(f => !mappedKeys.includes(f.api_name || f.label));
+      
+      if(availableTarget) {
+         currentConfig.mapping[availableTarget.api_name || availableTarget.label] = { type: 'static', value: '' };
+         updateRule({ action_config: currentConfig });
+      } else {
+         notify.info("Ya mapeaste todos los campos disponibles.");
+      }
+  };
+
+  const handleUpdateMappingRow = (oldTargetKey, newTargetKey, type, value) => {
+      const currentConfig = { ...(rule.action_config || { mapping: {} }) };
+      const map = { ...(currentConfig.mapping || {}) };
+      if (oldTargetKey !== newTargetKey) delete map[oldTargetKey];
+      map[newTargetKey] = { type: type || 'static', value: value || '' };
+      currentConfig.mapping = map;
+      updateRule({ action_config: currentConfig });
+  };
+
+  const handleRemoveMappingRow = (targetKey) => {
+      const currentConfig = { ...(rule.action_config || { mapping: {} }) };
+      const map = { ...(currentConfig.mapping || {}) };
+      delete map[targetKey];
+      currentConfig.mapping = map;
+      updateRule({ action_config: currentConfig });
+  };
+
+  const selectedConditionField = fields.find(f => (f.api_name || f.label) === rule.condition_field);
+
+  return (
+    <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300 max-w-4xl mx-auto my-6">
+      <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-gray-900/80">
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+          <button onClick={handleCloseAttempt} className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors mr-1"><ArrowLeft size={16}/></button>
+          {initialRule ? 'Editar Automatización' : 'Nueva Automatización'}
+        </h2>
+        <button onClick={handleCloseAttempt} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 p-1.5 rounded-lg transition-colors"><X size={18} /></button>
+      </div>
+
+      <form onSubmit={handleSave} className="p-6 md:p-8 space-y-10">
+        <div>
+          <input 
+            type="text" required placeholder="Nombra esta automatización..."
+            value={rule.name} onChange={e => updateRule({ name: e.target.value })}
+            className="w-full bg-transparent text-2xl font-bold text-gray-900 dark:text-white border-b-2 border-transparent hover:border-gray-200 dark:hover:border-gray-800 focus:border-blue-500 outline-none transition-colors pb-2 placeholder:text-gray-300 dark:placeholder:text-gray-700"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-6 items-start relative">
+            <div className="space-y-8">
+                {/* 1. CUÁNDO */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Play size={14} className="text-gray-900 dark:text-white"/> 1. Cuándo ocurre esto</h3>
+                  <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                     <select value={rule.event_type} onChange={e => updateRule({ event_type: e.target.value })} className="w-full bg-transparent font-medium text-gray-900 dark:text-white outline-none cursor-pointer">
+                        <option value="ON_CREATE">Al crear un registro nuevo</option>
+                        <option value="ON_UPDATE">Al guardar/actualizar un registro</option>
+                        <option value="ON_FIELD_CHANGE">Cuando un campo específico cambia</option>
+                     </select>
+                     {rule.event_type === 'ON_FIELD_CHANGE' && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 animate-in fade-in">
+                           <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Selecciona el campo detonante</label>
+                           <Select 
+                              options={fields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
+                              value={rule.trigger_field ? { value: rule.trigger_field, label: fields.find(f => (f.api_name || f.label) === rule.trigger_field)?.label || rule.trigger_field } : null}
+                              onChange={(opt) => updateRule({ trigger_field: opt.value })}
+                              placeholder="Buscar campo..."
+                              styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                           />
+                        </div>
+                     )}
+                  </div>
+                </div>
+
+                {/* 2. SI (Condiciones) */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Filter size={14} className="text-gray-900 dark:text-white"/> 2. Y se cumple que (Opcional)</h3>
+                  <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+                     <Select 
+                        options={[{value: '', label: 'Aplicar siempre (Sin condición)'}, ...fields.map(f => ({ value: f.api_name || f.label, label: f.label }))]}
+                        value={{ value: rule.condition_field || '', label: rule.condition_field ? (fields.find(f => (f.api_name || f.label) === rule.condition_field)?.label || rule.condition_field) : 'Aplicar siempre (Sin condición)' }}
+                        onChange={(opt) => {
+                           const val = opt.value;
+                           const field = fields.find(f => (f.api_name || f.label) === val);
+                           let newOperator = '=='; let newValue = '';
+                           if (field) {
+                              if (field.field_type === 'file' || field.field_type === 'image') { newOperator = '!='; newValue = ''; } 
+                              else if (field.field_type === 'checkbox') { newValue = 'true'; }
+                           }
+                           updateRule({ condition_field: val, condition_operator: newOperator, condition_value: newValue });
+                        }}
+                        placeholder="Condición basada en campo..."
+                        styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                     />
+                     
+                     {rule.condition_field && selectedConditionField && (
+                        <div className="flex flex-col sm:flex-row gap-2 pt-1 animate-in fade-in">
+                           <select value={rule.condition_operator || '=='} onChange={e => updateRule({ condition_operator: e.target.value })} className="w-full sm:w-1/2 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg outline-none text-sm text-gray-900 dark:text-white focus:border-blue-500">
+                              {(selectedConditionField.field_type === 'file' || selectedConditionField.field_type === 'image') ? (
+                                 <><option value="!=">No está vacío</option><option value="==">Está vacío</option></>
+                              ) : (
+                                 <><option value="==">Es igual a</option><option value="!=">Diferente de</option><option value=">">Mayor a</option><option value="<">Menor a</option><option value="CONTAINS">Contiene</option></>
+                              )}
+                           </select>
+                           <input type="text" placeholder="Valor..." required value={rule.condition_value || ''} onChange={e => updateRule({ condition_value: e.target.value })} className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg outline-none text-sm text-gray-900 dark:text-white focus:border-blue-500" />
+                        </div>
+                     )}
+                  </div>
+                </div>
+            </div>
+
+            <div className="hidden md:flex flex-col items-center justify-center h-full pt-10 text-gray-300 dark:text-gray-700"><ArrowRight size={24} strokeWidth={1.5} /></div>
+
+            {/* 3. ENTONCES */}
+            <div className="space-y-3">
+               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Zap size={14} className="text-blue-500 fill-blue-500"/> 3. Entonces hacer</h3>
+               <div className="bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-900/50 rounded-xl p-4 shadow-sm shadow-blue-500/5">
+                  <label className="block text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-2">Acción a Ejecutar</label>
+                  <select value={rule.action_type} onChange={e => updateRule({ action_type: e.target.value, target_field: '', action_value: '', action_config: { mapping: {} } })} className="w-full mb-5 pb-2 bg-transparent text-sm font-bold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-800 outline-none cursor-pointer">
+                     <optgroup label="Súper Acciones"><option value="CHANGE_OWNER">Cambiar Propietario</option><option value="COPY_FIELD">Copiar Valor de Campo</option><option value="CREATE_RECORD">Crear Registro en otro Módulo</option></optgroup>
+                     <optgroup label="Datos y Lógica"><option value="UPDATE_FIELD">Sobrescribir Valor Fijo</option><option value="CUSTOM_FUNCTION">Script Low-Code (Python)</option><option value="SEND_NOTIFICATION">Disparar Alerta (Multicast)</option></optgroup>
+                     <optgroup label="Interfaz (UI)"><option value="SET_REQUIRED">Hacer Obligatorio</option><option value="SET_OPTIONAL">Quitar Obligatoriedad</option><option value="SET_READONLY">Bloquear (Solo Lectura)</option><option value="SET_EDITABLE">Desbloquear</option><option value="SET_HIDDEN">Ocultar Campo o Sección</option><option value="SET_VISIBLE">Mostrar Campo o Sección</option></optgroup>
+                  </select>
+
+                  <div className="animate-in fade-in duration-200">
+                     
+                     {/* 🔥 ROUND ROBIN Y ASIGNACIONES 🔥 */}
+                     {rule.action_type === 'CHANGE_OWNER' && (
+                        <div className="bg-purple-50/50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 p-5 rounded-xl">
+                           <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2 flex items-center gap-1.5"><User size={14}/> Destino de Asignación</label>
+                           <Select 
+                              options={[
+                                 { label: 'Usuarios Específicos', options: (companyUsers||[]).map(u => ({ value: u.id.toString(), label: `👤 ${u.first_name ? u.first_name + ' ' + (u.last_name || '') : u.email}` })) },
+                                 { label: 'Roles (Round Robin)', options: (companyRoles||[]).map(r => ({ value: `role_${r.id}`, label: `🏢 Rol: ${r.name}` })) },
+                                 { label: 'Perfiles (Round Robin)', options: (companyProfiles||[]).map(p => ({ value: `profile_${p.id}`, label: `🛡️ Perfil: ${p.name}` })) }
+                              ]}
+                              value={rule.action_value ? { value: rule.action_value, label: rule.action_value.startsWith('role_') ? `🏢 Rol` : rule.action_value.startsWith('profile_') ? `🛡️ Perfil` : `👤 Usuario` } : null}
+                              onChange={(opt) => updateRule({ action_value: opt.value })}
+                              placeholder="Buscar destinatario..."
+                              styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                           />
+                           <p className="text-[10px] text-purple-600/70 dark:text-purple-400/70 mt-2 italic">Si eliges Rol o Perfil, el sistema asignará los casos equitativamente uno a uno a los miembros del grupo.</p>
+                        </div>
+                     )}
+
+                     {/* 🔥 NOTIFICACIONES MULTICAST 🔥 */}
+                     {rule.action_type === 'SEND_NOTIFICATION' && (
+                        <div className="space-y-4">
+                           <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 p-5 rounded-xl">
+                              <label className="block text-xs font-bold text-amber-600 dark:text-amber-500 uppercase mb-2 flex items-center gap-1.5"><BellRing size={14}/> Destinatarios (Multicast)</label>
+                              <Select 
+                                 isMulti 
+                                 options={notificationOptions} 
+                                 value={getSelectedNotificationTargets()} 
+                                 onChange={handleNotificationTargetsChange} 
+                                 placeholder="Selecciona usuarios, roles o perfiles..." 
+                                 styles={customMultiSelectStyles} 
+                                 menuPortalTarget={document.body} 
+                                 menuPosition={'fixed'} 
+                                 menuShouldScrollIntoView={false}
+                              />
+                              <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 mt-2 italic">Si no seleccionas a nadie, se notificará únicamente al creador del registro.</p>
+                           </div>
+                           <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Título de la Alerta</label>
+                              <input type="text" placeholder="Ej: Registro Actualizado" required value={rule.target_field} onChange={e => updateRule({ target_field: e.target.value })} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm" />
+                           </div>
+                           <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mensaje (Opcional)</label>
+                              <textarea rows={2} placeholder="Ej: Se han aplicado nuevas reglas automáticas." value={rule.action_value} onChange={e => updateRule({ action_value: e.target.value })} className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm resize-none custom-scrollbar" />
+                           </div>
+                        </div>
+                     )}
+
+                     {/* 🔥 CONTROL DE UI (INCLUYE SECCIONES) 🔥 */}
+                     {['UPDATE_FIELD', 'SET_REQUIRED', 'SET_OPTIONAL', 'SET_READONLY', 'SET_EDITABLE', 'SET_HIDDEN', 'SET_VISIBLE'].includes(rule.action_type) && (
+                        <div>
+                           <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">¿A qué elemento de este registro aplica?</label>
+                           <Select 
+                              options={(() => {
+                                 let opts = [];
+                                 if (['SET_HIDDEN', 'SET_VISIBLE'].includes(rule.action_type) && (moduleSections||[]).length > 0) {
+                                    opts.push({ label: 'Secciones Completas', options: moduleSections.map(s => ({ value: `section_${s.id}`, label: `🗂️ Sección: ${s.title}` })) });
+                                 }
+                                 opts.push({ label: 'Campos Individuales', options: fields.map(f => ({ value: f.api_name || f.label, label: `📝 Campo: ${f.label}` })) });
+                                 return opts;
+                              })()}
+                              value={rule.target_field ? { value: rule.target_field, label: rule.target_field.startsWith('section_') ? `Sección ID ${rule.target_field.split('_')[1]}` : rule.target_field } : null}
+                              onChange={(opt) => updateRule({ target_field: opt.value })}
+                              placeholder="Buscar campo o sección..."
+                              styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                           />
+                        </div>
+                     )}
+
+                     {rule.action_type === 'UPDATE_FIELD' && (
+                        <div className="mt-4">
+                           <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Nuevo Valor</label>
+                           <input type="text" placeholder="Ej: Aprobado" required value={rule.action_value || ''} onChange={e => updateRule({ action_value: e.target.value })} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-sm text-gray-900 dark:text-white" />
+                        </div>
+                     )}
+
+                     {/* COPY FIELD */}
+                     {rule.action_type === 'COPY_FIELD' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-4 bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl border border-gray-100 dark:border-gray-800">
+                           <div>
+                              <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Copiar Desde (Origen)</label>
+                              <Select 
+                                 options={fields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
+                                 value={rule.action_value ? { value: rule.action_value, label: fields.find(f => (f.api_name || f.label) === rule.action_value)?.label } : null}
+                                 onChange={(opt) => updateRule({ action_value: opt.value })}
+                                 placeholder="Buscar Origen..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                              />
+                           </div>
+                           <div className="flex justify-center text-gray-400 mt-6 sm:mt-0"><ArrowRight size={24} className="rotate-90 sm:rotate-0"/></div>
+                           <div>
+                              <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Pegar En (Destino)</label>
+                              <Select 
+                                 options={fields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
+                                 value={rule.target_field ? { value: rule.target_field, label: fields.find(f => (f.api_name || f.label) === rule.target_field)?.label } : null}
+                                 onChange={(opt) => updateRule({ target_field: opt.value })}
+                                 placeholder="Buscar Destino..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                              />
+                           </div>
+                        </div>
+                     )}
+
+                     {/* CREATE RECORD */}
+                     {rule.action_type === 'CREATE_RECORD' && (
+                        <div className="space-y-4">
+                           <div>
+                              <label className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-500 uppercase mb-1.5"><Database size={14} className="inline mr-1"/>Módulo Destino</label>
+                              <Select 
+                                 options={allModules.filter(m => m.id !== moduleId).map(m => ({ value: m.id, label: m.name }))}
+                                 value={rule.action_config?.module_id ? { value: rule.action_config.module_id, label: allModules.find(m => m.id === parseInt(rule.action_config.module_id))?.name } : null}
+                                 onChange={(opt) => updateRule({ action_config: { module_id: opt.value, form_id: '', mapping: {} } })}
+                                 placeholder="Buscar módulo..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                              />
+                           </div>
+                           {rule.action_config?.module_id && (
+                              <div>
+                                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Formulario a usar</label>
+                                 <Select 
+                                    options={allForms.filter(f => f.module_id == rule.action_config.module_id).map(form => ({ value: form.id, label: form.name }))}
+                                    value={rule.action_config?.form_id ? { value: rule.action_config.form_id, label: allForms.find(f => f.id === parseInt(rule.action_config.form_id))?.name } : null}
+                                    onChange={(opt) => updateRule({ action_config: { ...rule.action_config, form_id: opt.value } })}
+                                    placeholder="Buscar Formulario..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                                 />
+                              </div>
+                           )}
+                           {rule.action_config?.form_id && targetModuleFields.length > 0 && (
+                              <div className="pt-3 border-t border-gray-200 dark:border-gray-800">
+                                 <div className="flex justify-between items-center mb-3">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Mapeo de Datos</label>
+                                    <button type="button" onClick={handleAddMappingRow} className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"><Plus size={10}/> Añadir</button>
+                                 </div>
+                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                    {Object.entries(rule.action_config?.mapping || {}).map(([targetKey, configData]) => (
+                                       <div key={targetKey} className="flex flex-col gap-1.5 bg-gray-50 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                                          <div className="flex items-center gap-2">
+                                             <select value={targetKey} onChange={e => handleUpdateMappingRow(targetKey, e.target.value, configData?.type || 'static', configData?.value || '')} className="flex-1 text-[10px] font-bold bg-transparent border-b border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-white pb-0.5">
+                                                {targetModuleFields.map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                                             </select>
+                                             <button type="button" onClick={() => handleRemoveMappingRow(targetKey)} className="text-gray-400 hover:text-red-500"><X size={12}/></button>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                             <select value={configData?.type || 'static'} onChange={e => handleUpdateMappingRow(targetKey, targetKey, e.target.value, '')} className="w-20 text-[10px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-1 py-1 outline-none text-gray-600 dark:text-gray-300">
+                                                <option value="static">Fijo</option>
+                                                <option value="dynamic">Dinámico</option>
+                                             </select>
+                                             {configData?.type === 'static' ? (
+                                                <input type="text" placeholder="Valor..." value={configData?.value || ''} onChange={e => handleUpdateMappingRow(targetKey, targetKey, 'static', e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 outline-none text-gray-900 dark:text-white" />
+                                             ) : (
+                                                <select value={configData?.value || ''} onChange={e => handleUpdateMappingRow(targetKey, targetKey, 'dynamic', e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 outline-none text-gray-900 dark:text-white">
+                                                   <option value="">Campo actual...</option>
+                                                   {fields.map(f => <option key={`map-src-${f.id}`} value={f.api_name || f.label}>{f.label}</option>)}
+                                                </select>
+                                             )}
+                                          </div>
+                                       </div>
+                                    ))}
+                                 </div>
+                              </div>
+                           )}
+                        </div>
+                     )}
+
+                     {rule.action_type === 'CUSTOM_FUNCTION' && (
+                        <div className="mt-4 animate-in fade-in">
+                           <label className="block text-[10px] font-bold text-green-600 dark:text-green-500 uppercase mb-1.5 flex items-center gap-1.5"><Code size={14}/> Script en Python</label>
+                           <textarea required rows={6} placeholder='case_data["prioridad"] = "Alta"' value={rule.function_code} onChange={e => updateRule({ function_code: e.target.value })} className="w-full px-4 py-3 bg-gray-900 text-green-400 font-mono text-sm border border-gray-800 rounded-xl outline-none focus:border-green-500 shadow-inner resize-y custom-scrollbar relative z-50" />
+                        </div>
+                     )}
+
+                  </div>
+               </div>
+            </div>
+        </div>
+
+        <div className="flex gap-3 justify-end pt-6 border-t border-gray-100 dark:border-gray-800 mt-8">
+          <button type="button" onClick={handleCloseAttempt} className="px-5 py-2 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+            Descartar
+          </button>
+          <button type="submit" disabled={isSaving} className="px-6 py-2 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all disabled:opacity-50">
+            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 
+            {initialRule ? 'Guardar Cambios' : 'Activar Regla'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+export default AutomationForm;
