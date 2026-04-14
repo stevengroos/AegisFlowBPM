@@ -141,3 +141,40 @@ def get_visible_users(db: Session, active_user: models.User, mod_perms: dict = N
         visible_ids.extend([u.id for u in same_rank_users])
 
     return list(set(visible_ids))
+
+# =========================================================
+# 🔥 FASE SOPORTE: OMNIPRESENCIA PARA AEGISFLOW HQ 🔥
+# =========================================================
+
+def is_system_admin(db: Session, user: models.User) -> bool:
+    """
+    Verifica si el usuario pertenece a la Empresa Maestra (System Company)
+    y tiene privilegios de Súper Administrador.
+    """
+    if not user.is_superadmin:
+        return False
+        
+    company = db.query(models.Company).filter(
+        models.Company.id == user.company_id
+    ).first()
+    
+    return company is not None and company.is_system_company
+
+def check_support_access(db: Session, user: models.User, target_company_id: int):
+    """
+    Permite el acceso a una sesión de chat si el usuario es de esa misma empresa
+    O si es un agente de soporte omnipresente de AegisFlow HQ.
+    """
+    # 1. Si el usuario es de la misma empresa que el chat (el cliente), pasa.
+    if user.company_id == target_company_id:
+        return True
+        
+    # 2. Si NO es de la misma empresa, verificamos si es un Agente de AegisFlow HQ
+    if is_system_admin(db, user):
+        return True
+        
+    # Si no cumple ninguna, lo bloqueamos (Intento de espionaje entre clientes)
+    raise HTTPException(
+        status_code=403, 
+        detail="Acceso denegado. No tienes permisos para ver o interactuar en esta sesión de soporte."
+    )

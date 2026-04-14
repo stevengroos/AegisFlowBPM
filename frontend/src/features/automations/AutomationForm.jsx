@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../../api/axios';
-import { Zap, Save, X, Code, Play, Filter, ArrowRight, Database, Plus, Trash2, ArrowLeft, Loader2, BellRing, User, Copy } from 'lucide-react';
+import { Zap, Save, X, Code, Play, Filter, ArrowRight, Database, Plus, Trash2, ArrowLeft, Loader2, BellRing, User, Copy, Edit2, Globe, MessageSquare } from 'lucide-react'; // 🔥 Añadidos Globe y MessageSquare
 import { useNotification } from '../../context/NotificationContext';
 import Select from 'react-select';
 
@@ -9,6 +10,8 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [targetModuleFields, setTargetModuleFields] = useState([]);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
   useEffect(() => {
@@ -27,7 +30,22 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
   };
 
   const customMultiSelectStyles = {
-    control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.75rem', padding: '0.1rem', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black' }),
+    control: (provided) => ({ 
+      ...provided, 
+      borderColor: isDarkMode ? '#374151' : '#e5e7eb', 
+      backgroundColor: isDarkMode ? '#111827' : 'white', 
+      borderRadius: '0.75rem', 
+      padding: '0.1rem', 
+      fontSize: '0.875rem', 
+      boxShadow: 'none', 
+      color: isDarkMode ? 'white' : 'black'
+    }),
+    // 🔥 FIX: Limitamos la altura del contenedor de los chips seleccionados 🔥
+    valueContainer: (provided) => ({
+      ...provided,
+      maxHeight: '70px', // Límite de altura (aprox. 3 filas de usuarios)
+      overflowY: 'auto'   // Scroll interno si se pasa de esa altura
+    }),
     menu: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb', borderRadius: '0.75rem', overflow: 'hidden', zIndex: 999999 }),
     menuPortal: base => ({ ...base, zIndex: 999999 }), 
     option: (provided, state) => ({ ...provided, fontSize: '0.875rem', backgroundColor: state.isSelected ? (isDarkMode ? '#374151' : '#eff6ff') : state.isFocused ? (isDarkMode ? '#111827' : '#f9fafb') : 'transparent', color: state.isSelected ? (isDarkMode ? '#60a5fa' : '#1d4ed8') : (isDarkMode ? '#d1d5db' : '#1f2937'), cursor: 'pointer' }),
@@ -203,7 +221,7 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
   const selectedConditionField = fields.find(f => (f.api_name || f.label) === rule.condition_field);
 
   return (
-    <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300 max-w-4xl mx-auto my-6">
+    <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300 max-w-4xl mx-auto my-6 flex flex-col max-h-[85vh]">
       <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-gray-900/80">
         <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
           <button onClick={handleCloseAttempt} className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors mr-1"><ArrowLeft size={16}/></button>
@@ -212,7 +230,7 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
         <button onClick={handleCloseAttempt} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 p-1.5 rounded-lg transition-colors"><X size={18} /></button>
       </div>
 
-      <form onSubmit={handleSave} className="p-6 md:p-8 space-y-10">
+      <form onSubmit={handleSave} className="p-6 md:p-8 space-y-10 overflow-y-auto custom-scrollbar">
         <div>
           <input 
             type="text" required placeholder="Nombra esta automatización..."
@@ -231,6 +249,7 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                         <option value="ON_CREATE">Al crear un registro nuevo</option>
                         <option value="ON_UPDATE">Al guardar/actualizar un registro</option>
                         <option value="ON_FIELD_CHANGE">Cuando un campo específico cambia</option>
+                        <option value="ON_SLA_BREACH">Cuando el tiempo límite (SLA) se agota</option>
                      </select>
                      {rule.event_type === 'ON_FIELD_CHANGE' && (
                         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 animate-in fade-in">
@@ -293,6 +312,7 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                   <label className="block text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-2">Acción a Ejecutar</label>
                   <select value={rule.action_type} onChange={e => updateRule({ action_type: e.target.value, target_field: '', action_value: '', action_config: { mapping: {} } })} className="w-full mb-5 pb-2 bg-transparent text-sm font-bold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-800 outline-none cursor-pointer">
                      <optgroup label="Súper Acciones"><option value="CHANGE_OWNER">Cambiar Propietario</option><option value="COPY_FIELD">Copiar Valor de Campo</option><option value="CREATE_RECORD">Crear Registro en otro Módulo</option></optgroup>
+                     <optgroup label="Integraciones (iPaaS)"><option value="WEBHOOK_OUT">Llamar Webhook (API Externa)</option><option value="SEND_SLACK">Enviar mensaje a Slack/Teams</option></optgroup>
                      <optgroup label="Datos y Lógica"><option value="UPDATE_FIELD">Sobrescribir Valor Fijo</option><option value="CUSTOM_FUNCTION">Script Low-Code (Python)</option><option value="SEND_NOTIFICATION">Disparar Alerta (Multicast)</option></optgroup>
                      <optgroup label="Interfaz (UI)"><option value="SET_REQUIRED">Hacer Obligatorio</option><option value="SET_OPTIONAL">Quitar Obligatoriedad</option><option value="SET_READONLY">Bloquear (Solo Lectura)</option><option value="SET_EDITABLE">Desbloquear</option><option value="SET_HIDDEN">Ocultar Campo o Sección</option><option value="SET_VISIBLE">Mostrar Campo o Sección</option></optgroup>
                   </select>
@@ -336,14 +356,15 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                               />
                               <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 mt-2 italic">Si no seleccionas a nadie, se notificará únicamente al creador del registro.</p>
                            </div>
-                           <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Título de la Alerta</label>
-                              <input type="text" placeholder="Ej: Registro Actualizado" required value={rule.target_field} onChange={e => updateRule({ target_field: e.target.value })} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm" />
-                           </div>
-                           <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mensaje (Opcional)</label>
-                              <textarea rows={2} placeholder="Ej: Se han aplicado nuevas reglas automáticas." value={rule.action_value} onChange={e => updateRule({ action_value: e.target.value })} className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm resize-none custom-scrollbar" />
-                           </div>
+                           
+                           {/* 🔥 NUEVO: Botón para abrir el Modal de Plantilla 🔥 */}
+                           <button 
+                              type="button" 
+                              onClick={() => setIsEmailModalOpen(true)}
+                              className="w-full bg-white dark:bg-gray-900 border border-dashed border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+                           >
+                              <Edit2 size={16} /> Configurar Plantilla y Correo
+                           </button>
                         </div>
                      )}
 
@@ -466,6 +487,29 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                            <textarea required rows={6} placeholder='case_data["prioridad"] = "Alta"' value={rule.function_code} onChange={e => updateRule({ function_code: e.target.value })} className="w-full px-4 py-3 bg-gray-900 text-green-400 font-mono text-sm border border-gray-800 rounded-xl outline-none focus:border-green-500 shadow-inner resize-y custom-scrollbar relative z-50" />
                         </div>
                      )}
+                     {/* 🔥 FASE 3: BOTÓN PARA ABRIR MODAL DE WEBHOOK/SLACK 🔥 */}
+                     {(rule.action_type === 'WEBHOOK_OUT' || rule.action_type === 'SEND_SLACK') && (
+                        <div className="space-y-4 mt-4">
+                           <div className={`p-5 rounded-xl border ${rule.action_type === 'WEBHOOK_OUT' ? 'bg-blue-50/50 border-blue-100 dark:bg-blue-900/10 dark:border-blue-900/30' : 'bg-indigo-50/30 border-indigo-100 dark:bg-indigo-900/10 dark:border-indigo-900/30'}`}>
+                              <div className="flex items-center gap-2 mb-2">
+                                 {rule.action_type === 'WEBHOOK_OUT' ? <Globe className="text-blue-500" size={16}/> : <MessageSquare className="text-indigo-500" size={16}/>}
+                                 <h4 className={`text-xs font-bold uppercase ${rule.action_type === 'WEBHOOK_OUT' ? 'text-blue-700 dark:text-blue-400' : 'text-indigo-700 dark:text-indigo-400'}`}>
+                                    {rule.action_type === 'WEBHOOK_OUT' ? 'Llamada a API Externa' : 'Webhook de Slack / Teams'}
+                                 </h4>
+                              </div>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4">
+                                 Haz clic en el botón de abajo para configurar la URL de destino y el contenido que se enviará.
+                              </p>
+                              <button 
+                                 type="button" 
+                                 onClick={() => setIsWebhookModalOpen(true)}
+                                 className={`w-full py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm border border-dashed ${rule.action_type === 'WEBHOOK_OUT' ? 'bg-white dark:bg-gray-900 border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/20' : 'bg-white dark:bg-gray-900 border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20'}`}
+                              >
+                                 <Edit2 size={16} /> Configurar Integración
+                              </button>
+                           </div>
+                        </div>
+                     )}
 
                   </div>
                </div>
@@ -482,6 +526,135 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
           </button>
         </div>
       </form>
+      {/* 🔥 MODAL FLOTANTE DE PLANTILLA DE CORREO 🔥 */}
+      {isEmailModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <BellRing size={18} className="text-amber-500" /> Plantilla de Alerta
+              </h3>
+              <button type="button" onClick={() => setIsEmailModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors">
+                <X size={18}/>
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar max-h-[70vh]">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Título de la Alerta (Asunto del Correo)</label>
+                <input type="text" placeholder="Ej: Registro Actualizado" required value={rule.target_field} onChange={e => updateRule({ target_field: e.target.value })} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mensaje / Cuerpo del Correo</label>
+                <textarea rows={4} placeholder="Ej: Se han aplicado nuevas reglas automáticas." value={rule.action_value} onChange={e => updateRule({ action_value: e.target.value })} className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm resize-none custom-scrollbar" />
+              </div>
+              
+              <div className="flex items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <input
+                  type="checkbox"
+                  id="send_email_check_modal"
+                  checked={rule.action_config?.send_email || false}
+                  onChange={e => {
+                    const currentConfig = rule.action_config || {};
+                    updateRule({ action_config: { ...currentConfig, send_email: e.target.checked } });
+                  }}
+                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                />
+                <label htmlFor="send_email_check_modal" className="text-sm font-bold text-gray-700 dark:text-gray-300 cursor-pointer">
+                  ✉️ Enviar también copia por correo electrónico
+                </label>
+              </div>
+            </div>
+            
+            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end">
+              <button type="button" onClick={() => setIsEmailModalOpen(false)} className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95">
+                Confirmar Plantilla
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {/* 🔥 MODAL FLOTANTE DE WEBHOOKS Y SLACK 🔥 */}
+      {isWebhookModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                {rule.action_type === 'WEBHOOK_OUT' ? <Globe size={18} className="text-blue-500" /> : <MessageSquare size={18} className="text-indigo-500" />} 
+                {rule.action_type === 'WEBHOOK_OUT' ? 'Configurar Webhook' : 'Configurar Slack / Teams'}
+              </h3>
+              <button type="button" onClick={() => setIsWebhookModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors">
+                <X size={18}/>
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar max-h-[70vh]">
+               {rule.action_type === 'WEBHOOK_OUT' ? (
+                  <>
+                     <div className="flex gap-2">
+                        <select 
+                           value={rule.action_config?.method || 'POST'} 
+                           onChange={e => updateRule({ action_config: { ...rule.action_config, method: e.target.value } })}
+                           className="w-24 text-sm font-bold bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg px-2 outline-none text-blue-600 dark:text-blue-400"
+                        >
+                           <option value="POST">POST</option>
+                           <option value="GET">GET</option>
+                           <option value="PUT">PUT</option>
+                        </select>
+                        <input 
+                           type="url" required placeholder="https://api.tu-sistema.com/webhook" 
+                           value={rule.target_field || ''} 
+                           onChange={e => updateRule({ target_field: e.target.value })} 
+                           className="flex-1 px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-sm text-gray-900 dark:text-white focus:border-blue-500 font-mono" 
+                        />
+                     </div>
+                     <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase">Payload (Cuerpo en JSON)</label>
+                          <span className="text-[9px] text-gray-400">Usa {'{case_data}'} para inyectar todo</span>
+                        </div>
+                        <textarea 
+                           rows={6} required placeholder='{ "id": "{case_id}", "status": "{status_name}", "data": "{case_data}" }' 
+                           value={rule.action_value || ''} 
+                           onChange={e => updateRule({ action_value: e.target.value })} 
+                           className="w-full px-3 py-3 bg-gray-900 text-green-400 border border-gray-800 rounded-lg outline-none text-xs font-mono focus:border-blue-500 custom-scrollbar resize-y" 
+                        />
+                     </div>
+                  </>
+               ) : (
+                  <>
+                     <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">URL del Webhook (Incoming Webhook)</label>
+                        <input 
+                           type="url" required placeholder="https://hooks.slack.com/services/T0000/B0000/XXXXX" 
+                           value={rule.target_field || ''} 
+                           onChange={e => updateRule({ target_field: e.target.value })} 
+                           className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-sm text-gray-900 dark:text-white focus:border-indigo-500 font-mono" 
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Mensaje a Enviar</label>
+                        <textarea 
+                           rows={4} required placeholder='Ej: ¡Atención! Se ha escalado el caso #{case_id}' 
+                           value={rule.action_value || ''} 
+                           onChange={e => updateRule({ action_value: e.target.value })} 
+                           className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-sm text-gray-900 dark:text-white focus:border-indigo-500 custom-scrollbar resize-y" 
+                        />
+                     </div>
+                  </>
+               )}
+            </div>
+            
+            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end">
+              <button type="button" onClick={() => setIsWebhookModalOpen(false)} className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95">
+                Confirmar Configuración
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

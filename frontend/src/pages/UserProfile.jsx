@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react'; // 🔥 Importamos el generador de QR
 import { useNotification } from '../context/NotificationContext';
 
 const UserProfile = () => {
-  const { notify } = useNotification();
+  const { notify, confirm } = useNotification();
   const [loading, setLoading] = useState(true);
   
   // Estados para Datos Personales
@@ -140,21 +140,28 @@ const UserProfile = () => {
   };
 
   const handleDisableMfa = async () => {
-    if (!window.confirm("¿Estás seguro de que deseas desactivar el Doble Factor de seguridad? Esto disminuirá la protección de tu cuenta.")) {
-      return;
-    }
-    setMfaStatus('LOADING');
-    try {
-      await api.post('/api/v1/auth/mfa/disable');
-      setProfileData(prev => ({ ...prev, is_mfa_enabled: false }));
-      notify.success("Doble Factor de Seguridad desactivado.");
-    } catch (error) {
-      // Aquí atrapamos el error si la política de la empresa dice que es obligatorio
-      notify.error(error.response?.data?.detail || "Error al desactivar el MFA.");
-    } finally {
-      setMfaStatus('IDLE');
-    }
-  };
+  // 🔥 Reemplazamos window.confirm por nuestro modal personalizado
+  const isConfirmed = await confirm({
+    title: 'Desactivar Doble Factor',
+    message: '¿Estás seguro de que deseas desactivar el Doble Factor de seguridad? Esto disminuirá considerablemente la protección de tu cuenta.',
+    confirmText: 'Sí, desactivar MFA',
+    variant: 'danger' // Lo ponemos en rojo porque es una acción delicada
+  });
+
+  if (!isConfirmed) return;
+
+  setMfaStatus('LOADING');
+  try {
+    await api.post('/api/v1/auth/mfa/disable');
+    setProfileData(prev => ({ ...prev, is_mfa_enabled: false }));
+    notify.success("Doble Factor de Seguridad desactivado.");
+  } catch (error) {
+    // Aquí atrapamos el error si la política de la empresa dice que es obligatorio
+    notify.error(error.response?.data?.detail || "Error al desactivar el MFA.");
+  } finally {
+    setMfaStatus('IDLE');
+  }
+};
 
   if (loading) {
     return (

@@ -1,18 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History } from 'lucide-react';
+import { createPortal } from 'react-dom'; // 🔥 NUEVO
+import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X } from 'lucide-react'; // 🔥 Añadimos Globe, Copy y X // 🔥 Añadimos Clock y AlertTriangle
 import Select from 'react-select'; // 🔥 IMPORTAMOS REACT-SELECT 🔥
 
 import CaseModal from '../components/CaseModal';
 import ImportDataModal from '../features/modules/ImportDataModal';
 import ImportHistoryModal from '../features/modules/ImportHistoryModal';
 import { useNotification } from '../context/NotificationContext';
+import BulkActionsBar from '../components/BulkActionsBar';
+import BulkUpdateModal from '../components/BulkUpdateModal';
 
 const ModuleDataView = () => {
   const { moduleId } = useParams(); 
   const navigate = useNavigate(); 
-  const { notify } = useNotification();
+  const { notify, confirm } = useNotification();
   
   const [module, setModule] = useState(null);
   const [records, setRecords] = useState([]);
@@ -30,6 +33,73 @@ const ModuleDataView = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+  // 🔥 FASE 3: ESTADOS PARA WEBHOOKS DE ENTRADA 🔥
+  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
+  const [moduleWebhooks, setModuleWebhooks] = useState([]);
+  const [newWebhookName, setNewWebhookName] = useState('');
+  const [loadingWebhooks, setLoadingWebhooks] = useState(false);
+
+  const fetchWebhooks = async () => {
+      setLoadingWebhooks(true);
+      try {
+          const res = await api.get(`/api/v1/webhooks/module/${moduleId}`);
+          setModuleWebhooks(res.data);
+      } catch (error) {
+          notify.error("Error al cargar los webhooks.");
+      } finally {
+          setLoadingWebhooks(false);
+      }
+  };
+
+  useEffect(() => {
+      if (isWebhookModalOpen) fetchWebhooks();
+  }, [isWebhookModalOpen]);
+
+  const handleCreateWebhook = async (e) => {
+      e.preventDefault();
+      if (!newWebhookName.trim()) return notify.warning("Escribe un nombre para el webhook.");
+      if (forms.length === 0) return notify.warning("No hay un formulario activo en este módulo.");
+      
+      try {
+          await api.post('/api/v1/webhooks/', {
+              name: newWebhookName,
+              module_id: parseInt(moduleId),
+              form_id: forms[0].id // Usamos el primer formulario por defecto
+          });
+          notify.success("Webhook generado exitosamente.");
+          setNewWebhookName('');
+          fetchWebhooks();
+      } catch (error) {
+          notify.error("Error al generar el webhook.");
+      }
+  };
+
+  const handleDeleteWebhook = async (webhookId) => {
+      const isConfirmed = await confirm({
+          title: 'Eliminar Webhook',
+          message: '¿Estás seguro? Cualquier sistema externo que use esta URL fallará inmediatamente.',
+          confirmText: 'Sí, eliminar',
+          variant: 'danger'
+      });
+      if (!isConfirmed) return;
+
+      try {
+          await api.delete(`/api/v1/webhooks/${webhookId}`);
+          notify.success("Webhook eliminado.");
+          fetchWebhooks();
+      } catch (error) {
+          notify.error("Error al eliminar el webhook.");
+      }
+  };
+
+  const copyToClipboard = (token) => {
+      // Generamos la URL completa basada en el dominio actual (o el servidor de producción)
+      const baseUrl = window.location.origin.includes('localhost') ? 'http://localhost:8000' : window.location.origin;
+      const url = `${baseUrl}/api/v1/webhooks/in/${token}`;
+      navigator.clipboard.writeText(url);
+      notify.success("URL copiada al portapapeles.");
+  };
 
   // Grid, Filtros y Columnas
   const [searchTerm, setSearchTerm] = useState('');
@@ -157,6 +227,31 @@ const ModuleDataView = () => {
      const u = allUsers.find(u => u.id === userId);
      return u ? (u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email) : `Usuario ID: ${userId}`;
   };
+  // 🔥 FASE 2: CALCULADORA DE SLA 🔥
+  const getSlaStatus = (rec) => {
+     if (!rec.status_id) return null;
+     const status = allStatuses.find(s => s.id === rec.status_id);
+     // Si el estado no tiene límite de horas configurado, no hay SLA que medir
+     if (!status || !status.sla_hours) return null; 
+
+     // Tomamos la fecha en la que entró a este estado (o si es muy viejo, la de creación)
+     const startTime = new Date(rec.entered_status_at || rec.created_at);
+     // Le sumamos las horas permitidas para sacar la "Fecha Límite"
+     const deadline = new Date(startTime.getTime() + (status.sla_hours * 60 * 60 * 1000));
+     const now = new Date();
+
+     const timeRemaining = deadline - now;
+     const hoursRemaining = timeRemaining / (1000 * 60 * 60);
+
+     // Si el tiempo restante es negativo, ya se rompió el SLA
+     if (timeRemaining < 0) return { state: 'breached', label: 'SLA Vencido', hours: Math.abs(hoursRemaining).toFixed(1) };
+     
+     // Si le queda menos del 20% del tiempo total, está en riesgo (Naranja)
+     if (hoursRemaining <= (status.sla_hours * 0.2)) return { state: 'warning', label: 'Por vencer', hours: hoursRemaining.toFixed(1) };
+     
+     // De lo contrario, está a tiempo (Verde/Normal)
+     return { state: 'good', label: 'A tiempo', hours: hoursRemaining.toFixed(1) };
+  };
 
   const filteredColumnFields = fields.filter(f => f.label.toLowerCase().includes(columnSearchTerm.toLowerCase()));
   const totalColumnPages = Math.ceil(filteredColumnFields.length / columnsPerPage) || 1;
@@ -261,6 +356,76 @@ const ModuleDataView = () => {
     notify.success("Exportación completada.");
   };
 
+  // ==========================================
+  // 🔥 LÓGICA DE ACCIONES MASIVAS 🔥
+  // ==========================================
+  const [selectedRecords, setSelectedRecords] = useState([]);
+  const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
+  const [isBulkSaving, setIsBulkSaving] = useState(false);
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      const pageIds = currentListRecords.map(r => r.id);
+      setSelectedRecords([...new Set([...selectedRecords, ...pageIds])]);
+    } else {
+      const pageIds = currentListRecords.map(r => r.id);
+      setSelectedRecords(selectedRecords.filter(id => !pageIds.includes(id)));
+    }
+  };
+
+  const toggleRecordSelection = (e, id) => {
+    e.stopPropagation(); 
+    if (selectedRecords.includes(id)) {
+      setSelectedRecords(selectedRecords.filter(r => r !== id));
+    } else {
+      setSelectedRecords([...selectedRecords, id]);
+    }
+  };
+
+  const handleBulkUpdate = async (fieldApiName, value) => {
+    setIsBulkSaving(true);
+    try {
+      // Mandamos 1 SOLA petición con todos los IDs y el dato a cambiar
+      await api.put('/api/v1/cases/bulk/update', {
+        case_ids: selectedRecords,
+        field_api_name: fieldApiName,
+        new_value: value
+      });
+      
+      notify.success(`${selectedRecords.length} registros actualizados de forma masiva.`);
+      setIsBulkUpdateModalOpen(false);
+      setSelectedRecords([]);
+      fetchData(new AbortController().signal); // Recargamos la tabla
+    } catch (error) {
+      notify.error("Error en la actualización masiva.");
+      console.error(error);
+    } finally {
+      setIsBulkSaving(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const isConfirmed = await confirm({
+      title: 'Eliminación Masiva',
+      message: `¿Estás seguro de eliminar los ${selectedRecords.length} registros seleccionados? Esta acción es irreversible.`,
+      confirmText: 'Sí, eliminar seleccionados',
+      variant: 'danger'
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      setLoading(true);
+      await Promise.all(selectedRecords.map(id => api.delete(`/api/v1/cases/${id}`)));
+      notify.success(`${selectedRecords.length} registros eliminados con éxito.`);
+      setSelectedRecords([]); 
+      fetchData(new AbortController().signal); 
+    } catch (error) {
+      notify.error("Ocurrió un error al eliminar algunos registros.");
+      setLoading(false);
+    }
+  };
+
   const modPerms = userData?.permissions?.modules?.[moduleId] || {};
   const canCreate = userData?.is_superadmin || modPerms.create === true;
 
@@ -290,6 +455,12 @@ const ModuleDataView = () => {
                    <History size={14} />
                  </button>
                </>
+            )}
+            {/* 🔥 BOTÓN DE WEBHOOKS (SOLO SUPERADMIN) 🔥 */}
+            {userData?.is_superadmin && (
+               <button onClick={() => setIsWebhookModalOpen(true)} className="px-3 py-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-1.5 text-xs font-semibold border-l border-gray-200 dark:border-gray-800/80" title="Integraciones Webhook (Entrada)">
+                 <Globe size={14} /> <span className="hidden sm:inline">Webhooks</span>
+               </button>
             )}
           </div>
 
@@ -486,6 +657,15 @@ const ModuleDataView = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50/50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800/80">
               <tr>
+                {/* 🔥 ¡ESTE ES EL BLOQUE QUE TE FALTA! 🔥 */}
+                <th className="px-6 py-3.5 w-10">
+                  <input 
+                    type="checkbox" 
+                    onChange={handleSelectAll} 
+                    checked={currentListRecords.length > 0 && currentListRecords.every(r => selectedRecords.includes(r.id))}
+                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                  />
+                </th>
                 <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">ID</th>
                 <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Creado</th>
                 {visibleFields.map(field => (
@@ -499,7 +679,7 @@ const ModuleDataView = () => {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
               {currentListRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleFields.length + 5} className="px-6 py-16 text-center">
+                  <td colSpan={visibleFields.length + 6} className="px-6 py-16 text-center">
                     <Box className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-700 mb-3" />
                     <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
                       {(searchTerm || startDate || endDate || Object.keys(fieldFilters).length > 0) ? 'No hay resultados para esta búsqueda.' : 'No hay registros en este módulo todavía.'}
@@ -508,7 +688,26 @@ const ModuleDataView = () => {
                 </tr>
               ) : (
                 currentListRecords.map((rec) => (
-                  <tr key={rec.id} onClick={() => navigate(`/cases/${rec.id}`)} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors group cursor-pointer">
+                  <tr 
+                    key={rec.id} 
+                    onClick={() => navigate(`/cases/${rec.id}`)} 
+                    className={`transition-colors group cursor-pointer ${
+                      selectedRecords.includes(rec.id) 
+                        ? 'bg-blue-50/50 dark:bg-blue-900/10' 
+                        : 'hover:bg-gray-50/80 dark:hover:bg-gray-800/40'
+                    }`}
+                  >
+                    {/* 🔥 AGREGA ESTE TD AQUÍ 🔥 */}
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedRecords.includes(rec.id)}
+                        onChange={(e) => toggleRecordSelection(e, rec.id)}
+                        className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                      />
+                    </td>
+                    {/* ------------------------- */}
+
                     <td className="px-6 py-4 text-sm font-bold text-gray-700 dark:text-gray-300">#{rec.id}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{new Date(rec.created_at).toLocaleDateString()}</td>
                     {visibleFields.map(field => (
@@ -521,10 +720,32 @@ const ModuleDataView = () => {
                        {getUserName(rec.assigned_to || rec.created_by)}
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap flex items-center gap-2">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
                          {getStatusName(rec.status_id)}
                       </span>
+                      
+                      {/* 🔥 FASE 2: INDICADORES VISUALES DE SLA 🔥 */}
+                      {(() => {
+                         const sla = getSlaStatus(rec);
+                         if (!sla) return null;
+                         
+                         if (sla.state === 'breached') {
+                           return (
+                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest animate-pulse" title={`Vencido por ${sla.hours} horas`}>
+                               <AlertTriangle size={12} /> SLA Roto
+                             </span>
+                           );
+                         }
+                         if (sla.state === 'warning') {
+                           return (
+                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest" title={`Quedan ${sla.hours} horas`}>
+                               <Clock size={12} /> En Riesgo
+                             </span>
+                           );
+                         }
+                         return null; // Si está a tiempo, no saturamos visualmente la tabla
+                      })()}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button className="p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all"><MoreHorizontal size={18} /></button>
@@ -537,7 +758,7 @@ const ModuleDataView = () => {
         </div>
 
         {totalPages > 1 && (
-          <div className="border-t border-gray-100 dark:border-gray-800/80 p-4 flex justify-between items-center bg-gray-50/30 dark:bg-gray-900/50 mt-auto">
+          <div className="border-t border-gray-100 dark:border-gray-800/80 py-4 pl-4 pr-20 md:pr-24 flex justify-between items-center bg-gray-50/30 dark:bg-gray-900/50 mt-auto">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
               Mostrando <span className="font-bold text-gray-700 dark:text-gray-300">{indexOfFirstRecord + 1}</span> - <span className="font-bold text-gray-700 dark:text-gray-300">{Math.min(indexOfLastRecord, filteredAndSortedRecords.length)}</span> de <span className="font-bold text-gray-700 dark:text-gray-300">{filteredAndSortedRecords.length}</span>
             </p>
@@ -567,6 +788,89 @@ const ModuleDataView = () => {
         moduleId={moduleId} 
         onSuccess={() => fetchData()} 
       />
+      <BulkActionsBar 
+        selectedCount={selectedRecords.length}
+        onClear={() => setSelectedRecords([])}
+        onUpdate={() => setIsBulkUpdateModalOpen(true)}
+        onDelete={handleBulkDelete}
+        canDelete={canCreate} 
+      />
+
+      <BulkUpdateModal 
+        isOpen={isBulkUpdateModalOpen}
+        onClose={() => setIsBulkUpdateModalOpen(false)}
+        fields={fields}
+        selectedCount={selectedRecords.length}
+        isSaving={isBulkSaving}
+        onConfirm={handleBulkUpdate}
+      />
+      {/* 🔥 MODAL DE GESTIÓN DE WEBHOOKS 🔥 */}
+      {isWebhookModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[555] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 max-h-[85vh]">
+            
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
+              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Globe size={18} className="text-blue-500" /> Webhooks de Entrada (Inbound API)
+              </h3>
+              <button onClick={() => setIsWebhookModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+            </div>
+            
+            <div className="p-6 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+              
+              <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-4">
+                 <h4 className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase mb-2">Generar Nueva URL de Ingesta</h4>
+                 <form onSubmit={handleCreateWebhook} className="flex gap-2">
+                    <input 
+                       type="text" required placeholder="Ej: Conexión con Zapier, Formulario Web..." 
+                       value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} 
+                       className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg outline-none focus:border-blue-500" 
+                    />
+                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap">
+                       <Plus size={14}/> Generar
+                    </button>
+                 </form>
+              </div>
+
+              <div>
+                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Webhooks Activos</h4>
+                 {loadingWebhooks ? (
+                    <div className="flex justify-center py-8"><Loader2 className="animate-spin text-blue-500" size={24}/></div>
+                 ) : moduleWebhooks.length === 0 ? (
+                    <div className="text-center py-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                       <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">No hay Webhooks activos para este módulo.</p>
+                    </div>
+                 ) : (
+                    <div className="space-y-3">
+                       {moduleWebhooks.map(wh => (
+                          <div key={wh.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm flex flex-col gap-3">
+                             <div className="flex justify-between items-start">
+                                <div>
+                                   <p className="text-sm font-bold text-gray-900 dark:text-white">{wh.name}</p>
+                                   <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mt-0.5">Creado: {wh.created_at}</p>
+                                </div>
+                                <button onClick={() => handleDeleteWebhook(wh.id)} className="text-gray-400 hover:text-red-500 p-1 rounded-md transition-colors"><Trash2 size={16}/></button>
+                             </div>
+                             
+                             <div className="flex items-center gap-2">
+                                <code className="flex-1 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-xs text-blue-600 dark:text-blue-400 font-mono truncate select-all">
+                                   [POST] .../api/v1/webhooks/in/{wh.token}
+                                </code>
+                                <button onClick={() => copyToClipboard(wh.token)} className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0 border border-gray-200 dark:border-gray-700">
+                                   <Copy size={14}/> Copiar URL
+                                </button>
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                 )}
+              </div>
+
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 };

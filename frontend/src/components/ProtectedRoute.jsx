@@ -8,7 +8,8 @@ const ProtectedRoute = ({
   requireSuperAdmin = false, 
   requireSettings = false,
   requireDashboard = false,
-  requireAudit = false
+  requireAudit = false,
+  requireHq = false
 }) => {
   const { user, loading } = useAuth();
 
@@ -24,6 +25,12 @@ const ProtectedRoute = ({
   // 2. Si no hay usuario, lo mandamos al login sin preguntar
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // 🔥 NUEVO: 3. Validación estricta para AegisFlow HQ
+  if (requireHq && (!user.is_superadmin || !user.is_system_company)) {
+    // Si la ruta exige ser HQ, y el usuario NO es superadmin o NO es de la empresa del sistema -> ¡Expulsado!
+    return <Navigate to="/dashboard" replace />;
   }
 
   // 3. Extraemos permisos

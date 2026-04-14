@@ -57,7 +57,24 @@ const NotificationBell = () => {
       } catch (error) {}
     }
     setIsBellOpen(false);
-    if (notif.case_id) navigate(`/cases/${notif.case_id}`);
+    
+    // =========================================================
+    // 🔥 MAGIA DE DEEP LINKING (ENLACE PROFUNDO) 🔥
+    // =========================================================
+    if (notif.title.startsWith("Soporte:")) {
+      // 1. Extraemos el ID del texto (ej. "Caso #15: ...") usando Regex
+      const match = notif.message.match(/Caso #(\d+):/);
+      if (match && match[1]) {
+        // 2. Lo mandamos al Inbox con el ID en la URL
+        navigate(`/support-inbox?session=${match[1]}`);
+      } else {
+        navigate('/support-inbox');
+      }
+    } 
+    // Si es una notificación normal de un caso operativo
+    else if (notif.case_id) {
+      navigate(`/cases/${notif.case_id}`);
+    }
   };
 
   return (

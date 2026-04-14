@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, J
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
+import uuid
 
 class Company(Base):
     __tablename__ = "companies"
@@ -9,6 +10,7 @@ class Company(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_system_company = Column(Boolean, default=False) # True solo para AegisFlow HQ
     # =========================================================
     # 🔥 NUEVO: CONFIGURACIÓN MULTI-TENANT SMTP (MARCA BLANCA) 🔥
     # =========================================================
@@ -21,6 +23,11 @@ class Company(Base):
     smtp_from_name = Column(String, nullable=True)   # Ej: Centro de Seguridad MiEmpresa
     
     sso_force_native_mfa = Column(Boolean, default=False) # ¿Exigir MFA de AegisFlow incluso con SSO?
+    # =========================================================
+    # 🔥 FASE 3: CONFIGURACIÓN DE IA MULTI-TENANT 🔥
+    # =========================================================
+    ai_active_provider = Column(String, nullable=True) # Ej: 'openai', 'anthropic', 'gemini'
+    ai_api_key = Column(String, nullable=True)         # El API Key secreto de la empresa
 
 class Profile(Base):
     __tablename__ = "profiles"
@@ -160,6 +167,12 @@ class Blueprint(Base):
     is_active = Column(Boolean, default=True)
     module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"), nullable=True)
     module = relationship("Module", back_populates="blueprints")
+    # =========================================================
+    # 🔥 FASE 1: VERSIONADO DE BLUEPRINTS 🔥
+    # =========================================================
+    version = Column(Integer, default=1) # Empieza en la V1
+    is_draft = Column(Boolean, default=False) # Si es un borrador que aún no se publica
+    parent_blueprint_id = Column(Integer, ForeignKey("blueprints.id", ondelete="SET NULL"), nullable=True) # Para saber de qué versión anterior viene
 
 class Status(Base):
     __tablename__ = "statuses"
@@ -171,7 +184,11 @@ class Status(Base):
     
     name = Column(String, nullable=False) 
     is_initial = Column(Boolean, default=False) 
-
+    sla_hours = Column(Integer, nullable=True) # Tiempo máximo permitido en horas (Null = Sin límite)
+    bpmn_shape = Column(String, default="task") # Valores: 'start', 'task', 'gateway', 'end'
+    position_x = Column(Integer, default=50)
+    position_y = Column(Integer, default=50)
+    
 class Transition(Base):
     __tablename__ = "transitions"
     id = Column(Integer, primary_key=True, index=True)
@@ -194,6 +211,9 @@ class Case(Base):
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     status_id = Column(Integer, ForeignKey("statuses.id", ondelete="SET NULL"), nullable=True)
+    
+    entered_status_at = Column(DateTime(timezone=True), server_default=func.now()) # Marca de tiempo exacta del último cambio de estado
+    
     form_id = Column(Integer, ForeignKey("forms.id", ondelete="SET NULL"), nullable=True)
     data = Column(JSON, nullable=False, default={})
     deleted_at = Column(DateTime(timezone=True), nullable=True)
@@ -436,3 +456,137 @@ class ActiveSession(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False) # Cuándo muere el token
+    
+# =========================================================
+# 🔥 FASE 1: COLABORACIÓN Y CHAT CONTEXTUAL 🔥
+# =========================================================
+class CaseComment(Base):
+    """
+    Tabla para manejar los comentarios y el chat interno dentro de un caso específico.
+    Soporta menciones a otros usuarios (ej. @juan).
+    """
+    __tablename__ = "case_comments"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    
+    case_id = Column(Integer, ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True) # El autor del comentario
+    
+    content = Column(String, nullable=False) # El mensaje en sí
+    is_system_message = Column(Boolean, default=False) # Si es True, el mensaje lo generó un robot (ej: "Juan rompió el SLA")
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    # (Opcional) Si quieres permitir edición de comentarios en el futuro:
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    is_deleted = Column(Boolean, default=False) # Soft delete para comentarios
+    
+# =======================================================
+# 🔥 FASE 3: WEBHOOKS DE ENTRADA (iPaaS) 🔥
+# =======================================================
+class WebhookEndpoint(Base):
+    """
+    Endpoints generados para que sistemas externos inyecten datos a AegisFlow.
+    """
+    __tablename__ = "webhook_endpoints"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"), index=True)
+    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    
+    name = Column(String, nullable=False) # Ej: "Conexión con SAP" o "Formulario Web"
+    token = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4())) # El token secreto en la URL
+    is_active = Column(Boolean, default=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+# =======================================================
+# 🔥 FASE SOPORTE: CHAT EN TIEMPO REAL Y TICKETS 🔥
+# =======================================================
+
+class SupportSession(Base):
+    """
+    Sesiones de chat/soporte entre clientes y los Súper Administradores del Sistema.
+    """
+    __tablename__ = "support_sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True) # Empresa del cliente
+    client_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True) # Usuario que pide ayuda
+    agent_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True) # Súper Admin que atiende
+    
+    status = Column(String, default="WAITING") # WAITING, ACTIVE, RESOLVED
+    started_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    
+    csat_score = Column(Integer, nullable=True) # Calificación del 1 al 5
+    csat_comment = Column(String, nullable=True)
+
+class ChatMessage(Base):
+    """
+    Mensajes individuales dentro de una sesión de soporte.
+    """
+    __tablename__ = "chat_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("support_sessions.id", ondelete="CASCADE"), index=True)
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    
+    message = Column(String, nullable=False)
+    is_internal_note = Column(Boolean, default=False) # Notas amarillas (solo visibles para agentes)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+class DocumentTemplate(Base):
+    """
+    Cabecera de la plantilla. Define el nombre y a qué módulo pertenece.
+    """
+    __tablename__ = "document_templates"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"), index=True)
+    
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True) # El interruptor para promociones
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    # Relaciones
+    versions = relationship("DocumentTemplateVersion", back_populates="template", cascade="all, delete-orphan")
+    generated_docs = relationship("GeneratedDocument", back_populates="template")
+
+class DocumentTemplateVersion(Base):
+    """
+    Contenido específico de cada versión de la plantilla.
+    """
+    __tablename__ = "document_template_versions"
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("document_templates.id", ondelete="CASCADE"), index=True)
+    
+    version_number = Column(Integer, default=1)
+    content_html = Column(String, nullable=False) # Aquí va el Jinja2: {{ nombre }}
+    content_state = Column(JSON, nullable=True)   # Estado del editor visual
+    editor_type = Column(String, default="visual")
+    
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    template = relationship("DocumentTemplate", back_populates="versions")
+
+class GeneratedDocument(Base):
+    """
+    Registro histórico de cada PDF generado. (Auditoría Pura)
+    """
+    __tablename__ = "generated_documents"
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("document_templates.id"))
+    version_id = Column(Integer, ForeignKey("document_template_versions.id"))
+    record_id = Column(Integer) # ID del registro del módulo (ej: ID del Caso)
+    
+    file_path = Column(String) # Ruta en S3 o Google Drive
+    sha256_hash = Column(String) # Huella digital del archivo para evitar alteraciones
+    
+    is_signed = Column(Boolean, default=False)
+    signature_data = Column(JSON, nullable=True) # Datos de la firma digital
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    template = relationship("DocumentTemplate", back_populates="generated_docs")

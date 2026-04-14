@@ -35,8 +35,10 @@ def get_current_user(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
         email: str = payload.get("sub")
-        # 🔥 PENTEST FIX: Extraemos la versión de sesión del token 🔥
         token_session_version: int = payload.get("session_version")
+        
+        # 🔥 FASE 5: Buscamos si el token trae la llave maestra de impersonation
+        impersonating_company_id = payload.get("impersonating_company_id")
         
         if email is None or token_session_version is None:
             raise credentials_exception
@@ -51,15 +53,35 @@ def get_current_user(
         raise credentials_exception
         
     if not user.is_active:
-        # 🔥 FIX: Ahora devolvemos 401 para que Axios active la expulsión 🔥
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Tu usuario ha sido inactivado por un administrador.",
             headers={"WWW-Authenticate": "Bearer"}
         )
         
-    # 🔥 PENTEST FIX: KILL SWITCH (Compara el token con la BD) 🔥
     if token_session_version != user.session_version:
-        raise credentials_exception # ¡Pateado! Su token es de una versión vieja
+        raise credentials_exception
         
+    # =========================================================
+    # 🔥 MAGIA DE IMPERSONATION (TENANT SWAP) 🔥
+    # =========================================================
+    # Guardamos su identidad original como una propiedad fantasma para la auditoría (global_audit)
+    user.real_company_id = user.company_id 
+    user.is_impersonating = False
+
+    if impersonating_company_id:
+        # Doble validación de seguridad: ¿Sigue siendo SuperAdmin del HQ?
+        company = db.query(models.Company).filter(models.Company.id == user.company_id).first()
+        if user.is_superadmin and company and company.is_system_company:
+            
+            # 1. Expulsamos el objeto de la sesión de SQLAlchemy. 
+            # Esto evita que un db.commit() accidental guarde el cambio en la base de datos.
+            db.expunge(user)
+            
+            # 2. Le ponemos la camiseta de la empresa objetivo
+            user.company_id = impersonating_company_id
+            user.is_impersonating = True
+        else:
+            raise HTTPException(status_code=403, detail="Token de impersonación inválido o privilegios revocados.")
+
     return user

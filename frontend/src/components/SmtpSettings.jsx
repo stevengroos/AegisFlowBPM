@@ -6,6 +6,7 @@ import { useNotification } from '../context/NotificationContext';
 const SmtpSettings = () => {
   const { notify } = useNotification();
   const [loading, setLoading] = useState(true);
+  const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     use_custom_smtp: false, smtp_host: '', smtp_port: 587,
@@ -42,6 +43,21 @@ const SmtpSettings = () => {
       notify.error("Error al guardar la configuración SMTP.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setIsTesting(true);
+    try {
+      // Primero guardamos para asegurar que pruebe con los datos más recientes
+      await api.put('/api/v1/security/smtp-settings', formData);
+      // Luego disparamos la prueba
+      await api.post('/api/v1/security/smtp-settings/test');
+      notify.success("¡Correo de prueba enviado! Revisa tu bandeja de entrada.");
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al intentar enviar el correo de prueba.");
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -102,8 +118,21 @@ const SmtpSettings = () => {
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-70">
+        <div className="flex justify-end gap-3">
+          <button 
+            onClick={handleTestEmail} 
+            disabled={isSaving || isTesting} 
+            className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-70"
+          >
+            {isTesting ? <Loader2 size={18} className="animate-spin" /> : <Mail size={18} />}
+            Probar Conexión
+          </button>
+
+          <button 
+            onClick={handleSave} 
+            disabled={isSaving || isTesting} 
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-70"
+          >
             {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
             Guardar SMTP
           </button>

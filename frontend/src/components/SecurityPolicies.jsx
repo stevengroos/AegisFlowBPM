@@ -7,6 +7,7 @@ import {
 import { useNotification } from '../context/NotificationContext';
 import SmtpSettings from './SmtpSettings';
 import SsoSettings from './SsoSettings';
+import AiSettings from './AiSettings';
 
 const DEFAULT_POLICY = {
   name: '', role_id: null, profile_id: null,
@@ -339,16 +340,11 @@ const SecurityPolicies = () => {
           </div>
         )}
       </div>
-      {/* 🔥 AQUI INCRUSTAMOS EL COMPONENTE SMTP (Solo en Política Global) 🔥 */}
-      {view === 'global' && (
-        <div className="lg:col-span-2">
-          <SmtpSettings />
-        </div>
-      )}
       {/* 🔥 AQUI INCRUSTAMOS LAS CONFIGURACIONES GLOBALES EXTRAS 🔥 */}
       {view === 'global' && (
         <div className="lg:col-span-2">
           <SmtpSettings />
+          <AiSettings />
           <SsoSettings /> {/* <-- AQUÍ AGREGAMOS EL BOTÓN ROJO DE SSO */}
         </div>
       )}

@@ -2,13 +2,16 @@ import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
+// 🔥 NUEVO: IMPORTAMOS EL WIDGET DEL CHAT 🔥
+import SupportWidget from '../SupportWidget'; // Asegúrate de que la ruta sea correcta según dónde lo guardaste
+
 const MainLayout = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-950 font-sans transition-colors duration-300">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950 font-sans transition-colors duration-300 relative">
       
       <Sidebar 
         isSidebarOpen={isSidebarOpen} 
@@ -27,6 +30,9 @@ const MainLayout = ({ children }) => {
           {children}
         </div>
       </main>
+
+      {/* 🔥 NUEVO: LA BURBUJA FLOTANTE DEL CHAT 🔥 */}
+      <SupportWidget />
 
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Settings, LogOut, Trash2, Box, Users, Building2, Folder, FileText, Target, Briefcase, BarChart2, ChevronDown, ChevronRight, FolderOpen, Shield } from 'lucide-react'; // 🔥 Agregamos Shield
+import { LayoutDashboard, Settings, LogOut, Trash2, Box, Users, Building2, Folder, FileText, Target, Briefcase, BarChart2, ChevronDown, ChevronRight, FolderOpen, Shield, ShieldAlert } from 'lucide-react'; // 🔥 Agregamos Shield
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
@@ -48,6 +48,7 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
 
   // 🔥 Lógica de Permisos (Zero Trust) 🔥
   const isSuperAdmin = userData?.is_superadmin;
+  const isImpersonating = !!sessionStorage.getItem('impersonating_name');
   const settingsPerms = userData?.permissions?.settings || {};
   const modulesPerms = userData?.permissions?.modules || {};
 
@@ -80,6 +81,15 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
           <LayoutDashboard size={20} className="shrink-0" aria-hidden="true" />
           {isSidebarOpen && <span className="ml-3 font-medium whitespace-nowrap">Inicio</span>}
         </NavLink>
+
+        {/* 🔥 NUEVO BOTÓN: Soporte (Inbox) 🔥 */}
+        {/* FIX FRAUDE: Ocultarlo si está impersonando */}
+        {(isSuperAdmin && userData?.is_system_company && !isImpersonating) && (
+          <NavLink to="/support-inbox" aria-label="Ir a Soporte" className={({ isActive }) => `flex items-center p-3 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${isActive ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:bg-gray-800/50'}`}>
+            <ShieldAlert size={20} className="shrink-0" aria-hidden="true" />
+            {isSidebarOpen && <span className="ml-3 font-medium whitespace-nowrap">Soporte (Inbox)</span>}
+          </NavLink>
+        )}
 
         {canViewDashboards && (
           <NavLink to="/dashboards" aria-label="Ir a Analítica" className={({ isActive }) => `flex items-center p-3 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${isActive ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:bg-gray-800/50'}`}>

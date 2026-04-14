@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid } from 'lucide-react'; 
+import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle } from 'lucide-react';
 
 // 🔥 Importaciones Arquitectura Limpia 🔥
 import { useNotification } from '../context/NotificationContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import FileUploadField from '../components/ui/FileUploadField';
 import SubformTable from '../features/cases/SubformTable';
-
+import ExportPdfButton from '../components/ExportPdfButton';
+import CaseComments from '../features/cases/CaseComments';
 const CaseDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -207,6 +208,28 @@ const CaseDetail = () => {
   const ownerName = currentOwner ? (currentOwner.first_name ? `${currentOwner.first_name} ${currentOwner.last_name || ''}` : currentOwner.email) : 'Sin asignar';
 
   // ==========================================
+  // 🔥 FASE 2: CALCULADORA DE SLA 🔥
+  // ==========================================
+  const getSlaStatus = () => {
+     if (!caseData || !caseData.status_id) return null;
+     // Aquí usamos 'statuses' que es el estado local de este componente
+     const status = statuses.find(s => s.id === caseData.status_id);
+     if (!status || !status.sla_hours) return null; 
+
+     const startTime = new Date(caseData.entered_status_at || caseData.created_at);
+     const deadline = new Date(startTime.getTime() + (status.sla_hours * 60 * 60 * 1000));
+     const now = new Date();
+
+     const timeRemaining = deadline - now;
+     const hoursRemaining = timeRemaining / (1000 * 60 * 60);
+
+     if (timeRemaining < 0) return { state: 'breached', label: 'SLA Vencido', hours: Math.abs(hoursRemaining).toFixed(1) };
+     if (hoursRemaining <= (status.sla_hours * 0.2)) return { state: 'warning', label: 'Por vencer', hours: hoursRemaining.toFixed(1) };
+     
+     return { state: 'good', label: 'A tiempo', hours: hoursRemaining.toFixed(1) };
+  };
+
+  // ==========================================
   // 🔥 LÓGICA ZERO TRUST (RBAC) 🔥
   // ==========================================
   let canEdit = userData.is_superadmin;
@@ -296,7 +319,18 @@ const CaseDetail = () => {
         : field.field_type === 'relation' ? <SearchableSelect placeholder="Buscar registro..." value={value || ''} onChange={(val) => setEditFormData({...editFormData, [fieldKey]: val})} disabled={isReadOnly} options={relationData[field.options?.target_module_id] || []} /> 
         : field.field_type === 'textarea' ? <textarea required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} /> 
         : field.field_type === 'checkbox' ? <input type="checkbox" disabled={isReadOnly} checked={value || false} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.checked})} className={`w-5 h-5 rounded text-blue-600 focus:ring-blue-500 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} /> 
-        : field.field_type === 'file' || field.field_type === 'image' ? <FileUploadField type={field.field_type} value={value || ''} onChange={(url) => setEditFormData({...editFormData, [fieldKey]: url})} disabled={isReadOnly} /> 
+       : field.field_type === 'file' || field.field_type === 'image' ? (
+             <FileUploadField 
+                type={field.field_type} 
+                value={value || ''} 
+                onChange={(url) => setEditFormData({...editFormData, [fieldKey]: url})} 
+                disabled={isReadOnly}
+                // 🔥 FASE 3.3: Le pasamos a la IA solo los nombres de los campos de texto, números y fechas
+                expectedFields={formFields.filter(f => !['file', 'image', 'subform', 'url'].includes(f.field_type)).map(f => f.api_name || f.label)}
+                // 🔥 FASE 3.3: Cuando la IA responda, mezclamos los datos extraídos con lo que ya está en el formulario
+                onDataExtracted={(aiData) => setEditFormData(prev => ({ ...prev, ...aiData }))}
+             />
+        )
         : field.field_type === 'url' ? <div className="relative"><Link2 className={`absolute left-3 top-1/2 -translate-y-1/2 ${isReadOnly ? 'hidden' : 'text-gray-400'}`} size={16} /><input type="url" required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={`${inputClasses} ${isReadOnly ? '' : 'pl-9'}`} placeholder="https://" /></div>
         : field.field_type === 'subform' ? <SubformTable field={field} value={value || []} onChange={val => setEditFormData({...editFormData, [fieldKey]: val})} relationData={relationData} isEditing={!isReadOnly} />
         : <input type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'email' ? 'email' : 'text'} required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses} />}
@@ -314,6 +348,28 @@ const CaseDetail = () => {
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">Registro #{caseData.id}</h1>
               <span className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-2.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5"><CheckCircle size={12}/> {currentStatusName || 'Sin Estado'}</span>
+              
+              {/* 🔥 FASE 2: INDICADOR DE SLA EN EL HEADER 🔥 */}
+              {(() => {
+                 const sla = getSlaStatus();
+                 if (!sla) return null;
+                 
+                 if (sla.state === 'breached') {
+                   return (
+                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest animate-pulse" title={`Vencido por ${sla.hours} horas`}>
+                       <AlertTriangle size={12} /> SLA Roto
+                     </span>
+                   );
+                 }
+                 if (sla.state === 'warning') {
+                   return (
+                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest" title={`Quedan ${sla.hours} horas`}>
+                       <Clock size={12} /> En Riesgo
+                     </span>
+                   );
+                 }
+                 return null;
+              })()}
             </div>
           </div>
         </div>
@@ -332,6 +388,10 @@ const CaseDetail = () => {
           {!isEditing ? (
             <>
               {canDelete && <button onClick={handleDeleteCase} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Mover a papelera"><Trash2 size={18} /></button>}
+              
+              {/* 🔥 AQUÍ INYECTAMOS NUESTRO BOTÓN MÁGICO 🔥 */}
+              <ExportPdfButton moduleId={caseData.module_id} recordId={caseData.id} />
+
               {canEdit && <button onClick={handleEditClick} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"><Edit2 size={16} /> Editar</button>}
             </>
           ) : (
@@ -350,6 +410,9 @@ const CaseDetail = () => {
           </button>
           <button onClick={() => setActiveTab('history')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'history' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
             <History size={16} /> Línea de Tiempo
+          </button>
+          <button onClick={() => setActiveTab('comments')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'comments' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
+            <MessageSquare size={16} /> Comentarios
           </button>
         </div>
 
@@ -471,6 +534,12 @@ const CaseDetail = () => {
                 )}
               </div>
             </div>
+          </div>
+        )}
+        {/* 🔥 RENDERIZAR EL COMPONENTE DE CHAT 🔥 */}
+        {activeTab === 'comments' && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-3xl mx-auto">
+            <CaseComments caseId={id} currentUser={userData} />
           </div>
         )}
       </div>

@@ -1,40 +1,49 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
-import { Star, Plus, Settings2, Trash2, ArrowRight, ArrowLeft, GitMerge, Zap, Save, Code, BellRing, DownloadCloud, UploadCloud, Loader2, CheckCircle2, User, Copy, Database, X, Edit2, ShieldAlert } from 'lucide-react';
+import { Star, Plus, Settings2, Trash2, ArrowRight, ArrowLeft, GitMerge, Zap, Save, Code, BellRing, DownloadCloud, UploadCloud, Loader2, CheckCircle2, User, Copy, Database, X, Edit2, ShieldAlert, History, RotateCcw, Shapes } from 'lucide-react';
 import ReactFlow, { Background, Controls, MarkerType, applyNodeChanges, applyEdgeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
-import Select from 'react-select'; // 🔥 Necesario para Notificaciones Multicast
-
-// 🔥 IMPORTAMOS NUESTRAS NOTIFICACIONES 🔥
+import Select from 'react-select'; 
 import { useNotification } from '../context/NotificationContext';
+import { TaskNode, StartNode, EndNode, GatewayNode } from './BpmnNodes';
 
-const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsavedChanges }) => {
+// 🔥 AÑADIMOS LA PROP reloadBlueprints QUE VIENE DE BlueprintBuilder 🔥
+const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsavedChanges, reloadBlueprints }) => {
   const { notify, confirm } = useNotification(); 
 
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   
   const [moduleFields, setModuleFields] = useState([]);
-  const [moduleSections, setModuleSections] = useState([]); // 🔥 Estado para las secciones
+  const [moduleSections, setModuleSections] = useState([]); 
   const [companyUsers, setCompanyUsers] = useState([]);
-  const [companyRoles, setCompanyRoles] = useState([]); // 🔥 Estado para roles
-  const [companyProfiles, setCompanyProfiles] = useState([]); // 🔥 Estado para perfiles
+  const [companyRoles, setCompanyRoles] = useState([]); 
+  const [companyProfiles, setCompanyProfiles] = useState([]); 
   
   const [allModules, setAllModules] = useState([]);
   const [allForms, setAllForms] = useState([]);
   const [targetModuleFields, setTargetModuleFields] = useState([]); 
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
-  const [newStatus, setNewStatus] = useState({ name: '', is_initial: false });
+  const [newStatus, setNewStatus] = useState({ name: '', is_initial: false, sla_hours: '' });
+  const [isShapeModalOpen, setIsShapeModalOpen] = useState(false);
+  const nodeTypes = useMemo(() => ({ task: TaskNode, start: StartNode, end: EndNode, gateway: GatewayNode }), []);
   const [selectedElement, setSelectedElement] = useState(null);
   
   const [renameValue, setRenameValue] = useState("");
+  const [editSlaHours, setEditSlaHours] = useState(""); // 🔥 NUEVO: Para editar el SLA
   const [isRenaming, setIsRenaming] = useState(false);
   
-  // 🔥 ESTADOS PARA PESTAÑAS DEL PANEL LATERAL 🔥
-  const [activeTab, setActiveTab] = useState('actions'); // 'actions' o 'validations'
+  // 🔥 ESTADOS PARA EL HISTORIAL DE VERSIONES (FASE 1.1) 🔥
+  const [versions, setVersions] = useState([]);
+  const [showVersions, setShowVersions] = useState(false);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [viewingOldVersion, setViewingOldVersion] = useState(false); // ¿Estamos viendo el pasado?
+  const [currentVersionId, setCurrentVersionId] = useState(selectedBlueprint.id); // Para saber qué versión estamos dibujando
 
-  // 🔥 ESTADOS PARA ACCIONES 🔥
+  const [activeTab, setActiveTab] = useState('actions'); 
+
   const [transitionActions, setTransitionActions] = useState([]);
   const [isAddingAction, setIsAddingAction] = useState(false);
   const [editingActionId, setEditingActionId] = useState(null); 
@@ -42,7 +51,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const defaultActionState = { action_type: 'UPDATE_VALUE', target_field: '', action_value: '', function_code: '', action_config: {} };
   const [newAction, setNewAction] = useState(defaultActionState);
 
-  // 🔥 ESTADOS PARA VALIDACIONES 🔥
   const [transitionValidations, setTransitionValidations] = useState([]);
   const [isAddingValidation, setIsAddingValidation] = useState(false);
   const defaultValidationState = { target_field: '', operator: '==', validation_value: '', error_message: '' };
@@ -52,8 +60,8 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const [newTransitionName, setNewTransitionName] = useState('');
 
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
+  const fileInputRef = useRef(null); // Para el importador de JSON
 
-  // FIX BUCLE INFINITO
   const selectedElementRef = useRef(selectedElement);
   useEffect(() => {
     selectedElementRef.current = selectedElement;
@@ -88,7 +96,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     return () => observer.disconnect();
   }, []);
 
-  // 🔥 CARGA DE TODOS LOS CATÁLOGOS NECESARIOS 🔥
   useEffect(() => {
     const fetchCatalogs = async () => {
       try {
@@ -108,7 +115,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
         setCompanyRoles(rolesRes.data);
         setCompanyProfiles(profilesRes.data);
 
-        // Extraer secciones de los formularios activos de este módulo
         const modForms = formsRes.data.filter(f => f.module_id === parseInt(moduleId) && f.is_active);
         let allSections = [];
         for(let f of modForms) {
@@ -149,11 +155,12 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     }
   };
 
+  // 🔥 FIX: Actualizamos para usar currentVersionId en lugar de selectedBlueprint.id 🔥
   const fetchBlueprintData = useCallback(async () => {
     try {
       const [statusesRes, transRes] = await Promise.all([
-        api.get(`/api/v1/statuses/?blueprint_id=${selectedBlueprint.id}`),
-        api.get(`/api/v1/transitions/?blueprint_id=${selectedBlueprint.id}`)
+        api.get(`/api/v1/statuses/?blueprint_id=${currentVersionId}`),
+        api.get(`/api/v1/transitions/?blueprint_id=${currentVersionId}`)
       ]);
 
       const currentDarkMode = document.documentElement.classList.contains('dark');
@@ -161,18 +168,15 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       setNodes(currentNodes => {
          return statusesRes.data.map((status, index) => {
            const existingNode = currentNodes.find(n => n.id === status.id.toString());
+           // FIX: Si el importador no mandó posición, calculamos una grilla básica
+           const xPos = status.position_x !== null ? status.position_x : (existingNode ? existingNode.position.x : (index % 4) * 250 + 50);
+           const yPos = status.position_y !== null ? status.position_y : (existingNode ? existingNode.position.y : Math.floor(index / 4) * 150 + 50);
+
            return {
              id: status.id.toString(),
-             data: { 
-               label: (
-                 <div className="font-bold text-sm text-gray-900 dark:text-gray-100 px-2 py-1">
-                   {status.name} {status.is_initial && <Star size={12} className="inline text-yellow-500 fill-yellow-500 mb-1 ml-1"/>}
-                 </div>
-               ), raw_data: status 
-             },
-             position: existingNode ? existingNode.position : { x: index * 250 + 50, y: index * 100 + 50 },
-             type: 'default',
-             style: { border: currentDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb', borderRadius: '12px', backgroundColor: currentDarkMode ? '#1f2937' : 'white', minWidth: '150px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }
+             data: { raw_data: status }, // 🔥 Ya no mandamos HTML en el label
+             position: { x: xPos, y: yPos },
+             type: status.bpmn_shape || 'task', // 🔥 AQUÍ ASIGNAMOS LA FORMA MAGICA 🔥
            };
          });
       });
@@ -193,6 +197,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
              if (updatedStatus) {
                  setSelectedElement({ type: 'status', data: updatedStatus });
                  setRenameValue(updatedStatus.name);
+                 setEditSlaHours(updatedStatus.sla_hours || "");
              } else { setSelectedElement(null); }
          } else {
              const updatedTrans = transRes.data.find(t => t.id === currentSelected.data.id);
@@ -205,9 +210,95 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     } catch (error) { 
         notify.error("Error al cargar el flujo de trabajo.");
     }
-  }, [selectedBlueprint.id, notify]); 
+  }, [currentVersionId, notify]); 
 
   useEffect(() => { fetchBlueprintData(); }, [fetchBlueprintData]);
+
+  // 🔥 FASE 1.1: CARGA DE VERSIONES 🔥
+  const fetchVersions = async () => {
+    setLoadingVersions(true);
+    try {
+      const res = await api.get(`/api/v1/blueprints/${selectedBlueprint.id}/versions`);
+      setVersions(res.data);
+      setShowVersions(true);
+    } catch (error) {
+      notify.error("Error al cargar el historial de versiones.");
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleLoadVersion = (versionId, isCurrent) => {
+    setCurrentVersionId(versionId);
+    setViewingOldVersion(!isCurrent);
+    setSelectedElement(null); // Limpiamos la selección para no romper la UI
+    setShowVersions(false);
+    notify.info(isCurrent ? "Viendo la versión actual." : "Viendo una versión antigua. Solo lectura.");
+  };
+
+  const handleRestoreVersion = async () => {
+    const isConfirmed = await confirm({
+      title: 'Restaurar Versión',
+      message: '¿Estás seguro de que deseas volver a esta versión? Se creará una NUEVA versión exacta a esta y se activará, desactivando la actual.',
+      confirmText: 'Sí, restaurar',
+      variant: 'primary'
+    });
+    
+    if (!isConfirmed) return;
+    
+    try {
+      // Usamos el endpoint PUT que ya actualizamos en el backend.
+      // Al hacer PUT a la versión antigua (currentVersionId), el backend creará una V+1 basada en ella.
+      const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, {
+         name: selectedBlueprint.name, // Mantenemos el nombre original
+         is_active: true
+      });
+      notify.success("¡Versión restaurada con éxito!");
+      
+      // Actualizamos la UI
+      setViewingOldVersion(false);
+      setCurrentVersionId(res.data.id);
+      
+      // Le avisamos al padre (BlueprintBuilder) que recargue la lista de la izquierda
+      if(reloadBlueprints) reloadBlueprints();
+      
+    } catch (error) {
+      notify.error("Error al intentar restaurar la versión.");
+    }
+  };
+  // 🔥 NUEVO: Botón para tomar una "Foto" y generar la siguiente versión 🔥
+  const handleCreateNewVersion = async () => {
+    const currentV = versions.find(v => v.id === currentVersionId)?.version || selectedBlueprint.version || 1;
+    
+    const isConfirmed = await confirm({
+      title: 'Generar Nueva Versión',
+      message: `Esto tomará una "foto" exacta de tu flujo actual y la guardará en el historial. Luego, creará la Versión ${currentV + 1} para que sigas trabajando en ella. ¿Deseas continuar?`,
+      confirmText: `Sí, crear V${currentV + 1}`,
+      variant: 'primary'
+    });
+    
+    if (!isConfirmed) return;
+    
+    try {
+      // Disparamos el PUT mágico del backend que clona todo en cascada
+      const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, {
+         name: selectedBlueprint.name,
+         is_active: true
+      });
+      
+      notify.success(`¡Versión ${res.data.version} generada con éxito!`);
+      
+      // Actualizamos el lienzo para que apunte al nuevo clon (V+1)
+      setCurrentVersionId(res.data.id);
+      
+      // Recargamos el historial en segundo plano
+      fetchVersions();
+      if(reloadBlueprints) reloadBlueprints();
+      
+    } catch (error) {
+      notify.error("Error al generar la nueva versión.");
+    }
+  };
 
   useEffect(() => {
     if (nodes.length === 0) return;
@@ -221,18 +312,34 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
+  // 🔥 FASE BPMN: GUARDAR COORDENADAS AL SOLTAR EL NODO 🔥
+  const handleNodeDragStop = async (event, node) => {
+    if (viewingOldVersion) return; // Si es una versión vieja, no guardamos posiciones
+    try {
+      // Mandamos un PUT silencioso solo con las coordenadas X e Y
+      await api.put(`/api/v1/statuses/${node.id}`, {
+         position_x: Math.round(node.position.x),
+         position_y: Math.round(node.position.y)
+      });
+      // Marcamos que hay cambios sin guardar por si acaso
+      reportChanges(true); 
+    } catch (error) {
+      console.error("Error guardando posición:", error);
+    }
+  };
 
   const onConnect = (connection) => {
+    if(viewingOldVersion) return; // Bloqueo de solo lectura
     setPendingConnection(connection);
     setNewTransitionName('');
   };
 
   const handleCreateTransition = async (e) => {
     e.preventDefault();
-    if (!newTransitionName.trim() || !pendingConnection) return;
+    if (!newTransitionName.trim() || !pendingConnection || viewingOldVersion) return;
     try {
       await api.post('/api/v1/transitions/', { 
-          name: newTransitionName, from_status_id: parseInt(pendingConnection.source), to_status_id: parseInt(pendingConnection.target), blueprint_id: selectedBlueprint.id 
+          name: newTransitionName, from_status_id: parseInt(pendingConnection.source), to_status_id: parseInt(pendingConnection.target), blueprint_id: currentVersionId 
       });
       notify.success("Transición creada exitosamente.");
       setPendingConnection(null); setNewTransitionName(''); fetchBlueprintData();
@@ -241,27 +348,52 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   const handleCreateStatus = async (e) => {
     e.preventDefault();
+    if (viewingOldVersion) return notify.warning("No puedes editar versiones antiguas.");
     if (!newStatus.name.trim()) return notify.warning("Escribe un nombre para el estado.");
     try {
-      await api.post('/api/v1/statuses/', { ...newStatus, blueprint_id: selectedBlueprint.id });
+      await api.post('/api/v1/statuses/', { 
+          ...newStatus, 
+          sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null, // 🔥 Enviamos el SLA al backend
+          blueprint_id: currentVersionId 
+      });
       notify.success("Nuevo estado agregado al lienzo.");
-      setNewStatus({ name: '', is_initial: false }); fetchBlueprintData();
+      setNewStatus({ name: '', is_initial: false, sla_hours: '' }); 
+      fetchBlueprintData();
     } catch (error) { notify.error("Error al crear el estado."); }
   };
 
   const handleRenameElement = async () => {
-    if (!selectedElement || !renameValue || renameValue === selectedElement.data.name) return;
+    // 🔥 FIX: Quitamos la restricción de que el nombre deba ser distinto, porque quizás solo cambió el SLA
+    if (!selectedElement || !renameValue || viewingOldVersion) return;
     setIsRenaming(true);
     try {
-      if (selectedElement.type === 'status') await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { name: renameValue });
-      else await api.put(`/api/v1/transitions/${selectedElement.data.id}`, { name: renameValue });
-      notify.success("Elemento renombrado.");
+      if (selectedElement.type === 'status') {
+          await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { 
+              name: renameValue,
+              sla_hours: editSlaHours ? parseInt(editSlaHours) : null // 🔥 Guardamos el SLA editado
+          });
+      } else {
+          await api.put(`/api/v1/transitions/${selectedElement.data.id}`, { name: renameValue });
+      }
+      notify.success("Propiedades guardadas.");
       fetchBlueprintData();
-    } catch (error) { notify.error("Error al renombrar el elemento."); } finally { setIsRenaming(false); }
+    } catch (error) { notify.error("Error al guardar las propiedades."); } finally { setIsRenaming(false); }
+  };
+
+  const handleChangeShape = async (newShape) => {
+      if (!selectedElement || viewingOldVersion) return;
+      try {
+          await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { bpmn_shape: newShape });
+          notify.success("Forma BPMN actualizada.");
+          setIsShapeModalOpen(false);
+          fetchBlueprintData();
+      } catch (error) {
+          notify.error("Error al actualizar la forma.");
+      }
   };
 
   const handleDeleteElement = async () => {
-    if (!selectedElement) return;
+    if (!selectedElement || viewingOldVersion) return;
     const isConfirmed = await confirm({
       title: `Eliminar ${selectedElement.type === 'status' ? 'Estado' : 'Transición'}`,
       message: `¿Estás seguro de que deseas eliminar "${selectedElement.data.name}"? Esta acción no se puede deshacer.`,
@@ -276,20 +408,16 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     } catch (error) { notify.error(error.response?.data?.detail || "Error al eliminar el elemento. Revisa sus dependencias."); }
   };
 
-  // 🔥 LÓGICA DE GUARDADO DE ACCIONES 🔥
   const handleSaveAction = async (e) => {
     e.preventDefault();
+    if (viewingOldVersion) return;
     try {
       const payload = { ...newAction };
       
       if (payload.action_type === 'CHANGE_OWNER') {
           payload.target_field = 'assigned_to';
-          // El action_value ya viene seteado (puede ser un ID o "role_x" o "profile_x")
       } else if (payload.action_type === 'COPY_FIELD' || payload.action_type === 'CREATE_RECORD') {
-          // Ya seteados
       } else if (payload.action_type === 'SEND_NOTIFICATION') {
-          // El action_value es el mensaje, target_field es el título
-          // La config viene del Select múltiple
       } else {
           payload.action_value = payload.action_type === 'UPDATE_VALUE' ? payload.action_value : '';
           payload.function_code = payload.action_type === 'CUSTOM_FUNCTION' ? payload.function_code : '';
@@ -309,9 +437,9 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     } catch (error) { notify.error("Error al guardar la regla."); }
   };
 
-  // 🔥 LÓGICA DE GUARDADO DE VALIDACIONES 🔥
   const handleSaveValidation = async (e) => {
     e.preventDefault();
+    if (viewingOldVersion) return;
     try {
        if (editingValidationId) {
            await api.put(`/api/v1/transitions/validations/${editingValidationId}`, newValidation);
@@ -326,6 +454,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   };
 
   const handleDeleteValidation = async (id) => {
+     if (viewingOldVersion) return;
      try {
         await api.delete(`/api/v1/transitions/validations/${id}`);
         notify.success("Regla de validación eliminada.");
@@ -352,6 +481,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   };
 
   const handleDeleteAction = async (actionId) => {
+    if (viewingOldVersion) return;
     const isConfirmed = await confirm({
       title: 'Eliminar Acción', message: '¿Estás seguro de que deseas eliminar esta automatización?', confirmText: 'Sí, eliminar', variant: 'danger'
     });
@@ -369,7 +499,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const handleCloseAttempt = async () => {
     if (hasLocalChanges) {
         const isConfirmed = await confirm({
-            title: 'Cambios sin guardar', message: 'Tienes cambios en progreso que no se han guardado (nombres, nuevos estados o configuración de acciones). ¿Seguro que deseas descartarlos y salir?', confirmText: 'Descartar y salir', variant: 'danger'
+            title: 'Cambios sin guardar', message: 'Tienes cambios en progreso que no se han guardado. ¿Seguro que deseas descartarlos y salir?', confirmText: 'Descartar y salir', variant: 'danger'
         });
         if (isConfirmed) { reportChanges(false); closeCanvas(); }
     } else { reportChanges(false); closeCanvas(); }
@@ -419,8 +549,8 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const handleExportBlueprint = async () => {
     try {
        const [sRes, tRes] = await Promise.all([
-          api.get(`/api/v1/statuses/?blueprint_id=${selectedBlueprint.id}`),
-          api.get(`/api/v1/transitions/?blueprint_id=${selectedBlueprint.id}`)
+          api.get(`/api/v1/statuses/?blueprint_id=${currentVersionId}`),
+          api.get(`/api/v1/transitions/?blueprint_id=${currentVersionId}`)
        ]);
        const transitions = [];
        for (const t of tRes.data) {
@@ -433,12 +563,99 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
        const exportData = { blueprint: selectedBlueprint, statuses: sRes.data, transitions: transitions };
        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
        const url = URL.createObjectURL(blob);
-       const a = document.createElement('a'); a.href = url; a.download = `flujo_${selectedBlueprint.name.replace(/\s+/g, '_').toLowerCase()}.json`; a.click(); URL.revokeObjectURL(url);
+       const a = document.createElement('a'); a.href = url; a.download = `flujo_${selectedBlueprint.name.replace(/\s+/g, '_').toLowerCase()}_v${selectedBlueprint.version || 1}.json`; a.click(); URL.revokeObjectURL(url);
        notify.success("Exportación completada.");
     } catch(err) { notify.error("Error al exportar el flujo."); }
   };
 
-  // 🔥 Estilos para el MultiSelect de Notificaciones 🔥
+  // 🔥 FIX IMPORTADOR DE JSON (A PRUEBA DE FALLOS) 🔥
+  const handleImportBlueprint = (event) => {
+    if (viewingOldVersion) return;
+    
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+        
+        // 1. Limpiamos el lienzo actual (Borramos transiciones y luego estados)
+        const currentEdges = edges.map(edge => edge.data.raw_data.id);
+        const currentNodes = nodes.map(node => node.data.raw_data.id);
+        
+        for (const tid of currentEdges) {
+           await api.delete(`/api/v1/transitions/${tid}`);
+        }
+        for (const sid of currentNodes) {
+           await api.delete(`/api/v1/statuses/${sid}`);
+        }
+
+        // 2. Insertamos los nuevos Estados (Statuses)
+        const oldToNewStatusId = {};
+        for (const status of importedData.statuses) {
+           const res = await api.post('/api/v1/statuses/', {
+               name: status.name,
+               is_initial: status.is_initial,
+               blueprint_id: currentVersionId,
+               
+               // 🔥 FASE BPMN Y SLA: RECUPERAMOS LOS DATOS DEL JSON 🔥
+               sla_hours: status.sla_hours,
+               bpmn_shape: status.bpmn_shape,
+               position_x: status.position_x,
+               position_y: status.position_y
+           });
+           oldToNewStatusId[status.id] = res.data.id;
+        }
+
+        // 3. Insertamos las Transiciones y sus dependencias
+        for (const transition of importedData.transitions) {
+           const newTransRes = await api.post('/api/v1/transitions/', {
+               name: transition.name,
+               blueprint_id: currentVersionId,
+               from_status_id: oldToNewStatusId[transition.from_status_id],
+               to_status_id: oldToNewStatusId[transition.to_status_id]
+           });
+           
+           // Validaciones
+           if (transition.validations && transition.validations.length > 0) {
+               for (const val of transition.validations) {
+                   await api.post(`/api/v1/transitions/${newTransRes.data.id}/validations`, {
+                       target_field: val.target_field,
+                       operator: val.operator,
+                       validation_value: val.validation_value || '',
+                       error_message: val.error_message || ''
+                   });
+               }
+           }
+           
+           // Acciones
+           if (transition.actions && transition.actions.length > 0) {
+               for (const act of transition.actions) {
+                   await api.post(`/api/v1/transitions/${newTransRes.data.id}/actions`, {
+                       action_type: act.action_type,
+                       target_field: act.target_field || '',
+                       action_value: act.action_value || '',
+                       function_code: act.function_code || '',
+                       action_config: act.action_config || {}
+                   });
+               }
+           }
+        }
+
+        notify.success("¡Flujo importado con éxito!");
+        fetchBlueprintData(); // Recargamos el lienzo
+
+      } catch (err) {
+        notify.error("Error al importar el archivo JSON. Verifica que sea un archivo válido de AegisFlow.");
+      }
+      
+      // Limpiamos el input para permitir subir el mismo archivo de nuevo
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  };
+
   const customSingleSelectStyles = {
     control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.75rem', padding: '0.1rem', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black', '&:hover': { borderColor: isDarkMode ? '#4b5563' : '#9ca3af' } }),
     singleValue: (provided) => ({ ...provided, color: isDarkMode ? '#f9fafb' : '#111827' }),
@@ -447,27 +664,24 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     option: (provided, state) => ({ ...provided, fontSize: '0.875rem', backgroundColor: state.isSelected ? (isDarkMode ? '#374151' : '#eff6ff') : state.isFocused ? (isDarkMode ? '#111827' : '#f9fafb') : 'transparent', color: state.isSelected ? (isDarkMode ? '#60a5fa' : '#1d4ed8') : (isDarkMode ? '#d1d5db' : '#1f2937'), cursor: 'pointer' }),
   };
 
-  // 🔥 Estilos para el MultiSelect de Notificaciones 🔥
   const customMultiSelectStyles = {
     control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.75rem', padding: '0.1rem', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black' }),
+    // 🔥 FIX: Limitamos la altura del contenedor de los chips seleccionados 🔥
+    valueContainer: (provided) => ({ ...provided, maxHeight: '70px', overflowY: 'auto' }),
     menu: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb', borderRadius: '0.75rem', overflow: 'hidden' }),
-    
-    // 🔥 SOLUCIÓN: Forzamos a que el portal del menú flote por encima del modal 🔥
     menuPortal: base => ({ ...base, zIndex: 999999 }), 
-    
     option: (provided, state) => ({ ...provided, fontSize: '0.875rem', backgroundColor: state.isSelected ? (isDarkMode ? '#374151' : '#eff6ff') : state.isFocused ? (isDarkMode ? '#111827' : '#f9fafb') : 'transparent', color: state.isSelected ? (isDarkMode ? '#60a5fa' : '#1d4ed8') : (isDarkMode ? '#d1d5db' : '#1f2937'), cursor: 'pointer' }),
     multiValue: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#374151' : '#eff6ff', borderRadius: '0.5rem' }),
     multiValueLabel: (provided) => ({ ...provided, color: isDarkMode ? '#93c5fd' : '#1d4ed8', fontWeight: 'bold' }),
     multiValueRemove: (provided) => ({ ...provided, color: isDarkMode ? '#9ca3af' : '#6b7280', ':hover': { backgroundColor: isDarkMode ? '#ef4444' : '#fee2e2', color: isDarkMode ? 'white' : '#ef4444' } }),
   };
-  // 🔥 Helper para el Multicast: Generar opciones para el Select 🔥
+
   const notificationOptions = [
     { label: 'Usuarios Específicos', options: companyUsers.map(u => ({ value: `user_${u.id}`, label: `👤 ${u.first_name ? u.first_name + ' ' + (u.last_name || '') : u.email}` })) },
     { label: 'Roles (Jerarquía)', options: companyRoles.map(r => ({ value: `role_${r.id}`, label: `🏢 Rol: ${r.name}` })) },
     { label: 'Perfiles (Permisos)', options: companyProfiles.map(p => ({ value: `profile_${p.id}`, label: `🛡️ Perfil: ${p.name}` })) }
   ];
 
-  // Extraer lo seleccionado del action_config al formato de react-select
   const getSelectedNotificationTargets = () => {
      const cfg = newAction.action_config || {};
      let selected = [];
@@ -491,42 +705,95 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   return (
     <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950/50 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
       
-      <div className="bg-white dark:bg-gray-900 px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center z-10 shadow-sm">
+      {/* HEADER DEL LIENZO */}
+      <div className={`px-6 py-4 border-b flex justify-between items-center z-10 shadow-sm transition-colors ${viewingOldVersion ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'}`}>
         <div className="flex items-center gap-4">
           <button onClick={handleCloseAttempt} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Volver y guardar cambios">
               <ArrowLeft size={18} />
           </button>
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><GitMerge size={18} className="text-blue-500" /> Editor de Flujo: {selectedBlueprint.name}</h2>
-            <p className="text-[11px] text-gray-500 font-medium tracking-wide uppercase mt-0.5">Blueprint & Automatizaciones</p>
+            <h2 className={`text-lg font-bold flex items-center gap-2 ${viewingOldVersion ? 'text-amber-700 dark:text-amber-500' : 'text-gray-900 dark:text-white'}`}>
+              <GitMerge size={18} className={viewingOldVersion ? "text-amber-500" : "text-blue-500"} /> 
+              {selectedBlueprint.name} {viewingOldVersion ? '(Moviendo al Pasado)' : ''}
+            </h2>
+            <div className="flex items-center gap-2">
+                <p className="text-[11px] text-gray-500 font-medium tracking-wide uppercase mt-0.5">
+                  Blueprint & Automatizaciones
+                </p>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${viewingOldVersion ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'}`}>
+                  V{versions.find(v => v.id === currentVersionId)?.version || selectedBlueprint.version || 1}
+                </span>
+            </div>
           </div>
         </div>
+
         <div className="flex items-center gap-3">
-          <div className="flex border-r border-gray-200 dark:border-gray-700 pr-3 mr-1 gap-2">
-             <button onClick={handleExportBlueprint} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Exportar Flujo JSON">
-                <DownloadCloud size={18} />
-             </button>
-             <button disabled className="p-2 text-gray-300 dark:text-gray-600 cursor-not-allowed rounded-lg" title="Importar (Próximamente)">
-                <UploadCloud size={18} />
-             </button>
-          </div>
+          {viewingOldVersion ? (
+            <div className="flex items-center gap-3">
+              {/* 🔥 FIX 1: Botón para salir del modo histórico y volver al presente 🔥 */}
+              <button 
+                onClick={() => {
+                  setCurrentVersionId(selectedBlueprint.id);
+                  setViewingOldVersion(false);
+                }} 
+                className="px-4 py-2 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              
+              <button onClick={handleRestoreVersion} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
+                <RotateCcw size={16} /> Restaurar esta versión
+              </button>
+            </div>
+          ) : (
+            <div className="flex border-r border-gray-200 dark:border-gray-700 pr-3 mr-1 gap-2">
+               {/* 🔥 BOTÓN PARA CAMBIAR FORMA BPMN 🔥 */}
+               {selectedElement?.type === 'status' && !viewingOldVersion && (
+                 <button onClick={() => setIsShapeModalOpen(true)} className="p-2 text-purple-600 hover:text-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold mr-2 border border-purple-200 dark:border-purple-800/50 shadow-sm" title="Cambiar Forma Visual">
+                    <Shapes size={16} /> <span className="hidden sm:inline">Forma</span>
+                 </button>
+               )}
+
+               {/* 🔥 NUEVO BOTÓN: GENERAR VERSIÓN 🔥 */}
+               
+               <button onClick={handleCreateNewVersion} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold" title="Tomar foto y crear nueva versión">
+                  <Copy size={18} /> <span className="hidden sm:inline">Versionar</span>
+               </button>
+               <button onClick={fetchVersions} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Historial de Versiones">
+                  <History size={18} />
+               </button>
+               <button onClick={handleExportBlueprint} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Exportar Flujo JSON">
+                  <DownloadCloud size={18} />
+               </button>
+               <button onClick={() => fileInputRef.current.click()} className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Importar JSON de Flujo">
+                  <UploadCloud size={18} />
+               </button>
+               {/* Input oculto para cargar archivos */}
+               <input type="file" ref={fileInputRef} onChange={handleImportBlueprint} accept=".json" className="hidden" />
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden relative z-0">
-        <div className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-10 overflow-y-auto custom-scrollbar shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        
+        {/* 🔥 PANEL IZQUIERDO (HERRAMIENTAS / DETALLES) 🔥 */}
+        <div className={`w-80 border-r border-gray-200 dark:border-gray-800 flex flex-col z-10 overflow-y-auto custom-scrollbar shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-colors ${viewingOldVersion ? 'bg-amber-50/30 dark:bg-amber-950/20' : 'bg-white dark:bg-gray-900'}`}>
             
             <div className="p-5 border-b border-gray-100 dark:border-gray-800 shrink-0">
                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Plus size={14}/> Nuevo Estado</h3>
                <form onSubmit={handleCreateStatus} className="space-y-4">
                  <div>
-                   <input type="text" required value={newStatus.name} onChange={(e) => setNewStatus({...newStatus, name: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all" placeholder="Ej: En Progreso" />
+                   <input disabled={viewingOldVersion} type="text" required value={newStatus.name} onChange={(e) => setNewStatus({...newStatus, name: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed" placeholder="Ej: En Progreso" />
+                 </div>
+                 <div>
+                   <input disabled={viewingOldVersion} type="number" min="1" value={newStatus.sla_hours} onChange={(e) => setNewStatus({...newStatus, sla_hours: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-2" placeholder="Límite de tiempo en horas (SLA)" />
                  </div>
                  <div className="flex items-center gap-2 px-1">
-                   <input type="checkbox" checked={newStatus.is_initial} onChange={(e) => setNewStatus({...newStatus, is_initial: e.target.checked})} className="w-4 h-4 rounded text-blue-600 cursor-pointer" />
+                   <input disabled={viewingOldVersion} type="checkbox" checked={newStatus.is_initial} onChange={(e) => setNewStatus({...newStatus, is_initial: e.target.checked})} className="w-4 h-4 rounded text-blue-600 cursor-pointer disabled:cursor-not-allowed" />
                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Definir como Estado Inicial</label>
                  </div>
-                 <button type="submit" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 text-sm py-2 rounded-lg font-bold transition-all shadow-sm">Agregar al Lienzo</button>
+                 <button disabled={viewingOldVersion} type="submit" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 text-sm py-2 rounded-lg font-bold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Agregar al Lienzo</button>
                </form>
             </div>
 
@@ -540,24 +807,37 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                              {selectedElement.type === 'transition' ? <ArrowRight size={14} className="text-blue-500"/> : <Star size={14} className="text-amber-500"/>}
                           </div>
                           <input 
+                             disabled={viewingOldVersion}
                              type="text" 
                              value={renameValue} 
                              onChange={(e) => setRenameValue(e.target.value)}
                              onKeyDown={(e) => e.key === 'Enter' && handleRenameElement()}
-                             className="w-full pl-9 pr-3 py-2 text-sm font-bold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 rounded-lg outline-none transition-all"
+                             className="w-full pl-9 pr-3 py-2 text-sm font-bold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 rounded-lg outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                        </div>
-                       {renameValue !== selectedElement.data.name && (
+                       {/* 🔥 FIX UX: Ahora el botón de guardar también se muestra si cambia el SLA 🔥 */}
+                       {(renameValue !== selectedElement.data.name || (selectedElement.type === 'status' && editSlaHours !== (selectedElement.data.sla_hours || ""))) && !viewingOldVersion && (
                           <button onClick={handleRenameElement} disabled={isRenaming} className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-sm disabled:opacity-50">
                              {isRenaming ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>}
                           </button>
                        )}
                     </div>
+
+                    {/* 🔥 NUEVO: Input de SLA para edición 🔥 */}
+                    {selectedElement.type === 'status' && (
+                        <div className="mt-3">
+                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Límite SLA (Horas)</label>
+                           <input 
+                              disabled={viewingOldVersion} type="number" min="1" value={editSlaHours} onChange={(e) => setEditSlaHours(e.target.value)}
+                              placeholder="Sin límite..."
+                              className="w-full px-3 py-2 text-sm font-medium text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:border-blue-500 rounded-lg outline-none transition-all disabled:opacity-50"
+                           />
+                        </div>
+                    )}
                  </div>
 
                  {selectedElement.type === 'transition' && (
                     <div className="flex-1 flex flex-col overflow-hidden">
-                       {/* 🔥 PESTAÑAS 🔥 */}
                        <div className="flex border-b border-gray-200 dark:border-gray-800 shrink-0">
                           <button onClick={() => setActiveTab('actions')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-1.5 transition-colors ${activeTab === 'actions' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
                              <Zap size={14}/> Acciones
@@ -567,7 +847,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                           </button>
                        </div>
 
-                       {/* CONTENIDO PESTAÑAS */}
                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                            
                            {activeTab === 'actions' && (
@@ -591,19 +870,23 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                                                </p>
                                             </div>
                                          </div>
-                                         <div className="flex gap-1 shrink-0">
-                                            <button onClick={() => openEditActionModal(action)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-blue-500 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"><Edit2 size={14} /></button>
-                                            <button onClick={() => handleDeleteAction(action.id)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-500 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"><Trash2 size={14} /></button>
-                                         </div>
+                                         {!viewingOldVersion && (
+                                           <div className="flex gap-1 shrink-0">
+                                              <button onClick={() => openEditActionModal(action)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-blue-500 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"><Edit2 size={14} /></button>
+                                              <button onClick={() => handleDeleteAction(action.id)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-500 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"><Trash2 size={14} /></button>
+                                           </div>
+                                         )}
                                        </div>
                                      ))}
                                    </div>
                                  ) : (
                                    <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-4 text-center"><p className="text-[11px] text-gray-400 font-medium">Ninguna acción post-transición.</p></div>
                                  )}
-                                 <button onClick={() => setIsAddingAction(true)} className="w-full bg-white dark:bg-gray-900 border border-dashed border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm">
-                                   <Plus size={14} /> Añadir Acción
-                                 </button>
+                                 {!viewingOldVersion && (
+                                   <button onClick={() => setIsAddingAction(true)} className="w-full bg-white dark:bg-gray-900 border border-dashed border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm">
+                                     <Plus size={14} /> Añadir Acción
+                                   </button>
+                                 )}
                               </div>
                            )}
 
@@ -619,18 +902,22 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                                             </p>
                                             <p className="text-[9px] text-red-600/80 dark:text-red-300/60 font-medium leading-tight">➔ Desbloquear transición</p>
                                          </div>
-                                         <div className="flex gap-1 shrink-0">
-                                          <button onClick={() => openEditValidationModal(val)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-blue-600 p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"><Edit2 size={14} /></button>
-                                          <button onClick={() => handleDeleteValidation(val.id)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"><Trash2 size={14} /></button>                                       </div>
+                                         {!viewingOldVersion && (
+                                           <div className="flex gap-1 shrink-0">
+                                            <button onClick={() => openEditValidationModal(val)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-blue-600 p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"><Edit2 size={14} /></button>
+                                            <button onClick={() => handleDeleteValidation(val.id)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"><Trash2 size={14} /></button>                                       </div>
+                                         )}
                                        </div>
                                      ))}
                                    </div>
                                  ) : (
                                    <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-4 text-center"><p className="text-[11px] text-gray-400 font-medium">No hay bloqueos. La transición es libre.</p></div>
                                  )}
-                                 <button onClick={() => setIsAddingValidation(true)} className="w-full bg-white dark:bg-gray-900 border border-dashed border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm">
-                                   <ShieldAlert size={14} /> Añadir Validación
-                                 </button>
+                                 {!viewingOldVersion && (
+                                   <button onClick={() => setIsAddingValidation(true)} className="w-full bg-white dark:bg-gray-900 border border-dashed border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm">
+                                     <ShieldAlert size={14} /> Añadir Validación
+                                   </button>
+                                 )}
                               </div>
                            )}
 
@@ -638,11 +925,13 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                     </div>
                  )}
 
-                 <div className="p-5 border-t border-gray-100 dark:border-gray-800 shrink-0 mt-auto">
-                   <button onClick={handleDeleteElement} className="w-full flex justify-center items-center gap-2 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/30 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm">
-                     <Trash2 size={16} /> Quitar del Lienzo
-                   </button>
-                 </div>
+                 {!viewingOldVersion && (
+                   <div className="p-5 border-t border-gray-100 dark:border-gray-800 shrink-0 mt-auto">
+                     <button onClick={handleDeleteElement} className="w-full flex justify-center items-center gap-2 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/30 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm">
+                       <Trash2 size={16} /> Quitar del Lienzo
+                     </button>
+                   </div>
+                 )}
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
@@ -652,15 +941,22 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
             )}
         </div>
 
+        {/* 🔥 LIENZO (REACTFLOW) 🔥 */}
         <div className="flex-1 relative bg-gray-50/50 dark:bg-gray-950 shadow-inner">
           <ReactFlow 
             nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} 
+            nodeTypes={nodeTypes}
+            nodesDraggable={!viewingOldVersion} // Bloqueamos el arrastre si es versión antigua
+            nodesConnectable={!viewingOldVersion}
+            elementsSelectable={true}
+            onNodeDragStop={handleNodeDragStop}
             onNodeClick={(e,n) => { 
                const statusData = n.data.raw_data;
                setSelectedElement({ type: 'status', data: statusData }); 
                setRenameValue(statusData.name);
+               setEditSlaHours(statusData.sla_hours || ""); // 🔥 CARGAMOS EL SLA
                closeActionModal(); closeValidationModal();
-            }} 
+            }}
             onEdgeClick={(e, edge) => { 
                const transData = edge.data.raw_data;
                setSelectedElement({ type: 'transition', data: transData }); 
@@ -674,10 +970,41 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
             <Background color={isDarkMode ? '#4b5563' : '#ccc'} gap={16} size={1} />
             <Controls className="dark:bg-gray-800 dark:text-white dark:border-gray-700 shadow-md" />
           </ReactFlow>
+
+          {/* 🔥 PANEL FLOTANTE DE HISTORIAL DE VERSIONES 🔥 */}
+          {showVersions && (
+            <div className="absolute top-4 left-4 z-50 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 flex flex-col max-h-[80vh]">
+               <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                  <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><History size={16} className="text-blue-500" /> Historial de Versiones</h3>
+                  <button onClick={() => setShowVersions(false)} className="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"><X size={16}/></button>
+               </div>
+               <div className="overflow-y-auto p-2 custom-scrollbar">
+                  {loadingVersions ? (
+                    <div className="flex justify-center p-8"><Loader2 className="animate-spin text-blue-500" size={24}/></div>
+                  ) : (
+                    versions.map((v) => (
+                      <button 
+                        key={v.id} 
+                        onClick={() => handleLoadVersion(v.id, v.is_active)}
+                        className={`w-full text-left p-3 rounded-xl mb-1 transition-all border ${currentVersionId === v.id ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800/50' : 'bg-transparent border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/50'} flex flex-col gap-1`}
+                      >
+                        <div className="flex justify-between items-center w-full">
+                          <span className={`font-bold ${currentVersionId === v.id ? 'text-blue-700 dark:text-blue-400' : 'text-gray-900 dark:text-gray-200'}`}>Versión {v.version}</span>
+                          {v.is_active && <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 px-2 py-0.5 rounded">Activa</span>}
+                        </div>
+                        <span className="text-xs text-gray-500">ID del Registro: #{v.id}</span>
+                      </button>
+                    ))
+                  )}
+               </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 🔥 MODAL: NOMBRAR NUEVA CONEXIÓN 🔥 */}
+      {/* 🔥 MODALES ORIGINALES ... (Conectar, Validaciones, Acciones) ... 🔥 */}
+      {/* ... (Se mantienen idénticos, solo asegúrate de no haber borrado ninguno de tus modales aquí) ... */}
+      
       {pendingConnection && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
@@ -700,7 +1027,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
          </div>, document.body
       )}
 
-      {/* 🔥 MODAL: NUEVA VALIDACIÓN (BLOQUEO) 🔥 */}
       {isAddingValidation && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
           <div className="bg-white dark:bg-gray-900 w-full max-w-lg shadow-2xl rounded-2xl animate-in zoom-in-95 duration-200 overflow-hidden border border-gray-200 dark:border-gray-800">
@@ -752,7 +1078,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
         </div>, document.body
       )}
 
-      {/* 🔥 MODAL: ACCIONES DE TRANSICIÓN 🔥 */}
       {isAddingAction && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
           <div className="bg-white dark:bg-gray-900 w-full max-w-2xl max-h-[90vh] shadow-2xl rounded-2xl animate-in zoom-in-95 duration-200 flex flex-col overflow-hidden border border-gray-200 dark:border-gray-800">
@@ -788,7 +1113,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                    </select>
                 </div>
 
-                {/* 🔥 ROUND ROBIN Y ASIGNACIONES 🔥 */}
                 {newAction.action_type === 'CHANGE_OWNER' && (
                    <div className="animate-in fade-in duration-200 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 p-5 rounded-xl">
                       <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2 flex items-center gap-1.5"><User size={14}/> Destino de Asignación</label>
@@ -798,7 +1122,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                             { label: 'Roles (Round Robin)', options: companyRoles.map(r => ({ value: `role_${r.id}`, label: ` Rol: ${r.name}` })) },
                             { label: 'Perfiles (Round Robin)', options: companyProfiles.map(p => ({ value: `profile_${p.id}`, label: ` Perfil: ${p.name}` })) }
                          ]}
-                         value={newAction.action_value ? { value: newAction.action_value, label: newAction.action_value } : null} // React-select es flexible si le pasas un objecto
+                         value={newAction.action_value ? { value: newAction.action_value, label: newAction.action_value } : null} 
                          onChange={(opt) => setNewAction({...newAction, action_value: opt.value})}
                          placeholder="Buscar destinatario..."
                          styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
@@ -807,7 +1131,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                    </div>
                 )}
 
-                {/* 🔥 NOTIFICACIONES MULTICAST 🔥 */}
                 {newAction.action_type === 'SEND_NOTIFICATION' && (
                    <div className="animate-in fade-in duration-200 space-y-4">
                      <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 p-5 rounded-xl">
@@ -825,18 +1148,18 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                         />
                         <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 mt-2 italic">Si no seleccionas a nadie, se notificará únicamente al creador del registro.</p>
                      </div>
-                     <div>
-                       <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Título de la Alerta</label>
-                       <input type="text" placeholder="Ej: Aprobado por Gerencia" required value={newAction.target_field} onChange={e => setNewAction({...newAction, target_field: e.target.value})} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm" />
-                     </div>
-                     <div>
-                       <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mensaje (Opcional)</label>
-                       <textarea rows={2} placeholder="Ej: Ya puedes continuar con el proceso." value={newAction.action_value} onChange={e => setNewAction({...newAction, action_value: e.target.value})} className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm resize-none custom-scrollbar" />
-                     </div>
+                     
+                     {/* 🔥 NUEVO: Botón para abrir el Modal de Plantilla 🔥 */}
+                     <button 
+                        type="button" 
+                        onClick={() => setIsEmailModalOpen(true)}
+                        className="w-full bg-white dark:bg-gray-900 border border-dashed border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+                     >
+                        <Edit2 size={16} /> Configurar Plantilla y Correo
+                     </button>
                    </div>
                 )}
 
-                {/* 🔥 CONTROL DE UI (INCLUYE SECCIONES) 🔥 */}
                 {['UPDATE_VALUE', 'SET_REQUIRED', 'SET_OPTIONAL', 'SET_READONLY', 'SET_EDITABLE', 'SET_HIDDEN', 'SET_VISIBLE'].includes(newAction.action_type) && (
                    <div className="animate-in fade-in duration-200">
                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">¿A qué elemento de este registro aplica?</label>
@@ -857,7 +1180,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                    </div>
                 )}
 
-                {/* RESTO DE ACCIONES (Copiar, Crear Registro, Low Code) SE MANTIENE IGUAL */}
                 {newAction.action_type === 'COPY_FIELD' && (
                    <div className="animate-in fade-in duration-200 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-4 bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl border border-gray-100 dark:border-gray-800">
                       <div>
@@ -963,6 +1285,94 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
             <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 shrink-0 flex justify-end gap-3">
                <button type="button" onClick={closeActionModal} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
                <button type="submit" form="action-form" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-2"><Save size={16}/> Guardar Regla</button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+      {/* 🔥 MODAL FLOTANTE DE PLANTILLA DE CORREO 🔥 */}
+      {isEmailModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <BellRing size={18} className="text-amber-500" /> Plantilla de Alerta
+              </h3>
+              <button type="button" onClick={() => setIsEmailModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors">
+                <X size={18}/>
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar max-h-[70vh]">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Título de la Alerta (Asunto del Correo)</label>
+                <input type="text" placeholder="Ej: Registro Actualizado" required value={newAction.target_field} onChange={e => setNewAction({...newAction, target_field: e.target.value})} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mensaje / Cuerpo del Correo</label>
+                <textarea rows={4} placeholder="Ej: Se han aplicado nuevas reglas automáticas." value={newAction.action_value} onChange={e => setNewAction({...newAction, action_value: e.target.value})} className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm resize-none custom-scrollbar" />
+              </div>
+              
+              <div className="flex items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <input
+                  type="checkbox"
+                  id="send_email_check_modal_bp"
+                  checked={newAction.action_config?.send_email || false}
+                  onChange={e => {
+                    const currentConfig = newAction.action_config || {};
+                    setNewAction({...newAction, action_config: { ...currentConfig, send_email: e.target.checked } });
+                  }}
+                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                />
+                <label htmlFor="send_email_check_modal_bp" className="text-sm font-bold text-gray-700 dark:text-gray-300 cursor-pointer">
+                  ✉️ Enviar también copia por correo electrónico
+                </label>
+              </div>
+            </div>
+            
+            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end">
+              <button type="button" onClick={() => setIsEmailModalOpen(false)} className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95">
+                Confirmar Plantilla
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {/* 🔥 MODAL PARA CAMBIAR FORMA BPMN 🔥 */}
+      {isShapeModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Shapes size={18} className="text-purple-500" /> Seleccionar Forma (BPMN)
+              </h3>
+              <button onClick={() => setIsShapeModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+            </div>
+            
+            <div className="p-6 grid grid-cols-2 gap-4">
+               {/* Opción Task */}
+               <button onClick={() => handleChangeShape('task')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'task' || !selectedElement?.data?.raw_data?.bpmn_shape ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div className="w-16 h-10 border-2 border-gray-400 dark:border-gray-500 rounded-md bg-white dark:bg-gray-800"></div>
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Actividad / Tarea</span>
+               </button>
+
+               {/* Opción Gateway */}
+               <button onClick={() => handleChangeShape('gateway')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'gateway' ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div className="w-10 h-10 border-2 border-amber-500 bg-amber-100 dark:bg-amber-900/50 rotate-45 rounded-sm"></div>
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Decisión (Gateway)</span>
+               </button>
+
+               {/* Opción Start */}
+               <button onClick={() => handleChangeShape('start')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'start' ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div className="w-10 h-10 border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 rounded-full"></div>
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Evento de Inicio</span>
+               </button>
+
+               {/* Opción End */}
+               <button onClick={() => handleChangeShape('end')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'end' ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div className="w-10 h-10 border-4 border-rose-500 bg-rose-100 dark:bg-rose-900/50 rounded-full"></div>
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Evento de Fin</span>
+               </button>
             </div>
           </div>
         </div>, document.body

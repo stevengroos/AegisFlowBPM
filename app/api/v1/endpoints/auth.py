@@ -31,6 +31,14 @@ router = APIRouter()
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address) # 🔥 Instancia local para el router
 
+class CompanyListResponse(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+    is_system_company: bool
+
+    class Config:
+        from_attributes = True
 class UserListResponse(BaseModel):
     id: int
     email: str
@@ -631,3 +639,120 @@ def get_session_config(db: Session = Depends(get_db), current_user: models.User 
     policy = get_user_policy(db, current_user)
     timeout = policy.inactivity_timeout_minutes if policy and policy.inactivity_timeout_minutes else 15
     return {"inactivity_timeout_minutes": timeout}
+
+
+# Asegúrate de tener Optional importado arriba (from typing import Optional, List)
+
+# =========================================================
+# 🔥 FASE 5: LISTAR EMPRESAS PARA IMPERSONATION (PAGINADO) 🔥
+# =========================================================
+@router.get("/companies", response_model=List[CompanyListResponse])
+def get_all_companies(
+    search: Optional[str] = None, # 🔥 NUEVO: Búsqueda
+    skip: int = 0,                # 🔥 NUEVO: Paginación (Desde dónde)
+    limit: int = 10,              # 🔥 NUEVO: Paginación (Cuántos)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    original_company_id = getattr(current_user, 'real_company_id', current_user.company_id)
+    company = db.query(models.Company).filter(models.Company.id == original_company_id).first()
+    
+    if not current_user.is_superadmin or not company.is_system_company:
+        raise HTTPException(status_code=403, detail="Acceso denegado. Solo AegisFlow HQ puede listar empresas.")
+        
+    # Consulta base (Excluir empresas del sistema)
+    query = db.query(models.Company).filter(models.Company.is_system_company != True)
+    
+    # 🔥 Si el usuario escribió algo en el buscador del Select2, filtramos
+    if search:
+        query = query.filter(models.Company.name.ilike(f"%{search}%"))
+        
+    # 🔥 Aplicamos orden, salto y límite
+    companies = query.order_by(models.Company.name.asc()).offset(skip).limit(limit).all()
+    
+    return companies
+
+# =========================================================
+# 🔥 FASE 5: MOTOR DE IMPERSONATION (AEGISFLOW HQ) 🔥
+# =========================================================
+
+@router.post("/impersonate/stop")
+def stop_impersonation(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Devuelve un Token JWT normal para regresar al cuartel general.
+    """
+    if getattr(current_user, 'is_impersonating', False):
+        log_global_event(
+            db=db, user_id=current_user.id, company_id=current_user.real_company_id,
+            entity_type="SECURITY", action="IMPERSONATION_STOPPED", entity_id=current_user.company_id,
+            details=f"Agente HQ terminó la sesión de impersonation.",
+            request=request
+        )
+        
+    # Creamos un token normal, limpio, usando el método de tu security.py
+    token_data = security.create_access_token(subject=current_user.email, session_version=current_user.session_version)
+    
+    return {
+        "access_token": token_data["access_token"], 
+        "token_type": "bearer",
+        "message": "Sesión restaurada a AegisFlow HQ"
+    }
+
+@router.post("/impersonate/{target_company_id}")
+def impersonate_tenant(
+    target_company_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Genera un Token JWT modificado que permite a un Agente HQ 
+    navegar como si fuera de la empresa del cliente.
+    """
+    # 1. Seguridad de Titanio: Solo agentes de AegisFlow HQ
+    # Nota: Usamos real_company_id por si ya está impersonando y quiere saltar a otra empresa
+    original_company_id = getattr(current_user, 'real_company_id', current_user.company_id)
+    company = db.query(models.Company).filter(models.Company.id == original_company_id).first()
+    
+    if not current_user.is_superadmin or not company.is_system_company:
+        raise HTTPException(status_code=403, detail="Acceso denegado. Solo AegisFlow HQ puede asumir identidades.")
+
+    # 2. Validar que la empresa objetivo exista
+    target_company = db.query(models.Company).filter(models.Company.id == target_company_id).first()
+    if not target_company:
+        raise HTTPException(status_code=404, detail="La empresa seleccionada no existe.")
+        
+    # Opcional de Seguridad: No permitir impersonar si la empresa está inactiva
+    if not target_company.is_active:
+         raise HTTPException(status_code=400, detail="No puedes acceder a una empresa inactiva.")
+
+    # 3. Fabricar el JWT Especial con duración de 2 horas
+    to_encode = {
+        "sub": current_user.email,
+        "session_version": current_user.session_version,
+        "impersonating_company_id": target_company_id # 🔥 LA LLAVE MAESTRA
+    }
+    expire = datetime.now(timezone.utc) + timedelta(minutes=120) 
+    to_encode.update({"exp": expire})
+    
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+    # 4. Registrar en Auditoría (Transparencia ISO 27001)
+    log_global_event(
+        db=db, user_id=current_user.id, company_id=original_company_id,
+        entity_type="SECURITY", action="IMPERSONATION_STARTED", entity_id=target_company_id,
+        details=f"Agente HQ asumió la identidad de '{target_company.name}'",
+        request=request
+    )
+
+    return {
+        "access_token": encoded_jwt, 
+        "token_type": "bearer", 
+        "impersonating": target_company.name,
+        "message": f"Navegando como {target_company.name}"
+    }
+

@@ -376,3 +376,74 @@ def update_sso_settings(settings_in: SsoSettingsUpdate, request: Request, db: Se
     )
     
     return {"message": "Configuración de SSO actualizada correctamente."}
+
+from app.core.emails import send_security_alert_async # Ajusta la ruta de importación según tu estructura
+
+@router.post("/smtp-settings/test")
+async def test_smtp_configuration(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    try:
+        # Intentará enviar un correo al usuario que está logueado haciendo la prueba
+        await send_security_alert_async(
+            db=db,
+            company_id=current_user.company_id,
+            email_to=current_user.email,
+            subject="✅ Prueba de Conexión SMTP - AegisFlow",
+            body_html="<h3>¡Conexión Exitosa!</h3><p>Si estás leyendo esto, tu configuración de servidor de correos está funcionando perfectamente.</p>"
+        )
+        return {"message": "Correo de prueba enviado. Revisa tu bandeja de entrada."}
+    except Exception as e:
+        # Si falla, le mandamos el error exacto al frontend para diagnosticar
+        raise HTTPException(status_code=500, detail=f"Error conectando al SMTP: {str(e)}")
+    
+class AiSettingsUpdate(BaseModel):
+    active_provider: Optional[str] = None
+    api_key: Optional[str] = None
+
+@router.get("/ai-settings")
+def get_ai_settings(
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Solo los administradores pueden ver esto.")
+        
+    company = db.query(models.Company).filter(models.Company.id == current_user.company_id).first()
+    
+    return {
+        "active_provider": company.ai_active_provider,
+        "api_key": company.ai_api_key
+    }
+
+@router.put("/ai-settings")
+def update_ai_settings(
+    settings: AiSettingsUpdate, 
+    request: Request,
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Solo los administradores pueden hacer esto.")
+        
+    company = db.query(models.Company).filter(models.Company.id == current_user.company_id).first()
+    
+    company.ai_active_provider = settings.active_provider
+    
+    # Solo actualizamos el API KEY si enviaron uno nuevo (para evitar borrarlo si mandan un string vacío por error)
+    if settings.api_key is not None:
+        company.ai_api_key = settings.api_key
+        
+    db.commit()
+    
+    # Auditamos el cambio
+    from app.core.global_audit import log_global_event
+    log_global_event(
+        db=db, user_id=current_user.id, company_id=current_user.company_id,
+        entity_type="AI_SETTINGS", action="UPDATE", entity_id=company.id,
+        details=f"Actualizó la configuración de IA. Proveedor activo: {company.ai_active_provider}",
+        request=request
+    )
+    
+    return {"message": "Configuración de IA actualizada exitosamente"}

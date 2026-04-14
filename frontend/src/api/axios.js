@@ -6,7 +6,7 @@ const api = axios.create({
 
 // 🔥 INTERCEPTOR DE PETICIONES (Seguridad Anti-Caché y Token)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('impersonation_token') || localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

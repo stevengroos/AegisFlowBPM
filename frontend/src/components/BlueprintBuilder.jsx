@@ -67,6 +67,8 @@ const BlueprintBuilder = ({ moduleId, setHasUnsavedChanges }) => {
           moduleId={moduleId} 
           // 🔥 PASAMOS EL ESCUDO AL LIENZO 🔥
           setHasUnsavedChanges={setHasUnsavedChanges}
+          // 🔥 NUEVO: Pasamos la función de recarga para cuando restauremos una versión 🔥
+          reloadBlueprints={() => fetchInitialData()}
         />
       )}
     </>

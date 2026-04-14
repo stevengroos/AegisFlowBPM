@@ -4,84 +4,12 @@ import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search
 
 // 🔥 1. IMPORTAMOS NUESTRAS NOTIFICACIONES 🔥
 import { useNotification } from '../context/NotificationContext';
+import FileUploadField from '../components/ui/FileUploadField'; // 🔥 Importamos el componente con IA
 
 // ==========================================
 // COMPONENTES AUXILIARES (Archivos y Selects)
 // ==========================================
-const ALLOWED_TYPES = {
-  image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-  document: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain']
-};
 
-const FileUploadField = ({ type, value, onChange, disabled }) => {
-  const [uploading, setUploading] = useState(false);
-  const { notify } = useNotification();
-  const baseURL = api.defaults.baseURL || 'http://localhost:8000';
-
-  const handleUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // 🔥 PENTEST FIX: Validación estricta anti-malware antes de subir
-    const allowedMimeTypes = type === 'image' ? ALLOWED_TYPES.image : ALLOWED_TYPES.document;
-    if (!allowedMimeTypes.includes(file.type)) {
-      notify.error(`Tipo de archivo no permitido. Sube un ${type === 'image' ? 'formato de imagen válido' : 'documento seguro'}.`);
-      e.target.value = ''; 
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) { // 5MB
-      notify.warning("El archivo excede el límite de 5MB.");
-      e.target.value = ''; 
-      return;
-    }
-
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-      const res = await api.post('/api/v1/uploads/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      onChange(res.data.url);
-      notify.success("Archivo subido con éxito.");
-    } catch (error) { 
-      notify.error("Error al subir el archivo."); 
-    } finally { 
-      setUploading(false); 
-    }
-  };
-
-  const handleRemove = async () => {
-    if (disabled) return;
-    try {
-      const filename = value.split('/').pop();
-      await api.delete(`/api/v1/uploads/${filename}`);
-      onChange(''); 
-      notify.info("Archivo eliminado.");
-    } catch (error) { 
-      notify.error("Error al eliminar el archivo."); 
-    }
-  };
-
-  if (value) {
-    return (
-      <div className="relative border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-xl p-3 flex items-center justify-between group">
-        <div className="flex items-center gap-3 overflow-hidden">
-          {type === 'image' ? <img src={`${baseURL}${value}`} alt="Preview" className="h-12 w-12 object-cover rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" /> : <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg flex items-center justify-center shrink-0"><FileText size={20} /></div>}
-          <a href={`${baseURL}${value}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline truncate">{value.split('/').pop()}</a>
-        </div>
-        {!disabled && <button type="button" onClick={handleRemove} className="p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors shadow-sm shrink-0"><Trash2 size={16} /></button>}
-      </div>
-    );
-  }
-
-  return (
-    <div className={`relative border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 text-center hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
-      {uploading ? <div className="flex flex-col items-center justify-center gap-2 text-blue-500"><Loader2 size={24} className="animate-spin" /><span className="text-xs font-bold">Verificando y subiendo...</span></div> : <>
-          <input type="file" accept={type === 'image' ? ".jpg,.jpeg,.png,.webp" : ".pdf,.doc,.docx,.xls,.xlsx,.txt"} onChange={handleUpload} disabled={disabled} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" />
-          <div className="text-gray-500 dark:text-gray-400 flex flex-col items-center gap-1"><Plus size={20} /> <span className="text-xs font-medium">Clic para subir {type === 'image' ? 'imagen' : 'archivo'}</span></div>
-      </>}
-    </div>
-  );
-};
 
 const SearchableSelect = ({ options, value, onChange, disabled, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -379,7 +307,16 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
               <span className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => setFormData({...formData, [fieldKey]: !formData[fieldKey]})}>Marcar como verdadero</span>
             </div>
           ) : field.field_type === 'file' || field.field_type === 'image' ? (
-            <FileUploadField type={field.field_type} value={formData[fieldKey] || ''} onChange={(url) => setFormData({...formData, [fieldKey]: url})} disabled={false} />
+            <FileUploadField 
+               type={field.field_type} 
+               value={formData[fieldKey] || ''} 
+               onChange={(url) => setFormData({...formData, [fieldKey]: url})} 
+               disabled={false} 
+               // 🔥 FASE 3.3: Le pasamos los campos que se muestran en el modal de creación
+               expectedFields={fieldsToShow.filter(f => !['file', 'image', 'subform', 'url'].includes(f.field_type)).map(f => f.api_name || f.label)}
+               // 🔥 FASE 3.3: Autocompletamos el formulario
+               onDataExtracted={(aiData) => setFormData(prev => ({ ...prev, ...aiData }))}
+            />
           ) : field.field_type === 'url' ? (
             <div className="relative">
               <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />

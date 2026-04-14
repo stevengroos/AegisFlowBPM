@@ -63,3 +63,57 @@ async def send_security_alert_async(db: Session, company_id: int, email_to: str,
         
     except Exception as e:
         logger.error(f"❌ Error enviando correo a {email_to}: {str(e)}")
+        
+# === AGREGA ESTO AL FINAL DE TU ARCHIVO emails.py ===
+
+async def send_support_transcript_async(
+    db: Session, 
+    company_id: int, 
+    client_email: str, 
+    agent_email: str, 
+    session_id: int, 
+    body_html: str
+):
+    """
+    Envía la transcripción del chat al cliente con copia al agente de soporte.
+    """
+    try:
+        config = get_email_config(db, company_id)
+        
+        message = MessageSchema(
+            subject=f"Resumen de tu caso de soporte #{session_id}",
+            recipients=[client_email],
+            cc=[agent_email] if agent_email else [],
+            body=body_html,
+            subtype=MessageType.html
+        )
+        
+        fm = FastMail(config)
+        await fm.send_message(message)
+        logger.info(f"📧 TRANSCRIPT ENVIADO EXITOSAMENTE a {client_email}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error enviando transcript a {client_email}: {str(e)}")
+        
+        
+
+async def send_support_notification_async(db: Session, company_id: int, email_to: str, subject: str, body_html: str):
+    """
+    Envía una alerta cuando llega un nuevo mensaje de soporte.
+    """
+    try:
+        config = get_email_config(db, company_id)
+        
+        message = MessageSchema(
+            subject=subject,
+            recipients=[email_to],
+            body=body_html,
+            subtype=MessageType.html
+        )
+        
+        fm = FastMail(config)
+        await fm.send_message(message)
+        logger.info(f"📧 ALERTA DE NUEVO MENSAJE ENVIADA a {email_to}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error enviando alerta de mensaje a {email_to}: {str(e)}")

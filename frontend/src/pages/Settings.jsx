@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, LayoutGrid, Columns, Zap, Box, Users, Shield, Key, Loader2, ShieldAlert, Lock } from 'lucide-react'; 
+import { ArrowLeft, LayoutGrid, Columns, Zap, Box, Users, Shield, Key, Loader2, ShieldAlert, Lock, FileText } from 'lucide-react'; 
 import api from '../api/axios'; 
 
 import ModuleList from '../components/ModuleList';
 import FieldBuilder from '../components/FieldBuilder';
 import BlueprintBuilder from '../components/BlueprintBuilder';
 import AutomationBuilder from '../components/AutomationBuilder'; 
+import TemplateBuilder from '../components/TemplateBuilder';
+
 
 import UsersManager from '../components/UsersManager';
 import RolesManager from '../components/RolesManager';
@@ -140,14 +142,26 @@ const Settings = () => {
           >
             <Zap size={16} className={activeTab === 'automations' ? "" : "text-amber-500"} /> <span className="hidden sm:inline">Automatizaciones</span><span className="sm:hidden">Auto</span>
           </button>
+          {/* 🔥 NUEVA PESTAÑA: PLANTILLAS (PDFs) 🔥 */}
+          <button 
+            onClick={() => handleAttemptNavigation('tab', 'templates')} 
+            className={`pb-4 px-2 text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'templates' 
+                ? 'border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-500' 
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <FileText size={16} className={activeTab === 'templates' ? "" : "text-indigo-500"} /> <span className="hidden sm:inline">Plantillas (PDFs)</span><span className="sm:hidden">PDFs</span>
+          </button>
         </div>
 
         <div className="flex-1 overflow-hidden">
-            
             {activeTab === 'fields' ? (
                 <FieldBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
             ) : activeTab === 'automations' ? (
                 <AutomationBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
+            ) : activeTab === 'templates' ? ( // 🔥 NUEVA CONDICIÓN PARA EL RENDER
+                <TemplateBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
             ) : (
                 <BlueprintBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} /> 
             )}

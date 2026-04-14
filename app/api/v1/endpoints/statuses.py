@@ -19,6 +19,14 @@ class StatusBase(BaseModel):
     name: str
     is_initial: bool = False
     blueprint_id: Optional[int] = None
+    # 🔥 FASE 2: Permitimos recibir y enviar las horas de SLA 🔥
+    sla_hours: Optional[int] = None
+    # =========================================================
+    # 🔥 NUEVO FASE BPMN: Forma visual del estado 🔥
+    # =========================================================
+    bpmn_shape: Optional[str] = "task" 
+    position_x: Optional[int] = 50
+    position_y: Optional[int] = 50
 
 class StatusCreate(StatusBase):
     pass
@@ -26,6 +34,12 @@ class StatusCreate(StatusBase):
 class StatusUpdate(BaseModel):
     name: Optional[str] = None
     is_initial: Optional[bool] = None
+    # 🔥 FASE 2: Permitimos actualizar las horas de SLA 🔥
+    sla_hours: Optional[int] = None
+    # 🔥 NUEVO FASE BPMN 🔥
+    bpmn_shape: Optional[str] = None
+    position_x: Optional[int] = None
+    position_y: Optional[int] = None
 
 class StatusResponse(StatusBase):
     id: int
@@ -54,13 +68,12 @@ def get_statuses(
 @router.post("/", response_model=StatusResponse)
 def create_status(
     status_in: StatusCreate,
-    request: Request, # 🔥 Añadimos request
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
     check_settings_permission(db, current_user, "manage_blueprints")
     
-    # 🔥 PENTEST FIX: Validar que el Blueprint pertenezca a la empresa 🔥
     if status_in.blueprint_id:
         bp = db.query(models.Blueprint).filter(
             models.Blueprint.id == status_in.blueprint_id,
@@ -84,14 +97,17 @@ def create_status(
         name=status_in.name,
         is_initial=status_in.is_initial if existing_count > 0 else True,
         blueprint_id=status_in.blueprint_id, 
-        company_id=current_user.company_id
+        company_id=current_user.company_id,
+        sla_hours=status_in.sla_hours, # 🔥 FASE 2
+        bpmn_shape=status_in.bpmn_shape, # 🔥 FASE BPMN: Guardamos la forma 🔥
+        position_x=status_in.position_x,
+        position_y=status_in.position_y
     )
     
     db.add(new_status)
     db.commit()
     db.refresh(new_status)
     
-    # 🕵️‍♂️ AUDITORÍA GLOBAL
     log_global_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
         entity_type="STATUS", action="CREATE", entity_id=new_status.id,
@@ -104,7 +120,7 @@ def create_status(
 def update_status(
     status_id: int,
     status_in: StatusUpdate,
-    request: Request, # 🔥 Añadimos request
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -119,7 +135,9 @@ def update_status(
         
     old_data = {
         "name": status.name,
-        "is_initial": status.is_initial
+        "is_initial": status.is_initial,
+        "sla_hours": status.sla_hours, # 🔥 FASE 2
+        "bpmn_shape": status.bpmn_shape # 🔥 FASE BPMN
     }
         
     if status_in.name is not None:
@@ -133,15 +151,31 @@ def update_status(
         ).update({"is_initial": False})
         status.is_initial = True
         
+    update_data = status_in.dict(exclude_unset=True)
+    # 🔥 FASE 2: Actualizamos el SLA si lo envían en la petición 🔥
+    if "sla_hours" in update_data:
+        status.sla_hours = update_data["sla_hours"]
+        
+    # 🔥 FASE BPMN: Actualizamos la forma si la envían en la petición 🔥
+    if "bpmn_shape" in update_data:
+        status.bpmn_shape = update_data["bpmn_shape"]
+        
+    # 🔥 GUARDAMOS LAS NUEVAS COORDENADAS SI SE MOVIÓ EL NODO 🔥
+    if "position_x" in update_data:
+        status.position_x = update_data["position_x"]
+    if "position_y" in update_data:
+        status.position_y = update_data["position_y"]
+        
     db.commit()
     db.refresh(status)
     
     new_data = {
         "name": status.name,
-        "is_initial": status.is_initial
+        "is_initial": status.is_initial,
+        "sla_hours": status.sla_hours, # 🔥 FASE 2
+        "bpmn_shape": status.bpmn_shape # 🔥 FASE BPMN
     }
     
-    # 🕵️‍♂️ AUDITORÍA GLOBAL
     log_global_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
         entity_type="STATUS", action="UPDATE", entity_id=status.id,
@@ -154,7 +188,7 @@ def update_status(
 @router.delete("/{status_id}")
 def delete_status(
     status_id: int,
-    request: Request, # 🔥 Añadimos request
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -196,7 +230,6 @@ def delete_status(
     db.delete(status)
     db.commit()
     
-    # 🕵️‍♂️ AUDITORÍA GLOBAL
     log_global_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
         entity_type="STATUS", action="DELETE", entity_id=status_id,

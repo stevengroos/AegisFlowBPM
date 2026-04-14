@@ -3,11 +3,13 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
-
+from apscheduler.schedulers.background import BackgroundScheduler
+from app.core.scheduler import check_sla_breaches
+from contextlib import asynccontextmanager
 from app.db.base_class import Base
 from app.db.session import engine, get_db
 from app.models import models 
-from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards
+from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards, webhooks, ai, chat, templates
 from app.api import deps
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles 
@@ -22,7 +24,26 @@ from app.core.config import settings
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
-app = FastAPI(title="BPM Documentation API")
+# =======================================================
+# 🔥 CICLO DE VIDA DEL SERVIDOR (LIFESPAN) 🔥
+# =======================================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- AL ENCENDER EL SERVIDOR ---
+    print("🤖 Iniciando robot de fondo (Cronjobs)...")
+    scheduler = BackgroundScheduler()
+    
+    # Revisará los SLAs cada 5 minutos
+    scheduler.add_job(check_sla_breaches, 'interval', minutes=5)
+    
+    scheduler.start()
+    yield # Aquí corre la aplicación FastAPI
+    
+    # --- AL APAGAR EL SERVIDOR ---
+    print("🛑 Apagando robot de fondo...")
+    scheduler.shutdown()
+
+app = FastAPI(title="BPM Documentation API", lifespan=lifespan)
 # 🔥 NECESARIO PARA EL SSO (FASE 6): Memoria temporal para Authlib
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 # 🔥 NUEVO: ESCUDO ANTI-BOTS (Rate Limiting) 🔥
@@ -55,6 +76,10 @@ app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["
 app.include_router(security.router, prefix="/api/v1/security", tags=["Security"])
 app.include_router(global_audit.router, prefix="/api/v1/global_audit", tags=["Global Audit"])
 app.include_router(dashboards.router, prefix="/api/v1/dashboards", tags=["Dashboards"])
+app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["Webhooks"])
+app.include_router(ai.router, prefix="/api/v1/ai", tags=["Artificial Intelligence"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
+app.include_router(templates.router, prefix="/api/v1/templates", tags=["Templates"])
 
 Base.metadata.create_all(bind=engine)
 
@@ -77,6 +102,7 @@ class UserMeResponse(BaseModel):
     profile_name: str
     permissions: Dict[str, Any]
     is_mfa_enabled: bool = False
+    is_system_company: bool = False
 
     class Config:
         from_attributes = True
@@ -88,6 +114,7 @@ def read_user_me(
 ):
     profile = db.query(models.Profile).filter(models.Profile.id == current_user.profile_id).first() if current_user.profile_id else None
     role = db.query(models.Role).filter(models.Role.id == current_user.role_id).first() if current_user.role_id else None
+    company = db.query(models.Company).filter(models.Company.id == current_user.company_id).first()
     
     return {
         "id": current_user.id, 
@@ -101,5 +128,6 @@ def read_user_me(
         "permissions": profile.permissions if profile else {},
         
         # 🔥 FIX: Si la BD devuelve NULL (None), forzamos a que sea False 🔥
-        "is_mfa_enabled": current_user.is_mfa_enabled or False
+        "is_mfa_enabled": current_user.is_mfa_enabled or False,
+        "is_system_company": company.is_system_company == True if company else False
     }

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
-import { LayoutGrid, Trash2, Edit2, X, RotateCcw, Eye, EyeOff, FileText, ArrowLeft, Database, CopyPlus, Link as LinkIcon, Star, Plus, GripVertical, Save, Loader2, Link2, Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, AlertTriangle, UploadCloud, DownloadCloud, ArchiveRestore, CheckCircle } from 'lucide-react';
+import { LayoutGrid, Trash2, Edit2, X, RotateCcw, Eye, EyeOff, FileText, ArrowLeft, Database, CopyPlus, Link as LinkIcon, Star, Plus, GripVertical, Save, Loader2, Link2, Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, AlertTriangle, UploadCloud, DownloadCloud, ArchiveRestore, CheckCircle, Sparkles } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, useDraggable } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -116,6 +116,65 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [showArchivedModal, setShowArchivedModal] = useState(false); 
   const [importSummary, setImportSummary] = useState(null); 
+  // 🔥 FASE 3.2: ESTADOS DEL ASISTENTE IA 🔥
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerateWithAI = async (e) => {
+    e.preventDefault();
+    if (!aiPrompt.trim()) return notify.warning("Describe cómo quieres que sea tu formulario.");
+    
+    setIsGenerating(true);
+    try {
+      // El backend enviará el prompt a la IA y nos devolverá un JSON estructurado
+      const res = await api.post(`/api/v1/ai/generate-form`, {
+        form_id: selectedForm.id,
+        prompt: aiPrompt
+      });
+      
+      const aiData = res.data;
+      
+      // 1. Mapeamos las nuevas secciones generadas por IA (les damos un ID temporal)
+      const aiSections = (aiData.sections || []).map((sec, idx) => ({
+         id: `temp-ai-sec-${Date.now()}-${idx}`,
+         title: sec.title,
+         columns: sec.columns || 2,
+         order: localSections.length + idx
+      }));
+      
+      // 2. Mapeamos los campos y los asignamos a sus secciones correspondientes
+      const aiFields = (aiData.fields || []).map((fld, idx) => {
+         const targetSec = aiSections.find(s => s.title === fld.section_title) || aiSections[0] || localSections[0];
+         return {
+            id: `temp-ai-field-${Date.now()}-${idx}`,
+            label: fld.label,
+            api_name: fld.api_name || `ai_${Date.now()}_${idx}`,
+            field_type: fld.field_type,
+            required: fld.required || false,
+            options: fld.options || '',
+            section_id: targetSec?.id,
+            order: localFields.length + idx,
+            show_in_create: true,
+            is_primary: false,
+            subform_config: fld.subform_config || []
+         };
+      });
+      
+      // 3. Pintamos la magia instantáneamente en el lienzo (preview)
+      setLocalSections(prev => [...prev, ...aiSections]);
+      setLocalFields(prev => [...prev, ...aiFields]);
+      
+      notify.success("¡Formulario generado mágicamente! Revisa, edita si hace falta, y presiona 'Guardar Diseño'.");
+      setIsAiModalOpen(false);
+      setAiPrompt('');
+      markAsChanged();
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al conectar con el Asistente IA.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
   
   const [modulesList, setModulesList] = useState([]);
   const fileInputRef = useRef(null);
@@ -429,7 +488,11 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
              </button>
              <input type="file" accept=".json" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
           </div>
-
+          {/* 🔥 BOTÓN ASISTENTE IA 🔥 */}
+          <button onClick={() => setIsAiModalOpen(true)} className="px-4 py-2 text-sm font-bold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800/50 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2">
+            <Sparkles size={16} className={isGenerating ? "animate-spin" : "animate-pulse"}/> 
+            <span className="hidden sm:inline">Generar con IA</span>
+          </button>
           <button onClick={() => { setEditingSection({ title: '', columns: 1 }); setIsSectionModalOpen(true); }} className="px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl transition-colors flex items-center gap-2">
             <Plus size={16}/> Nueva Sección
           </button>
@@ -659,6 +722,50 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
                <button type="button" onClick={() => setIsSectionModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
                <button type="submit" form="section-edit-form" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors active:scale-95">Guardar Sección</button>
             </div>
+          </div>
+        </div>, document.body
+      )}
+      {/* 🔥 MODAL DEL ASISTENTE DE IA 🔥 */}
+      {isAiModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[555] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-indigo-200 dark:border-indigo-800/50 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-1 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50/30 dark:bg-indigo-900/10">
+              <h3 className="font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+                <Sparkles size={18} className="text-indigo-500" /> Asistente de Diseño IA
+              </h3>
+              <button onClick={() => !isGenerating && setIsAiModalOpen(false)} disabled={isGenerating} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors disabled:opacity-50">
+                <X size={18}/>
+              </button>
+            </div>
+            
+            <form onSubmit={handleGenerateWithAI} className="p-6">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                ¿Qué tipo de formulario necesitas?
+              </label>
+              <textarea 
+                rows={4} 
+                autoFocus
+                disabled={isGenerating}
+                placeholder="Ej: Necesito un formulario para gestionar reembolsos de viáticos. Debe tener una sección para los datos del empleado, fecha, centro de costos, y una tabla (subformulario) para listar los tickets con monto, concepto y comprobante..."
+                value={aiPrompt} 
+                onChange={e => setAiPrompt(e.target.value)} 
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm text-gray-900 dark:text-white transition-all resize-none custom-scrollbar disabled:opacity-50"
+              />
+              
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" disabled={isGenerating} onClick={() => setIsAiModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-50">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isGenerating || !aiPrompt.trim()} className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                  {isGenerating ? (
+                    <><Loader2 size={16} className="animate-spin" /> Pensando...</>
+                  ) : (
+                    <><Sparkles size={16} /> Crear Magia</>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>, document.body
       )}

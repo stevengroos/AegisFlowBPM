@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel 
 from datetime import datetime, timedelta, timezone 
 from sqlalchemy.sql import func 
 import traceback 
-import requests # 🔥 Importamos requests, pero NO se lo damos al usuario directamente
+import requests 
 import pandas as pd
 import io
 import json
+import asyncio
 
-from app.db.session import get_db
+from app.core.emails import send_security_alert_async
+from app.db.session import get_db, SessionLocal
 from app.models import models
 from app.api import deps
 from app.schemas import case as case_schema
@@ -23,6 +25,21 @@ from app.core.global_audit import log_global_event
 router = APIRouter()
 
 MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024 # Límite de 5MB para evitar OOM
+
+# =======================================================
+# 🔥 ENVIADOR DE CORREOS EN SEGUNDO PLANO (NO BLOQUEANTE) 🔥
+# =======================================================
+async def safe_send_email_background(company_id: int, email_to: str, subject: str, body_html: str):
+    """Abre una sesión de base de datos temporal solo para el correo y la cierra al terminar."""
+    from app.core.emails import send_security_alert_async
+    db_session = SessionLocal()
+    try:
+        await send_security_alert_async(db_session, company_id, email_to, subject, body_html)
+    except Exception as e:
+        print(f"Error enviando correo en segundo plano: {e}")
+    finally:
+        db_session.close()
+
 
 # =======================================================
 # 🔥 PENTEST FIX: GUARDAESPALDAS PARA LOW-CODE (SSRF PROTECTION) 🔥
@@ -64,6 +81,49 @@ class SafeHTTPClient:
         except Exception as e:
             return {"status": 500, "error": str(e)}
 
+# =======================================================
+# 🔥 EJECUTOR DE WEBHOOKS SEGURO (iPaaS) 🔥
+# =======================================================
+def execute_webhook(rule, case_id: int, case_data: dict, status_name: str = ""):
+    """Envía peticiones HTTP seguras a Slack o sistemas de terceros."""
+    client = SafeHTTPClient()
+    url = rule.target_field
+    if not url: return
+    
+    # Preparamos el payload reemplazando variables
+    payload_str = rule.action_value or "{}"
+    payload_str = payload_str.replace("{case_id}", str(case_id))
+    payload_str = payload_str.replace("{status_name}", status_name)
+    
+    # Para el {case_data}, si es Slack mandamos texto bonito, si es Webhook mandamos JSON puro
+    if rule.action_type == "SEND_SLACK":
+        # Formateamos los datos del caso para que se vean bien en Slack
+        formatted_data = "\n".join([f"*{k}*: {v}" for k, v in case_data.items()])
+        payload_str = payload_str.replace("{case_data}", formatted_data)
+        
+        # Slack requiere un formato específico: {"text": "El mensaje"}
+        json_data = {"text": payload_str}
+        client.post(url, json=json_data)
+        
+    elif rule.action_type == "WEBHOOK_OUT":
+        # Para webhooks genéricos
+        try:
+            # Reemplazar {case_data} con el objeto JSON real como string
+            payload_str = payload_str.replace('"{case_data}"', json.dumps(case_data))
+            json_data = json.loads(payload_str)
+        except:
+            # Si el usuario escribió un JSON inválido, mandamos los datos básicos por si acaso
+            json_data = {"case_id": case_id, "data": case_data}
+            
+        method = (rule.action_config or {}).get("method", "POST")
+        if method == "POST":
+            client.post(url, json=json_data)
+        elif method == "PUT":
+            # Nuestro SafeHTTPClient solo tiene GET y POST, pero podemos mapear PUT a POST si hace falta, 
+            # o si luego le agregas el método PUT a la clase, se usará. Por ahora usamos POST por defecto.
+            client.post(url, json=json_data)
+        else:
+            client.get(url)
 
 # ==========================
 # ESQUEMAS
@@ -84,7 +144,7 @@ class StatusUpdate(BaseModel):
 # =======================================================
 # 🔥 MOTOR DE REGLAS GLOBALES 🔥
 # =======================================================
-def process_global_rules(db: Session, case: models.Case, user_id: int, event_type: str, old_data: dict = None):
+def process_global_rules(db: Session, case: models.Case, user_id: int, event_type: str, old_data: dict = None, background_tasks: BackgroundTasks = None):
     try:
         rules = db.query(models.AutomationRule).filter(
             models.AutomationRule.company_id == case.company_id,
@@ -213,6 +273,13 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                     old_v=None,
                     new_v={"created_case_id": new_case.id, "target_module_id": target_mod_id, "rule_name": rule.name}
                 )
+                
+        elif rule.action_type in ["WEBHOOK_OUT", "SEND_SLACK"]:
+            # 🔥 FASE 3: INTEGRACIONES EXTERNAS (Ejecución silenciosa) 🔥
+            try:
+                execute_webhook(rule, case.id, updated_data)
+            except Exception as e:
+                print(f"Error ejecutando integración (Regla ID {rule.id}): {e}")        
 
         elif rule.action_type == "CUSTOM_FUNCTION" and rule.function_code:
             # 🔥 PENTEST FIX: Sandbox con SafeHTTPClient y variables controladas 🔥
@@ -254,15 +321,39 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                 
                 # Crear notificaciones masivas
                 for target_id in unique_targets:
-                    notification = models.Notification(
-                        company_id=case.company_id,
-                        user_id=target_id,
-                        case_id=case.id,
-                        module_id=case.module_id,
-                        title=rule.target_field, 
-                        message=rule.action_value or "Se ha disparado una alerta automática." 
-                    )
-                    db.add(notification)
+                            notification = models.Notification(
+                                company_id=case.company_id,
+                                user_id=target_id,
+                                case_id=case.id,
+                                module_id=case.module_id,
+                                title=rule.target_field, 
+                                message=rule.action_value or "Se ha disparado una alerta automática." 
+                            )
+                            db.add(notification)
+                            
+                            # 🔥 NUEVO: ENVIAR POR CORREO SI ESTÁ MARCADO (EN SEGUNDO PLANO) 🔥
+                            if config.get("send_email"):
+                                user_obj = db.query(models.User).filter(models.User.id == target_id).first()
+                                if user_obj and user_obj.email:
+                                    email_body = f"""
+                                    <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                                        <h2 style="color: #2563eb; margin-top: 0;">{rule.target_field}</h2>
+                                        <p style="color: #374151; font-size: 16px; line-height: 1.5;">{rule.action_value or 'Se ha disparado una alerta en AegisFlow.'}</p>
+                                        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                                        <p style="color: #9ca3af; font-size: 12px; margin-bottom: 0;">
+                                            Este es un mensaje automático del sistema. Registro afectado: #{case.id}
+                                        </p>
+                                    </div>
+                                    """
+                                    if background_tasks:
+                                        background_tasks.add_task(
+                                            safe_send_email_background,
+                                            case.company_id,
+                                            user_obj.email,
+                                            rule.target_field,
+                                            email_body
+                                        )
+
             except Exception as e:
                 pass
 
@@ -299,6 +390,7 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
     if ui_changed:
         case.ui_rules = updated_ui
 
+
 # =======================================================
 # ENDPOINTS CLÁSICOS
 # =======================================================
@@ -307,6 +399,7 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
 def create_case(
     case_in: CaseCreate,
     request: Request,
+    background_tasks: BackgroundTasks, # 🔥 INYECTADO
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -357,7 +450,7 @@ def create_case(
         ui_rules={} 
     )
     
-    process_global_rules(db, new_case, current_user.id, "ON_CREATE")
+    process_global_rules(db, new_case, current_user.id, "ON_CREATE", background_tasks=background_tasks)
     
     db.add(new_case)
     db.commit()
@@ -420,7 +513,7 @@ def get_cases(
 
 @router.get("/recycle-bin", response_model=List[case_schema.CaseResponse])
 def get_recycle_bin(
-    module_id: Optional[int] = None, # 🔥 Agregamos el parámetro para el filtro
+    module_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -437,7 +530,6 @@ def get_recycle_bin(
     ).delete()
     db.commit()
 
-    # 🔥 Aplicamos el filtro de módulo si viene desde el Frontend
     query = db.query(models.Case).filter(
         models.Case.company_id == current_user.company_id,
         models.Case.deleted_at != None
@@ -516,13 +608,11 @@ def soft_delete_case(
 
     case.deleted_at = func.now()
     
-    # 🔥 GUARDAMOS QUIÉN LO ELIMINÓ 🔥
     if hasattr(case, 'deleted_by'):
         case.deleted_by = current_user.id 
     
     db.commit()
     
-    # 🔥 AUDITORÍA RESTAURADA (Sin los 3 puntitos) 🔥
     log_global_event(
         db=db, 
         user_id=current_user.id, 
@@ -589,6 +679,7 @@ def update_case(
     case_id: int,
     case_in: CaseUpdate,
     request: Request,
+    background_tasks: BackgroundTasks, # 🔥 INYECTADO
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -622,7 +713,7 @@ def update_case(
     if case_in.assigned_to is not None or hasattr(case_in, 'assigned_to'):
         case.assigned_to = case_in.assigned_to
 
-    process_global_rules(db, case, current_user.id, "ON_UPDATE", old_data)
+    process_global_rules(db, case, current_user.id, "ON_UPDATE", old_data, background_tasks=background_tasks)
 
     if not case.status_id:
         blueprints = db.query(models.Blueprint).filter(
@@ -635,11 +726,15 @@ def update_case(
                 val_in_case = case.data.get(bp.trigger_field)
                 if str(val_in_case) == str(bp.trigger_value):
                     initial_status = db.query(models.Status).filter(models.Status.blueprint_id == bp.id, models.Status.is_initial == True).first()
-                    if initial_status: case.status_id = initial_status.id
+                    if initial_status: 
+                        case.status_id = initial_status.id
+                        case.entered_status_at = func.now()
                     break
             else:
                 initial_status = db.query(models.Status).filter(models.Status.blueprint_id == bp.id, models.Status.is_initial == True).first()
-                if initial_status: case.status_id = initial_status.id
+                if initial_status: 
+                    case.status_id = initial_status.id
+                    case.entered_status_at = func.now()
                 break
 
     log_event(
@@ -665,6 +760,7 @@ def change_case_status(
     case_id: int,
     status_in: StatusUpdate,
     request: Request, 
+    background_tasks: BackgroundTasks, # 🔥 INYECTADO
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -689,6 +785,7 @@ def change_case_status(
         return {"message": "El caso ya se encuentra en este estado", "new_status": case.status_id}
 
     case.status_id = status_in.new_status_id
+    case.entered_status_at = func.now()
     
     transition = db.query(models.Transition).filter(
         models.Transition.from_status_id == old_status,
@@ -705,10 +802,7 @@ def change_case_status(
         ).all()
         
         for val in validations:
-            # Obtener el valor actual del campo en el caso
             current_value = case.data.get(val.target_field)
-            
-            # Evaluar la condición
             failed = False
             if val.operator == "IS_EMPTY":
                 if current_value is not None and str(current_value).strip() != "":
@@ -734,7 +828,6 @@ def change_case_status(
                     if float(current_value) >= float(val.validation_value): failed = True
                 except: failed = True
 
-            # Si la validación falla, bloqueamos la transición
             if failed:
                 error_msg = val.error_message or f"No se cumple la regla de validación para el campo '{val.target_field}'."
                 raise HTTPException(status_code=400, detail=error_msg)
@@ -764,37 +857,31 @@ def change_case_status(
                     if v_str.isdigit():
                         case.assigned_to = int(v_str)
                     elif v_str.startswith("role_") or v_str.startswith("profile_"):
-                        # 🔥 ASIGNACIÓN ROUND ROBIN 🔥
                         parts = v_str.split("_")
-                        group_type = parts[0] # 'role' o 'profile'
+                        group_type = parts[0]
                         group_id = int(parts[1])
                         
-                        # Buscar a todos los usuarios elegibles
                         if group_type == "role":
                             eligible_users = db.query(models.User).filter(models.User.role_id == group_id, models.User.company_id == case.company_id, models.User.is_active == True).order_by(models.User.id).all()
                         else:
                             eligible_users = db.query(models.User).filter(models.User.profile_id == group_id, models.User.company_id == case.company_id, models.User.is_active == True).order_by(models.User.id).all()
                             
                         if eligible_users:
-                            # Buscar el tracker en la base de datos
                             tracker = db.query(models.RoundRobinTracker).filter(
                                 models.RoundRobinTracker.company_id == case.company_id,
                                 models.RoundRobinTracker.group_type == group_type,
                                 models.RoundRobinTracker.group_id == group_id
                             ).first()
                             
-                            next_user = eligible_users[0] # Por defecto, el primero
+                            next_user = eligible_users[0]
                             
                             if tracker and tracker.last_user_id:
-                                # Buscar quién fue el último y elegir al siguiente
                                 last_index = next((i for i, u in enumerate(eligible_users) if u.id == tracker.last_user_id), -1)
                                 if last_index != -1 and last_index + 1 < len(eligible_users):
                                     next_user = eligible_users[last_index + 1]
                                     
-                            # Asignar el caso
                             case.assigned_to = next_user.id
                             
-                            # Actualizar o crear el tracker
                             if not tracker:
                                 tracker = models.RoundRobinTracker(company_id=case.company_id, group_type=group_type, group_id=group_id)
                                 db.add(tracker)
@@ -843,9 +930,15 @@ def change_case_status(
                             old_v=None,
                             new_v={"created_case_id": new_case.id, "target_module_id": target_mod_id}
                         )
+                        
+                elif t in ["WEBHOOK_OUT", "SEND_SLACK"]:
+                    # 🔥 FASE 3: INTEGRACIONES EXTERNAS EN TRANSICIONES 🔥
+                    try:
+                        execute_webhook(act, case.id, updated_data, new_status.name)
+                    except Exception as e:
+                        print(f"Error ejecutando integración (Transición ID {transition.id}): {e}")
 
                 elif t == "CUSTOM_FUNCTION" and act.function_code:
-                    # 🔥 PENTEST FIX: Sandbox con SafeHTTPClient y variables controladas 🔥
                     local_env = {
                         "case_data": updated_data,
                         "user_id": current_user.id,
@@ -861,7 +954,6 @@ def change_case_status(
                 elif t == "SEND_NOTIFICATION" and f:
                     try:
                         targets = []
-                        # Leer configuración avanzada si existe
                         if config.get("notify_users"):
                             targets.extend(config["notify_users"])
                         if config.get("notify_roles"):
@@ -871,14 +963,11 @@ def change_case_status(
                             profile_users = db.query(models.User.id).filter(models.User.profile_id.in_(config["notify_profiles"]), models.User.company_id == case.company_id).all()
                             targets.extend([u[0] for u in profile_users])
                             
-                        # Si no hay config avanzada, notificar al creador (comportamiento legacy)
                         if not targets:
                             targets = [case.created_by if case.created_by else current_user.id]
                             
-                        # Eliminar duplicados
                         unique_targets = list(set(targets))
                         
-                        # Crear notificaciones masivas
                         for target_id in unique_targets:
                             notification = models.Notification(
                                 company_id=case.company_id,
@@ -889,25 +978,43 @@ def change_case_status(
                                 message=v or "Se ha disparado una alerta en el flujo." 
                             )
                             db.add(notification)
+                            
+                            # 🔥 NUEVO: ENVIAR POR CORREO SI ESTÁ MARCADO (EN SEGUNDO PLANO) 🔥
+                            if config.get("send_email"):
+                                user_obj = db.query(models.User).filter(models.User.id == target_id).first()
+                                if user_obj and user_obj.email:
+                                    email_body = f"""
+                                    <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                                        <h2 style="color: #2563eb; margin-top: 0;">{f}</h2>
+                                        <p style="color: #374151; font-size: 16px; line-height: 1.5;">{v or 'Se ha disparado una alerta en AegisFlow.'}</p>
+                                        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                                        <p style="color: #9ca3af; font-size: 12px; margin-bottom: 0;">
+                                            Este es un mensaje automático del sistema. Registro afectado: #{case.id}
+                                        </p>
+                                    </div>
+                                    """
+                                    background_tasks.add_task(
+                                        safe_send_email_background,
+                                        case.company_id,
+                                        user_obj.email,
+                                        f,
+                                        email_body
+                                    )
+
                     except Exception as e:
                         pass
                         
                 elif t.startswith("SET_") and f:
-                    # 🔥 NUEVA LÓGICA PARA SECCIONES 🔥
-                    target_fields = [f] # Por defecto, asumimos que es un solo campo
+                    target_fields = [f] 
                     
                     if f.startswith("section_"):
-                        # Extraer el ID de la sección
                         section_id = int(f.replace("section_", ""))
-                        # Buscar todos los campos que pertenecen a esta sección en la base de datos
                         fields_in_section = db.query(models.FormField).filter(
                             models.FormField.section_id == section_id,
                             models.FormField.company_id == current_user.company_id
                         ).all()
-                        # Extraer sus api_names o labels
                         target_fields = [field.api_name or field.label for field in fields_in_section]
                         
-                    # Aplicar la regla a todos los campos objetivos
                     for target_f in target_fields:
                         if target_f not in updated_ui:
                             updated_ui[target_f] = {}
@@ -1131,3 +1238,158 @@ def undo_import(
     )
 
     return {"message": f"Importación deshecha. Se eliminaron permanentemente {records_deleted} registros."}
+
+# =======================================================
+# 🔥 FASE 1: CHAT CONTEXTUAL Y COMENTARIOS 🔥
+# =======================================================
+import re
+
+@router.get("/{case_id}/comments", response_model=List[case_schema.CaseCommentResponse])
+def get_case_comments(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    case = db.query(models.Case).filter(
+        models.Case.id == case_id,
+        models.Case.company_id == current_user.company_id
+    ).first()
+    if not case:
+        raise HTTPException(404, "Caso no encontrado")
+
+    security_utils.check_record_permission(db, current_user, case, "view")
+
+    comments = db.query(models.CaseComment, models.User.first_name, models.User.last_name).outerjoin(
+        models.User, models.CaseComment.user_id == models.User.id
+    ).filter(
+        models.CaseComment.case_id == case_id,
+        models.CaseComment.company_id == current_user.company_id
+    ).order_by(models.CaseComment.created_at.asc()).all() 
+
+    response = []
+    for comment, fname, lname in comments:
+        user_name = "Sistema" if comment.is_system_message else (f"{fname or ''} {lname or ''}".strip() or "Usuario Desconocido")
+        response.append({
+            "id": comment.id,
+            "content": comment.content,
+            "case_id": comment.case_id,
+            "user_id": comment.user_id,
+            "user_name": user_name,
+            "is_system_message": comment.is_system_message,
+            "created_at": comment.created_at
+        })
+    return response
+
+@router.post("/{case_id}/comments", response_model=case_schema.CaseCommentResponse)
+def add_case_comment(
+    case_id: int,
+    comment_in: case_schema.CaseCommentCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    case = db.query(models.Case).filter(
+        models.Case.id == case_id,
+        models.Case.company_id == current_user.company_id
+    ).first()
+    if not case:
+        raise HTTPException(404, "Caso no encontrado")
+
+    security_utils.check_record_permission(db, current_user, case, "view")
+
+    raw_content = comment_in.content
+
+    mentions = re.findall(r'@\[([^\]]+)\]\(([^)]+)\)', raw_content)
+    clean_content = re.sub(r'@\[([^\]]+)\]\([^)]+\)', r'@\1', raw_content)
+
+    new_comment = models.CaseComment(
+        company_id=current_user.company_id,
+        case_id=case_id,
+        user_id=current_user.id,
+        content=clean_content,
+        is_system_message=False
+    )
+    db.add(new_comment)
+    db.commit()
+    db.refresh(new_comment)
+
+    if mentions:
+        for display_name, user_id_str in mentions:
+            try:
+                target_user_id = int(user_id_str)
+                target_user = db.query(models.User).filter(
+                    models.User.id == target_user_id,
+                    models.User.company_id == current_user.company_id
+                ).first()
+
+                if target_user and target_user.id != current_user.id:
+                    notification = models.Notification(
+                        company_id=current_user.company_id,
+                        user_id=target_user.id,
+                        case_id=case_id,
+                        module_id=case.module_id,
+                        title="Nueva Mención",
+                        message=f"{current_user.first_name or 'Alguien'} te mencionó: '{clean_content[:40]}...'"
+                    )
+                    db.add(notification)
+            except ValueError:
+                continue 
+        db.commit()
+
+    log_global_event(
+        db=db, user_id=current_user.id, company_id=current_user.company_id,
+        entity_type="CASE_COMMENT", action="CREATE", entity_id=new_comment.id,
+        details=f"Añadió un comentario en el registro #{case_id}", request=request
+    )
+
+    user_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
+    return {
+        "id": new_comment.id,
+        "content": new_comment.content,
+        "case_id": new_comment.case_id,
+        "user_id": new_comment.user_id,
+        "user_name": user_name or current_user.email,
+        "is_system_message": new_comment.is_system_message,
+        "created_at": new_comment.created_at
+    }
+    
+# 1. Creamos un pequeño esquema para recibir los datos masivos
+class BulkUpdatePayload(BaseModel):
+    case_ids: List[int]
+    field_api_name: str
+    new_value: Any
+
+# 2. El endpoint que hace la magia
+@router.put("/bulk/update")
+def bulk_update_cases(
+    payload: BulkUpdatePayload,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Actualiza un campo específico para múltiples registros en una sola transacción.
+    """
+    cases = db.query(models.Case).filter(
+        models.Case.id.in_(payload.case_ids),
+        models.Case.company_id == current_user.company_id
+    ).all()
+
+    if not cases:
+        raise HTTPException(status_code=404, detail="No se encontraron registros válidos para actualizar.")
+
+    updated_count = 0
+    
+    for case in cases:
+        # Clonamos el diccionario de data para que SQLAlchemy detecte el cambio
+        current_data = dict(case.data) if case.data else {}
+        
+        # Actualizamos el campo
+        current_data[payload.field_api_name] = payload.new_value
+        case.data = current_data
+        
+        updated_count += 1
+
+    # Hacemos 1 solo COMMIT a la base de datos para los 100 registros. ¡Súper eficiente!
+    db.commit()
+
+    return {"message": f"{updated_count} registros actualizados exitosamente."}
