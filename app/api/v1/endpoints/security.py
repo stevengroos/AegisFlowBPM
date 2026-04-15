@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_ # 🔥 NUEVO: Para poder usar "O esto O aquello" en las búsquedas
 from typing import List
-
+from fastapi import BackgroundTasks
+from app.core.security import validate_password_complexity, get_password_hash, create_invite_token
+from app.core.emails import send_user_invite_async
 from pydantic import BaseModel
 from typing import Optional
 
@@ -237,17 +239,81 @@ def delete_profile(profile_id: int, request: Request, db: Session = Depends(get_
     return {"message": "Perfil eliminado"}
 
 @router.post("/users/invite")
-def invite_user(user_in: UserInvite, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(deps.get_current_user)):
+def invite_user(
+    user_in: UserInvite, 
+    request: Request, 
+    background_tasks: BackgroundTasks, # 🔥 NUEVO: Para enviar correos sin trabar la app
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(deps.get_current_user)
+):
     check_settings_permission(db, current_user, "manage_users")
-    if db.query(models.User).filter(models.User.email == user_in.email).first(): raise HTTPException(400, "El email ya está en uso")
-    if user_in.role_id and not db.query(models.Role).filter(models.Role.id == user_in.role_id, models.Role.company_id == current_user.company_id).first(): raise HTTPException(403, "Rol inválido")
-    if user_in.profile_id and not db.query(models.Profile).filter(models.Profile.id == user_in.profile_id, models.Profile.company_id == current_user.company_id).first(): raise HTTPException(403, "Perfil inválido")
-    new_user = models.User(email=user_in.email, first_name=user_in.first_name, last_name=user_in.last_name, hashed_password=auth_security.get_password_hash(user_in.password), company_id=current_user.company_id, role_id=user_in.role_id, profile_id=user_in.profile_id)
+    
+    if db.query(models.User).filter(models.User.email == user_in.email).first(): 
+        raise HTTPException(400, "El email ya está en uso")
+        
+    if user_in.role_id and not db.query(models.Role).filter(models.Role.id == user_in.role_id, models.Role.company_id == current_user.company_id).first(): 
+        raise HTTPException(403, "Rol inválido")
+        
+    if user_in.profile_id and not db.query(models.Profile).filter(models.Profile.id == user_in.profile_id, models.Profile.company_id == current_user.company_id).first(): 
+        raise HTTPException(403, "Perfil inválido")
+
+    # 1. Buscamos la política global de la empresa
+    policy = db.query(models.SecurityPolicy).filter(
+        models.SecurityPolicy.company_id == current_user.company_id,
+        models.SecurityPolicy.role_id == None,
+        models.SecurityPolicy.profile_id == None
+    ).first()
+
+    # 2. Lógica Híbrida: ¿Invitación o Contraseña Manual?
+    if user_in.send_invite:
+        # El usuario definirá su contraseña luego. Por ahora nace "en blanco".
+        hashed_pwd = None
+        mensaje_respuesta = f"Invitación enviada al correo {user_in.email}"
+    else:
+        # El administrador decidió ponerle una contraseña manual
+        # Validamos que cumpla con las políticas de la empresa
+        errors = validate_password_complexity(user_in.password, policy)
+        if errors:
+            raise HTTPException(status_code=400, detail=" | ".join(errors))
+        
+        hashed_pwd = get_password_hash(user_in.password)
+        mensaje_respuesta = f"Usuario creado exitosamente (Contraseña configurada manualmente)"
+
+    # 3. Creamos el usuario en la BD
+    new_user = models.User(
+        email=user_in.email, 
+        first_name=user_in.first_name, 
+        last_name=user_in.last_name, 
+        hashed_password=hashed_pwd, 
+        company_id=current_user.company_id, 
+        role_id=user_in.role_id, 
+        profile_id=user_in.profile_id
+    )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    log_global_event(db=db, user_id=current_user.id, company_id=current_user.company_id, entity_type="USER", action="CREATE", entity_id=new_user.id, details=f"Invitó al usuario '{new_user.email}' al sistema", request=request)
-    return {"message": "Usuario creado exitosamente", "default_password": user_in.password}
+    
+    # 4. 🔥 Disparamos el correo en segundo plano si aplica
+    if user_in.send_invite:
+        invite_token = create_invite_token(email=new_user.email)
+        background_tasks.add_task(
+            send_user_invite_async,
+            db=db,
+            company_id=new_user.company_id,
+            email_to=new_user.email,
+            name=new_user.first_name,
+            invite_token=invite_token
+        )
+
+    log_global_event(
+        db=db, user_id=current_user.id, company_id=current_user.company_id, 
+        entity_type="USER", action="CREATE", entity_id=new_user.id, 
+        details=f"Dio de alta al usuario '{new_user.email}' (Vía {'Invitación Email' if user_in.send_invite else 'Contraseña Manual'})", 
+        request=request
+    )
+    
+    # IMPORTANTE: Ya no devolvemos la contraseña en la respuesta. ¡Es más seguro!
+    return {"message": mensaje_respuesta}
 
 @router.put("/users/{user_id}/access")
 def update_user_access(user_id: int, access_in: UserAccessUpdate, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(deps.get_current_user)):

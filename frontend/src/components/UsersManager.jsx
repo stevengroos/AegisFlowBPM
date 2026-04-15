@@ -20,6 +20,7 @@ const UsersManager = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [sendInvite, setSendInvite] = useState(true);
 
   const [createData, setCreateData] = useState({ email: '', first_name: '', last_name: '', role_id: '', profile_id: '', password: '' });
   const [editData, setEditData] = useState({ first_name: '', last_name: '', role_id: '', profile_id: '', password: '' });
@@ -63,15 +64,28 @@ const UsersManager = () => {
       const parsedRoleId = createData.role_id ? parseInt(createData.role_id, 10) : null;
       const parsedProfileId = createData.profile_id ? parseInt(createData.profile_id, 10) : null;
 
-      await api.post('/api/v1/security/users/invite', { 
+      // 🔥 Armamos el paquete de datos
+      const payload = { 
         ...createData,
         role_id: parsedRoleId,
-        profile_id: parsedProfileId
-      });
+        profile_id: parsedProfileId,
+        send_invite: sendInvite // Agregamos la decisión del switch
+      };
+
+      // Si se envía invitación, eliminamos la clave manual del paquete
+      if (sendInvite) {
+          delete payload.password;
+      }
+
+      // Hacemos el POST
+      const response = await api.post('/api/v1/security/users/invite', payload);
       
-      notify.success("Usuario creado con éxito. Ya puede iniciar sesión con la contraseña asignada.");
+      // 🔥 Usamos el mensaje dinámico que nos devuelve el backend
+      notify.success(response.data.message || "Usuario creado con éxito.");
+      
       setIsCreateOpen(false);
       setCreateData({ email: '', first_name: '', last_name: '', role_id: '', profile_id: '', password: '' });
+      setSendInvite(true); // Reiniciamos el switch para el próximo usuario
       fetchData(new AbortController().signal);
     } catch (error) { 
       notify.error(error.response?.data?.detail || "Error al dar de alta al usuario."); 
@@ -375,18 +389,48 @@ const UsersManager = () => {
                 <input type="email" required value={createData.email} onChange={e => setCreateData({...createData, email: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm" placeholder="usuario@empresa.com" />
               </div>
               
-              <div>
+              {/* 🔥 NUEVO: SWITCH DE INVITACIÓN POR CORREO 🔥 */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer ${sendInvite ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/50' : 'bg-gray-50 border-gray-200 dark:bg-gray-800/50 dark:border-gray-700'}`}>
+                <input 
+                   type="checkbox" 
+                   checked={sendInvite} 
+                   onChange={(e) => setSendInvite(e.target.checked)} 
+                   className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer mt-0.5"
+                />
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                     <Mail size={14} className={sendInvite ? 'text-blue-500' : 'text-gray-400'} /> 
+                     Enviar invitación automática por Email
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                     Recomendado (ISO 27001). El usuario configurará su propia contraseña al entrar al enlace.
+                  </span>
+                </div>
+              </label>
+
+              {/* BLOQUE DE CONTRASEÑA MODIFICADO */}
+              <div className={`transition-all duration-300 ${sendInvite ? 'opacity-40 grayscale-[50%] pointer-events-none' : ''}`}>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1"><Lock size={12} className="text-amber-500"/> Contraseña Inicial</span>
-                  {globalPolicy?.password_complexity_active && (
+                  <span className="flex items-center gap-1"><Lock size={12} className="text-amber-500"/> Contraseña Manual</span>
+                  {globalPolicy?.password_complexity_active && !sendInvite && (
                     <span className="text-[9px] text-amber-500 font-bold bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full flex items-center gap-1">
                       <AlertTriangle size={10} /> Alta Complejidad Activa
                     </span>
                   )}
                 </label>
-                <input type="text" required minLength={globalPolicy?.pwd_min_length || 6} placeholder="Escribe la contraseña..." value={createData.password} onChange={e => setCreateData({...createData, password: e.target.value})} className="w-full px-4 py-2.5 bg-amber-50/30 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/50 font-mono transition-all shadow-sm" />
+                <input 
+                  type="text" 
+                  required={!sendInvite} // 🔥 Solo es obligatorio si el switch está apagado
+                  disabled={sendInvite}  // 🔥 Lo bloqueamos físicamente
+                  minLength={globalPolicy?.pwd_min_length || 6} 
+                  placeholder={sendInvite ? "Se generará automáticamente..." : "Escribe la contraseña..."} 
+                  value={createData.password} 
+                  onChange={e => setCreateData({...createData, password: e.target.value})} 
+                  className="w-full px-4 py-2.5 bg-amber-50/30 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/50 font-mono transition-all shadow-sm" 
+                />
                 
-                {renderPasswordChecklist(createData.password)}
+                {/* Ocultamos los requisitos si usamos correo para limpiar la vista */}
+                {!sendInvite && renderPasswordChecklist(createData.password)}
               </div>
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">

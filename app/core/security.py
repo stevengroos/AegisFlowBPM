@@ -78,3 +78,20 @@ def validate_password_complexity(password: str, policy: Any) -> List[str]:
         errors.append("Debe incluir al menos un carácter especial (ej: !@#$%^&*).")
         
     return errors
+
+def create_invite_token(email: str, expires_delta: timedelta = timedelta(hours=24)) -> str:
+    """
+    Genera un JWT de un solo uso para invitaciones por correo.
+    Por defecto, dura 24 horas por normativa de seguridad.
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + expires_delta
+    
+    to_encode = {
+        "exp": expire,
+        "iat": now,
+        "sub": email,
+        "type": "invite" # Etiqueta vital para no confundirlo con un token de login
+    }
+    
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

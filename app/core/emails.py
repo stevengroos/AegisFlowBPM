@@ -117,3 +117,55 @@ async def send_support_notification_async(db: Session, company_id: int, email_to
         
     except Exception as e:
         logger.error(f"❌ Error enviando alerta de mensaje a {email_to}: {str(e)}")
+        
+# === AÑADIR AL FINAL DE core/emails.py ===
+
+async def send_user_invite_async(db: Session, company_id: int, email_to: str, name: str, invite_token: str):
+    """
+    Envía un correo de invitación con un enlace mágico para establecer la contraseña.
+    """
+    try:
+        config = get_email_config(db, company_id)
+        
+        # Encontramos la URL del frontend (React)
+        frontend_url = getattr(settings, "CORS_ORIGINS", "http://localhost:5173").split(',')[0].strip()
+        
+        # Armamos el enlace mágico
+        invite_url = f"{frontend_url}/set-password?token={invite_token}"
+        
+        subject = "Invitación para unirte a AegisFlow"
+        
+        body_html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
+            <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #e5e7eb;">
+                <h2 style="color: #2563eb; margin: 0;">¡Bienvenido a AegisFlow!</h2>
+            </div>
+            <div style="padding: 20px 0;">
+                <p style="color: #374151; font-size: 16px;">Hola <b>{name}</b>,</p>
+                <p style="color: #374151; font-size: 16px;">Tu administrador te ha invitado a unirte a la plataforma de gestión AegisFlow.</p>
+                <p style="color: #374151; font-size: 16px;">Para activar tu cuenta y configurar tu contraseña segura, haz clic en el siguiente botón:</p>
+                
+                <div style="text-align: center; margin: 35px 0;">
+                    <a href="{invite_url}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">Configurar mi Cuenta</a>
+                </div>
+                
+                <p style="font-size: 13px; color: #6b7280; margin-top: 30px; text-align: center;">
+                    ⚠️ Por motivos de seguridad, este enlace <b>expirará en 24 horas</b>. Si no lo solicitaste, puedes ignorar este correo.
+                </p>
+            </div>
+        </div>
+        """
+        
+        message = MessageSchema(
+            subject=subject,
+            recipients=[email_to],
+            body=body_html,
+            subtype=MessageType.html
+        )
+        
+        fm = FastMail(config)
+        await fm.send_message(message)
+        logger.info(f"📧 INVITACIÓN ENVIADA EXITOSAMENTE a {email_to}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error enviando invitación a {email_to}: {str(e)}")

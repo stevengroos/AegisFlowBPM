@@ -756,3 +756,43 @@ def impersonate_tenant(
         "message": f"Navegando como {target_company.name}"
     }
 
+# === AÑADE ESTO AL FINAL DE TU ARCHIVO auth.py ===
+
+class SetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+@router.post("/set-password")
+def set_new_password(payload: SetPasswordRequest, db: Session = Depends(get_db)):
+    """Recibe el token de invitación por correo y establece la contraseña final."""
+    try:
+        # 1. Decodificar el token con nuestra llave secreta
+        decoded = jwt.decode(payload.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        
+        # Validar que sea un token de invitación y no uno de sesión normal
+        if decoded.get("type") != "invite":
+            raise HTTPException(status_code=400, detail="Tipo de enlace inválido.")
+            
+        email = decoded.get("sub")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="El enlace ha expirado (duración 24h). Pide al administrador que te envíe otro.")
+    except jwt.JWTError:
+        raise HTTPException(status_code=400, detail="El enlace está corrupto o es inválido.")
+
+    # 2. Buscar al usuario en la BD
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="El usuario asociado a este enlace ya no existe.")
+
+    # 3. (Opcional pero recomendado) Validar que cumpla las políticas de la empresa
+    policy = get_user_policy(db, user)
+    errors = security.validate_password_complexity(payload.new_password, policy)
+    if errors:
+        raise HTTPException(status_code=400, detail=" | ".join(errors))
+
+    # 4. Encriptar y guardar
+    user.hashed_password = security.get_password_hash(payload.new_password)
+    user.session_version += 1 # Invalida cualquier cosa vieja por seguridad
+    db.commit()
+
+    return {"message": "Contraseña establecida con éxito. Ya puedes iniciar sesión."}

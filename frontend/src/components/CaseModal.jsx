@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid } from 'lucide-react';
-
+import { useNavigate } from 'react-router-dom';
 // 🔥 1. IMPORTAMOS NUESTRAS NOTIFICACIONES 🔥
 import { useNotification } from '../context/NotificationContext';
 import FileUploadField from '../components/ui/FileUploadField'; // 🔥 Importamos el componente con IA
@@ -140,6 +140,7 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
 // ==========================================
 const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   const { notify } = useNotification();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [forms, setForms] = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
@@ -249,25 +250,35 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault(); 
-    setLoading(true);
-    try {
-      await api.post('/api/v1/cases/', { 
-        form_id: selectedForm.id, 
-        module_id: moduleId, 
-        data: formData,
-        assigned_to: assignedTo ? parseInt(assignedTo) : null 
-      });
-      notify.success("Registro creado con éxito.");
-      onSuccess(); 
-      onClose();
-    } catch (error) { 
-      const errorMsg = error.response?.data?.detail || "Error desconocido al crear el registro.";
-      notify.error(`Fallo en la creación: ${errorMsg}`); 
-    } finally { 
-      setLoading(false); 
-    }
-  };
+  e.preventDefault(); 
+  setLoading(true);
+  try {
+    // 🔥 Capturamos la respuesta del servidor (res)
+    const res = await api.post('/api/v1/cases/', { 
+      form_id: selectedForm.id, 
+      module_id: moduleId, 
+      data: formData,
+      assigned_to: assignedTo ? parseInt(assignedTo) : null 
+    });
+
+    // Extraemos el ID del registro recién creado
+    const newCaseId = res.data.id; 
+
+    notify.success("Registro creado con éxito.");
+    
+    if (onSuccess) onSuccess(); 
+    onClose();
+
+    // 🔥 REDIRECCIÓN: Navegamos directamente al detalle del caso
+    navigate(`/cases/${newCaseId}`);
+
+  } catch (error) { 
+    const errorMsg = error.response?.data?.detail || "Error desconocido al crear el registro.";
+    notify.error(`Fallo en la creación: ${errorMsg}`); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
   if (!isOpen) return null;
 

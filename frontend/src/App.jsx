@@ -27,6 +27,7 @@ const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Dashboards = lazy(() => import('./pages/Dashboards'));
 const SecurityDashboard = lazy(() => import('./pages/SecurityDashboard'));
 const SupportInbox = lazy(() => import('./pages/SupportInbox'));
+const SetPassword = lazy(() => import('./pages/SetPassword'));
 
 // Un componente visual simple mientras React descarga la pantalla solicitada
 const FullScreenLoader = () => (
@@ -51,6 +52,9 @@ function App() {
                 
                 {/* 🔥 FASE 6: RUTA PARA ATRAPAR EL TOKEN DE SSO 🔥 */}
                 <Route path="/sso-success" element={<SsoSuccess />} />
+
+                {/* 🔥 NUEVO: RUTA PARA ACEPTAR INVITACIONES POR CORREO 🔥 */}
+                <Route path="/set-password" element={<SetPassword />} />
 
                 {/* RUTAS PRIVADAS (Requieren estar logueado y usan el MainLayout) */}
                 <Route path="/dashboard" element={

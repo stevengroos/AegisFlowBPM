@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr, field_validator, ValidationInfo
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-
+import re
 # ==========================================
 # ROLES
 # ==========================================
@@ -40,12 +40,28 @@ class UserAccessUpdate(BaseModel):
     profile_id: Optional[int] = None
 
 class UserInvite(BaseModel):
-    email: str
+    email: EmailStr 
     first_name: str
     last_name: str
     role_id: Optional[int] = None
     profile_id: Optional[int] = None
-    password: str = "Bpm123456" 
+    
+    send_invite: bool = True 
+    
+    # Quitamos la validación de complejidad de aquí. 
+    # Solo aseguramos tamaño para evitar ataques DoS en memoria.
+    password: Optional[str] = Field(None, min_length=6, max_length=128)
+
+    @field_validator('password')
+    @classmethod
+    def validate_password_presence(cls, v: Optional[str], info: ValidationInfo):
+        send_invite = info.data.get('send_invite', False)
+        
+        # Si NO eligió invitación, la contraseña NO puede estar vacía
+        if not send_invite and not v:
+            raise ValueError("Debes proporcionar una contraseña o marcar 'Enviar invitación por correo'.")
+            
+        return v
 
 # ==========================================
 # 🔥 NUEVO: POLÍTICAS DE SEGURIDAD GRANULARES 🔥
