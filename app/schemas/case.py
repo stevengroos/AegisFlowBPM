@@ -47,7 +47,7 @@ class CaseUpdate(BaseModel):
 class CaseResponse(CaseBase):
     id: int
     company_id: int
-    created_by: int
+    created_by: Optional[int] = None
     created_at: datetime
     status_id: Optional[int] = None
     form_id: Optional[int] = None

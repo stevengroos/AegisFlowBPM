@@ -319,22 +319,24 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                 # Eliminar duplicados
                 unique_targets = list(set(targets))
                 
-                # Crear notificaciones masivas
+                # Crear notificaciones masivas de forma segura
                 for target_id in unique_targets:
-                            notification = models.Notification(
-                                company_id=case.company_id,
-                                user_id=target_id,
-                                case_id=case.id,
-                                module_id=case.module_id,
-                                title=rule.target_field, 
-                                message=rule.action_value or "Se ha disparado una alerta automática." 
-                            )
-                            db.add(notification)
+                            # 🔥 PENTEST FIX: Verificar que el usuario exista en la BD antes de crear la notificación
+                            user_exists = db.query(models.User).filter(models.User.id == target_id, models.User.company_id == case.company_id).first()
                             
-                            # 🔥 NUEVO: ENVIAR POR CORREO SI ESTÁ MARCADO (EN SEGUNDO PLANO) 🔥
-                            if config.get("send_email"):
-                                user_obj = db.query(models.User).filter(models.User.id == target_id).first()
-                                if user_obj and user_obj.email:
+                            if user_exists:
+                                notification = models.Notification(
+                                    company_id=case.company_id,
+                                    user_id=target_id,
+                                    case_id=case.id,
+                                    module_id=case.module_id,
+                                    title=rule.target_field, 
+                                    message=rule.action_value or "Se ha disparado una alerta automática." 
+                                )
+                                db.add(notification)
+                                
+                                # Enviar correo si está marcado
+                                if config.get("send_email") and user_exists.email:
                                     email_body = f"""
                                     <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e5e7eb; border-radius: 8px;">
                                         <h2 style="color: #2563eb; margin-top: 0;">{rule.target_field}</h2>
@@ -349,11 +351,11 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                                         background_tasks.add_task(
                                             safe_send_email_background,
                                             case.company_id,
-                                            user_obj.email,
+                                            user_exists.email,
                                             rule.target_field,
                                             email_body
                                         )
-
+                                        
             except Exception as e:
                 pass
 
