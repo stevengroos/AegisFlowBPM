@@ -109,7 +109,7 @@ export const AuthProvider = ({ children }) => {
     };
     
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
-    events.forEach(e => document.addEventListener(e, handleActivity, { passive: true }));
+    events.forEach(e => document.addEventListener(e, handleActivity, { passive: true, capture: true }));
 
     return () => {
       events.forEach(e => document.removeEventListener(e, handleActivity));

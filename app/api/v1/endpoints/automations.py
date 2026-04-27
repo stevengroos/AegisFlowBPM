@@ -1,4 +1,7 @@
 import json
+import sys
+import io
+import traceback
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any, Dict
@@ -16,6 +19,9 @@ router = APIRouter()
 # ==========================
 # ESQUEMAS PYDANTIC
 # ==========================
+class ScriptTestRequest(BaseModel):
+    function_code: str
+    mock_data: Dict[str, Any]
 class AutomationRuleBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=150)
     event_type: str = Field(..., max_length=50)
@@ -191,3 +197,52 @@ def update_rule(
     )
     
     return rule
+
+# ==========================
+# ENDPOINT DE PRUEBA (SANDBOX LOW-CODE PARA AUTOMATIZACIONES)
+# ==========================
+@router.post("/test-script")
+def test_global_python_script(
+    req: ScriptTestRequest,
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Ejecuta un script de Python en un entorno seguro.
+    Idéntico al de transiciones, pero montado en la ruta de automatizaciones globales.
+    """
+    class MockHTTPClient:
+        def get(self, url, headers=None): 
+            print(f"[TEST MOCK] GET simulado a: {url}")
+            return {"status": 200, "data": "Mocked GET response"}
+        def post(self, url, json=None, headers=None): 
+            print(f"[TEST MOCK] POST simulado a: {url} con payload: {json}")
+            return {"status": 200, "data": "Mocked POST response"}
+
+    local_env = {
+        "case_data": req.mock_data,
+        "user_id": current_user.id,
+        "current_date": datetime.now().strftime("%Y-%m-%d"),
+        "http": MockHTTPClient()
+    }
+    
+    stdout_trap = io.StringIO()
+    original_stdout = sys.stdout
+    sys.stdout = stdout_trap
+
+    try:
+        exec(req.function_code, {"__builtins__": {}}, local_env)
+        sys.stdout = original_stdout
+        
+        return {
+            "success": True,
+            "modified_data": local_env.get("case_data", req.mock_data),
+            "console_output": stdout_trap.getvalue()
+        }
+    except Exception as e:
+        sys.stdout = original_stdout
+        error_trace = traceback.format_exc()
+        return {
+            "success": False,
+            "error_message": str(e),
+            "traceback": error_trace
+        }

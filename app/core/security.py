@@ -95,3 +95,34 @@ def create_invite_token(email: str, expires_delta: timedelta = timedelta(hours=2
     }
     
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+# para correos de aprobacion por un solo clic, que también deben ser tokens JWT pero con una estructura y duración diferente
+
+def create_action_token(case_id: int, transition_id: int, user_id: int, expires_days: int = 7) -> str:
+    """
+    Genera un token seguro para aprobaciones por correo de un solo clic.
+    Dura 7 días por defecto para evitar aprobaciones fantasma después de meses.
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=expires_days)
+    
+    to_encode = {
+        "exp": expire,
+        "iat": now,
+        "type": "email_action", # Etiqueta vital de seguridad
+        "case_id": case_id,
+        "transition_id": transition_id,
+        "user_id": user_id
+    }
+    
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+def verify_action_token(token: str):
+    """Verifica el token y extrae los datos si es válido y no ha expirado."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "email_action":
+            return None
+        return payload
+    except Exception: # Atrapa expiraciones o firmas inválidas
+        return None

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle } from 'lucide-react';
-
+import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download } from 'lucide-react';
+import { createPortal } from 'react-dom';
 // 🔥 Importaciones Arquitectura Limpia 🔥
 import { useNotification } from '../context/NotificationContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -34,6 +34,8 @@ const CaseDetail = () => {
   const [companyRoles, setCompanyRoles] = useState([]); 
   const [editAssignedTo, setEditAssignedTo] = useState('');
   const [userData, setUserData] = useState(null);
+  const [hasSignaturit, setHasSignaturit] = useState(false); // 🔥 NUEVO ESTADO
+  const [signaturesList, setSignaturesList] = useState([]); // 🔥 NUEVO ESTADO PARA EL HISTORIAL DE FIRMAS
 
   const fetchAllData = async (signal) => {
     try {
@@ -45,14 +47,21 @@ const CaseDetail = () => {
       const currentCase = caseRes.data;
       const moduleId = currentCase.module_id; 
 
-      const [fieldsRes, secRes, statusRes, transRes, blueprintsRes, usersRes, rolesRes] = await Promise.all([
+      // 🔥 Consultamos si Signaturit está activo
+      const sigPromise = api.get(`/api/v1/modules/${moduleId}/integrations/signaturit`, { signal }).catch(() => ({ data: { is_active: false, has_token: false } }));
+      // 🔥 Traemos el historial de firmas del registro
+      const sigListPromise = api.get(`/api/v1/cases/${id}/signatures`, { signal }).catch(() => ({ data: [] }));
+
+      const [fieldsRes, secRes, statusRes, transRes, blueprintsRes, usersRes, rolesRes, sigRes, sigListRes] = await Promise.all([
         api.get(`/api/v1/fields/?module_id=${moduleId}`, { signal }),
         api.get(`/api/v1/fields/sections?form_id=${currentCase.form_id}`, { signal }),
         api.get('/api/v1/statuses/', { signal }),
         api.get('/api/v1/transitions/', { signal }),
         api.get('/api/v1/blueprints/', { signal }),
         api.get('/api/v1/auth/users', { signal }),
-        api.get('/api/v1/security/roles', { signal }) 
+        api.get('/api/v1/security/roles', { signal }),
+        sigPromise,
+        sigListPromise
       ]);
 
       let fetchedHistory = [];
@@ -109,8 +118,12 @@ const CaseDetail = () => {
       setCompanyUsers(usersRes.data);
       setCompanyRoles(rolesRes.data);
       setRelationData(relData);
+      setHasSignaturit(sigRes.data?.is_active && sigRes.data?.has_token);
+      setSignaturesList(sigListRes.data || []);
     } catch (error) {
       if (error.name !== 'CanceledError') {
+        console.error("🔥 EL CULPABLE ES:", error); // Lo movimos aquí adentro
+        
         if (error.response && (error.response.status === 403 || error.response.status === 404)) {
            notify.error("Acceso denegado o registro no encontrado.");
            navigate('/dashboard');
@@ -121,6 +134,126 @@ const CaseDetail = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 🔥 ESTADOS PARA SIGNATURIT (FASE 3) 🔥
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [signaturitTemplates, setSignaturitTemplates] = useState([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [sendingSignature, setSendingSignature] = useState(false);
+  const [sigConfig, setSigConfig] = useState({
+     sourceType: 'template', // 'template' o 'file'
+     templateId: '',
+     file: null,
+     signatureType: 'advanced', // 'advanced' o 'simple'
+     deliveryType: 'email', // 'email' o 'url'
+     signers: [{ name: '', email: '' }]
+  });
+
+  const handleOpenSignatureModal = async () => {
+    setIsSignatureModalOpen(true);
+    setLoadingTemplates(true);
+    try {
+      const res = await api.get(`/api/v1/modules/${caseData.module_id}/integrations/signaturit/templates`);
+      setSignaturitTemplates(res.data || []);
+      // Pre-llenar firmante si ya hay datos en el caso (Opcional, busca correos)
+      const foundEmail = Object.values(caseData.data).find(v => typeof v === 'string' && v.includes('@'));
+      if (foundEmail) setSigConfig(prev => ({...prev, signers: [{name: 'Cliente', email: foundEmail}]}));
+    } catch (e) {
+      notify.error("No se pudieron cargar las plantillas. Verifica la integración.");
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleRemindSignature = async (signatureId) => {
+    try {
+      await api.post(`/api/v1/cases/${id}/signatures/${signatureId}/remind`);
+      notify.success("Recordatorio enviado al cliente.");
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al enviar recordatorio.");
+    }
+  };
+
+  const handleDownloadSignedDocument = async (signatureId) => {
+    try {
+      notify.success("Iniciando descarga segura...");
+      const response = await api.get(`/api/v1/cases/${id}/signatures/${signatureId}/download`, {
+        responseType: 'blob' // ¡Súper importante para descargar archivos!
+      });
+      
+      // Magia del navegador para forzar la descarga del archivo
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Contrato_Firmado_${signatureId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+    } catch (error) {
+      notify.error("Error al descargar el documento firmado.");
+    }
+  };
+
+  const handleCancelSignature = async (signatureId) => {
+    const isConfirmed = await confirm({
+      title: 'Cancelar Envío de Firma',
+      message: '¿Estás seguro? El cliente ya no podrá firmar este documento y se invalidará el enlace.',
+      confirmText: 'Sí, cancelar envío',
+      variant: 'danger'
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      await api.post(`/api/v1/cases/${id}/signatures/${signatureId}/cancel`);
+      notify.success("El envío ha sido cancelado.");
+      // Recargamos los datos para que el estado se actualice visualmente
+      fetchAllData(new AbortController().signal); 
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al cancelar.");
+    }
+  };
+
+  const handleSendToSignaturit = async (e) => {
+    e.preventDefault();
+    if (sigConfig.sourceType === 'template' && !sigConfig.templateId) return notify.warning("Selecciona una plantilla.");
+    if (sigConfig.sourceType === 'file' && !sigConfig.file) return notify.warning("Sube un documento PDF.");
+    for (let s of sigConfig.signers) {
+      if (!s.name || !s.email) return notify.warning("Completa el nombre y correo de todos los firmantes.");
+    }
+
+    setSendingSignature(true);
+    try {
+      const formData = new FormData();
+      formData.append('delivery_type', sigConfig.deliveryType);
+      formData.append('signature_type', sigConfig.signatureType);
+      formData.append('signers', JSON.stringify(sigConfig.signers));
+
+      if (sigConfig.sourceType === 'template') {
+        formData.append('template_id', sigConfig.templateId);
+      } else {
+        formData.append('file', sigConfig.file);
+      }
+
+      const res = await api.post(`/api/v1/cases/${id}/signaturit/send`, formData, { headers: { 'Content-Type': 'multipart/form-data' }});
+      
+      setIsSignatureModalOpen(false);
+      
+      // MAGIA "FIRMAR YO": Abrir la pestaña si se seleccionó URL
+      if (sigConfig.deliveryType === 'url' && res.data.signature_url) {
+         notify.success("¡Documento listo! Redirigiendo a la sala de firmas...");
+         window.open(res.data.signature_url, '_blank');
+      } else {
+         notify.success("¡Documento enviado a firmar por correo exitosamente!");
+      }
+      
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al enviar a firma.");
+    } finally {
+      setSendingSignature(false);
     }
   };
 
@@ -376,19 +509,27 @@ const CaseDetail = () => {
 
         <div className="flex flex-wrap items-center gap-3">
           {!isEditing && caseData.status_id && showTransitions && (
-            <div className="flex gap-2 mr-2 pr-4 border-r border-gray-200 dark:border-gray-800">
-              {availableTransitions.map(transition => (
-                <button key={transition.id} onClick={() => handleStatusChange(transition.to_status_id)} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 text-gray-900 dark:text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
-                  {transition.name} <ArrowRight size={14} className="text-gray-400"/>
-                </button>
-              ))}
+            <div className="w-64 mr-2 pr-4 border-r border-gray-200 dark:border-gray-800 flex items-center">
+              {/* 🔥 REEMPLAZAMOS LOS BOTONES POR EL SELECT2 🔥 */}
+              <SearchableSelect 
+                 placeholder="Transicionar a..." 
+                 value="" 
+                 onChange={(val) => { if(val) handleStatusChange(val); }} 
+                 disabled={false} 
+                 options={availableTransitions.map(t => ({ value: t.to_status_id, label: t.name }))} 
+              />
             </div>
           )}
 
           {!isEditing ? (
             <>
               {canDelete && <button onClick={handleDeleteCase} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Mover a papelera"><Trash2 size={18} /></button>}
-              
+              {/* 🔥 BOTÓN ENVIAR A FIRMA (SOLO SI ESTÁ CONFIGURADO) 🔥 */}
+              {hasSignaturit && (
+                  <button onClick={handleOpenSignatureModal} className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 hover:text-emerald-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
+                     <PenTool size={16}/> Firmar
+                  </button>
+              )}
               {/* 🔥 AQUÍ INYECTAMOS NUESTRO BOTÓN MÁGICO 🔥 */}
               <ExportPdfButton moduleId={caseData.module_id} recordId={caseData.id} />
 
@@ -414,6 +555,12 @@ const CaseDetail = () => {
           <button onClick={() => setActiveTab('comments')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'comments' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
             <MessageSquare size={16} /> Comentarios
           </button>
+          {/* 🔥 NUEVA PESTAÑA CONDICIONADA 🔥 */}
+          {hasSignaturit && (
+            <button onClick={() => setActiveTab('signatures')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'signatures' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
+              <PenTool size={16} /> Firmas Digitales
+            </button>
+          )}
         </div>
 
         {activeTab === 'details' && (
@@ -542,7 +689,225 @@ const CaseDetail = () => {
             <CaseComments caseId={id} currentUser={userData} />
           </div>
         )}
+        {/* 🔥 RENDERIZAR EL TABLERO DE FIRMAS 🔥 */}
+        {activeTab === 'signatures' && hasSignaturit && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-4xl mx-auto">
+            <div className="flex justify-between items-center mb-6">
+               <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                 <PenTool size={20} className="text-emerald-500" /> Seguimiento de Firmas
+               </h2>
+               <button onClick={handleOpenSignatureModal} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
+                 <Plus size={16}/> Nueva Solicitud
+               </button>
+            </div>
+
+            {signaturesList.length === 0 ? (
+               <div className="bg-white dark:bg-gray-900/50 p-12 rounded-2xl border border-gray-100 dark:border-gray-800/60 text-center">
+                  <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4"><FileText size={32} /></div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-lg">No hay documentos enviados</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Envía un contrato o documento para hacer el seguimiento aquí.</p>
+               </div>
+            ) : (
+               <div className="space-y-4">
+                  {signaturesList.map(sig => (
+                     <div key={sig.id} className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-100 dark:border-gray-800/60 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div>
+                           <div className="flex items-center gap-3 mb-2">
+                              <span className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                 {sig.request_type === 'template' ? <LayoutGrid size={12}/> : <FileText size={12}/>}
+                                 {sig.request_type === 'template' ? 'Plantilla' : 'Documento PDF'}
+                              </span>
+                              <span className="text-xs text-gray-500 font-mono">ID: {sig.signaturit_id.split('-')[0]}...</span>
+                           </div>
+                           <p className="text-sm text-gray-900 dark:text-white font-medium flex items-center gap-1.5 mb-1">
+                              <Clock size={14} className="text-gray-400"/> Creado el {new Date(sig.created_at).toLocaleString()}
+                           </p>
+                           <div className="mt-3">
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Destinatarios:</p>
+                              <div className="flex flex-wrap gap-2">
+                                 {(sig.signers_data || []).map((signer, idx) => (
+                                    <span key={idx} className="text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50 px-2 py-1 rounded-md flex items-center gap-1.5">
+                                       <Users size={12}/> {signer.name || signer.email}
+                                    </span>
+                                 ))}
+                              </div>
+                           </div>
+                        </div>
+
+                        <div className="flex flex-col items-start md:items-end gap-2 shrink-0 border-t md:border-t-0 border-gray-100 dark:border-gray-800 pt-4 md:pt-0">
+                           {/* ESTADO DINÁMICO */}
+                           {['completed', 'document_signed'].includes(sig.status) ? (
+                              <div className="flex flex-col items-start md:items-end gap-2">
+                                  <span className="bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
+                                     <CheckCircle size={16} /> Completado y Firmado
+                                  </span>
+                                  {/* 🔥 NUEVO BOTÓN DE DESCARGA 🔥 */}
+                                  <button onClick={() => handleDownloadSignedDocument(sig.id)} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition-colors flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-200 dark:hover:bg-emerald-800/50 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 shadow-sm mt-1 active:scale-95">
+                                     <Download size={14}/> Descargar PDF Firmado
+                                  </button>
+                              </div>
+                           ) : ['declined', 'error'].includes(sig.status) ? (
+                              <span className="bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-400 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
+                                 <AlertTriangle size={16} /> Rechazado / Error
+                              </span>
+                           ) : sig.status === 'canceled' ? (
+                              <span className="bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
+                                 <X size={16} /> Envío Cancelado
+                              </span>
+                           ) : (
+                              <span className="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-400 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 animate-pulse">
+                                 <Loader2 size={16} className="animate-spin" /> Pendiente (Enviado)
+                              </span>
+                           )}
+                           
+                           {/* Acciones adicionales si no está completado ni cancelado */}
+                           {['in_queue', 'ready', 'document_opened'].includes(sig.status) && (
+                              <div className="flex flex-wrap items-center gap-3 mt-2 md:justify-end">
+                                 <button onClick={() => handleRemindSignature(sig.id)} className="text-[11px] font-bold text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
+                                    <ArrowRight size={12}/> Recordar
+                                 </button>
+                                 <button onClick={() => handleCancelSignature(sig.id)} className="text-[11px] font-bold text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800/50 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
+                                    <X size={12}/> Cancelar Envío
+                                 </button>
+                              </div>
+                           )}
+                           
+                        </div>
+                     </div>
+                  ))}
+               </div>
+            )}
+          </div>
+        )}
       </div>
+      {/* 🔥 MODAL DE ENVÍO A SIGNATURIT 🔥 */}
+      {isSignatureModalOpen && createPortal(
+        <div className="fixed inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-emerald-200 dark:border-emerald-800/50 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-1 h-1 bg-gradient-to-r from-emerald-500 to-teal-500"></div>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-emerald-50/50 dark:bg-emerald-900/10">
+              <h3 className="font-bold text-emerald-900 dark:text-emerald-400 flex items-center gap-2"><PenTool size={18} className="text-emerald-500" /> Solicitar Firma</h3>
+              <button onClick={() => !sendingSignature && setIsSignatureModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+            </div>
+            
+            <form onSubmit={handleSendToSignaturit} className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+              
+             {/* TIPO DE ORIGEN */}
+              <div className="flex gap-2 bg-gray-100 dark:bg-gray-950 p-1.5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-inner">
+                <button 
+                  type="button" 
+                  onClick={() => setSigConfig({
+                    ...sigConfig, 
+                    sourceType: 'template', 
+                    deliveryType: 'email', // 🔥 Forzamos correo al volver a plantillas
+                    signers: [{ name: '', email: '' }] // Reseteamos firmantes
+                  })} 
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${sigConfig.sourceType === 'template' ? 'bg-white dark:bg-gray-800 shadow-sm text-emerald-600 dark:text-emerald-400 border border-gray-200 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border border-transparent'}`}
+                >
+                  <FileText size={16}/> Usar Plantilla
+                </button>
+                
+                <button 
+                  type="button" 
+                  onClick={() => setSigConfig({...sigConfig, sourceType: 'file'})} 
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${sigConfig.sourceType === 'file' ? 'bg-white dark:bg-gray-800 shadow-sm text-emerald-600 dark:text-emerald-400 border border-gray-200 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border border-transparent'}`}
+                >
+                  <UploadCloud size={16}/> Subir PDF Manual
+                </button>
+              </div>
+
+              {sigConfig.sourceType === 'template' ? (
+                 <div>
+                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Plantilla de Signaturit</label>
+                   {loadingTemplates ? <p className="text-sm text-emerald-600 dark:text-emerald-500 flex items-center gap-2 animate-pulse"><Loader2 size={16} className="animate-spin"/> Cargando plantillas...</p> : (
+                     /* 🔥 SELECT2 (SearchableSelect) MÁGICO 🔥 */
+                     <SearchableSelect 
+                        placeholder="Buscar plantilla..." 
+                        value={sigConfig.templateId} 
+                        onChange={val => setSigConfig({...sigConfig, templateId: val})} 
+                        disabled={false} 
+                        options={signaturitTemplates.map(t => ({ value: t.id, label: t.name }))} 
+                     />
+                   )}
+                 </div>
+              ) : (
+                 <div>
+                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Documento a Firmar (PDF)</label>
+                   <div className="border-2 border-dashed border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl p-4 text-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
+                     <input type="file" accept=".pdf" onChange={e => setSigConfig({...sigConfig, file: e.target.files[0]})} className="w-full text-sm text-gray-600 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-emerald-100 dark:file:bg-emerald-900/50 file:text-emerald-700 dark:file:text-emerald-400 cursor-pointer" />
+                   </div>
+                 </div>
+              )}
+
+              {/* CONFIGURACIÓN DE FIRMA */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-100 dark:border-gray-800 pt-6">
+                 <div>
+                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Validez Legal</label>
+                   <select value={sigConfig.signatureType} onChange={e => setSigConfig({...sigConfig, signatureType: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none text-sm text-gray-900 dark:text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all">
+                      <option value="advanced">Firma Avanzada (Biométrica)</option>
+                      <option value="simple">Firma Simple (Check)</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Modo de Entrega</label>
+                   <select 
+                      value={sigConfig.deliveryType} 
+                      onChange={e => {
+                        const mode = e.target.value;
+                        if(mode === 'url') {
+                           setSigConfig({
+                              ...sigConfig, 
+                              deliveryType: mode, 
+                              signers: [{name: `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Mi Usuario', email: userData.email}]
+                           });
+                        } else {
+                           setSigConfig({...sigConfig, deliveryType: mode});
+                        }
+                      }} 
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none text-sm text-gray-900 dark:text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                   >
+                      <option value="email">Por Correo Electrónico</option>
+                      {/* 🔥 SOLO MOSTRAMOS ESTA OPCIÓN SI ES SUBIDA MANUAL 🔥 */}
+                      {sigConfig.sourceType === 'file' && (
+                         <option value="url">"Firmar Yo" (Embebido Presencial)</option>
+                      )}
+                   </select>
+                 </div>
+              </div>
+
+              {/* FIRMANTES */}
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
+                 <div className="flex justify-between items-center mb-4">
+                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Users size={14}/> Firmantes Requeridos</label>
+                    {sigConfig.deliveryType === 'email' && (
+                       <button type="button" onClick={() => setSigConfig({...sigConfig, signers: [...sigConfig.signers, {name: '', email: ''}]})} className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-lg transition-colors"><Plus size={14}/> Añadir Firmante</button>
+                    )}
+                 </div>
+                 <div className="space-y-3">
+                    {sigConfig.signers.map((s, idx) => (
+                       <div key={idx} className="flex gap-2 items-center bg-gray-50 dark:bg-gray-950 p-2 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                          <input type="text" placeholder="Nombre completo" required value={s.name} onChange={e => { const newS = [...sigConfig.signers]; newS[idx].name = e.target.value; setSigConfig({...sigConfig, signers: newS})}} className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all" />
+                          <input type="email" placeholder="Correo electrónico" required value={s.email} onChange={e => { const newS = [...sigConfig.signers]; newS[idx].email = e.target.value; setSigConfig({...sigConfig, signers: newS})}} className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all" />
+                          {sigConfig.deliveryType === 'email' && sigConfig.signers.length > 1 && (
+                             <button type="button" onClick={() => { const newS = [...sigConfig.signers]; newS.splice(idx, 1); setSigConfig({...sigConfig, signers: newS})}} className="p-2 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                          )}
+                       </div>
+                    ))}
+                 </div>
+                 {sigConfig.deliveryType === 'url' && <p className="text-xs text-blue-600 dark:text-blue-400 mt-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 p-3 rounded-xl flex items-center gap-2"><Link2 size={14}/> Se abrirá el documento en otra pestaña para que firmes presencialmente ahora mismo.</p>}
+              </div>
+
+            </form>
+            
+            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end gap-3 shrink-0">
+               <button type="button" onClick={() => setIsSignatureModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors">Cancelar</button>
+               <button onClick={handleSendToSignaturit} disabled={sendingSignature} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-70">
+                 {sendingSignature ? <Loader2 size={16} className="animate-spin" /> : <PenTool size={16} />} Enviar Documento
+               </button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
     </>
   );
 };

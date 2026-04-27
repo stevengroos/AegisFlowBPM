@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css'; // Asegúrate de tener react-quill instalado
 import api from '../api/axios';
@@ -18,6 +18,22 @@ const TemplateCanvas = ({ moduleId, template, fields, onClose, setHasUnsavedChan
     is_active: template?.is_active ?? true,
     content_html: '',
   });
+
+  // 🔥 FIX: Limpiamos los campos duplicados en memoria usando useMemo 🔥
+  const uniqueFields = useMemo(() => {
+    if (!fields) return [];
+    const uniqueMap = new Map();
+    
+    fields.forEach(f => {
+      // Usamos api_name como llave principal, si no existe, usamos el label
+      const key = f.api_name || f.label;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, f);
+      }
+    });
+    
+    return Array.from(uniqueMap.values());
+  }, [fields]);
 
   useEffect(() => {
     if (template && template.versions?.length > 0) {
@@ -179,14 +195,18 @@ const TemplateCanvas = ({ moduleId, template, fields, onClose, setHasUnsavedChan
             {/* Variables del Formulario */}
             <div>
               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">Campos del Formulario</div>
-              {fields.map(field => (
-                <div key={field.id} onClick={() => insertVariable(field.api_name)} className="w-full px-3 py-2 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-800 mb-1.5 transition-colors cursor-pointer group shadow-sm">
-                  <div className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">{field.label}</div>
-                  <div className="font-mono text-[10px] text-gray-400 mt-0.5 group-hover:text-indigo-500 transition-colors truncate">
-                    {`{{ ${field.api_name} }}`}
+              {/* 🔥 Mapeamos sobre la lista filtrada 'uniqueFields' 🔥 */}
+              {uniqueFields.map(field => {
+                const variableName = field.api_name || field.label; // Prevención de errores si no hay api_name
+                return (
+                  <div key={field.id} onClick={() => insertVariable(variableName)} className="w-full px-3 py-2 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-800 mb-1.5 transition-colors cursor-pointer group shadow-sm">
+                    <div className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">{field.label}</div>
+                    <div className="font-mono text-[10px] text-gray-400 mt-0.5 group-hover:text-indigo-500 transition-colors truncate">
+                      {`{{ ${variableName} }}`}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
           </div>

@@ -59,7 +59,7 @@ export const NotificationProvider = ({ children }) => {
       {children}
 
       {/* RENDER DE TOASTS (Flotando arriba a la derecha) */}
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+      <div className="fixed top-4 right-4 z-[999999] flex flex-col gap-2 pointer-events-none">
         {toasts.map(toast => {
           const icons = {
             success: <CheckCircle2 className="text-emerald-500" size={20} />,
@@ -88,7 +88,7 @@ export const NotificationProvider = ({ children }) => {
 
       {/* RENDER DEL MODAL DE CONFIRMACIÓN (Reemplazo de window.confirm) */}
       {confirmDialog && (
-        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[999999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 p-6 animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{confirmDialog.title}</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">{confirmDialog.message}</p>

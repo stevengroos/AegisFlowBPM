@@ -1,4 +1,8 @@
 import json
+import sys
+import io
+import traceback
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any, Dict
@@ -16,6 +20,9 @@ router = APIRouter()
 # ==========================
 # ESQUEMAS PYDANTIC (Transiciones)
 # ==========================
+class ScriptTestRequest(BaseModel):
+    function_code: str
+    mock_data: Dict[str, Any]
 class TransitionCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150) # 🔥 PENTEST FIX: Límites de texto
     from_status_id: int
@@ -458,3 +465,61 @@ def delete_transition_validation(
     )
     
     return {"message": "Regla de validación eliminada correctamente"}
+
+# ==========================
+# ENDPOINT DE PRUEBA (SANDBOX LOW-CODE)
+# ==========================
+@router.post("/actions/test-script")
+def test_python_script(
+    req: ScriptTestRequest,
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Ejecuta un script de Python en un entorno de prueba seguro sin afectar la base de datos.
+    Captura los 'print()' y los errores de sintaxis para mostrarlos en el frontend.
+    """
+    # 1. Creamos un Mock del Cliente HTTP para no disparar webhooks reales durante la prueba
+    class MockHTTPClient:
+        def get(self, url, headers=None): 
+            print(f"[TEST MOCK] GET simulado a: {url}")
+            return {"status": 200, "data": "Mocked GET response"}
+        def post(self, url, json=None, headers=None): 
+            print(f"[TEST MOCK] POST simulado a: {url} con payload: {json}")
+            return {"status": 200, "data": "Mocked POST response"}
+
+    # 2. Preparamos el entorno aislado (Sandbox)
+    local_env = {
+        "case_data": req.mock_data,
+        "user_id": current_user.id,
+        "current_date": datetime.now().strftime("%Y-%m-%d"),
+        "http": MockHTTPClient()
+    }
+    
+    # 3. Trampa para capturar los 'print()' del usuario
+    stdout_trap = io.StringIO()
+    original_stdout = sys.stdout
+    sys.stdout = stdout_trap
+
+    try:
+        # 4. Ejecutamos el código
+        exec(req.function_code, {"__builtins__": {}}, local_env)
+        
+        # 5. Restauramos la consola del servidor inmediatamente
+        sys.stdout = original_stdout
+        
+        return {
+            "success": True,
+            "modified_data": local_env.get("case_data", req.mock_data),
+            "console_output": stdout_trap.getvalue()
+        }
+    except Exception as e:
+        # Restauramos la consola si hay error
+        sys.stdout = original_stdout
+        
+        # Extraemos la traza del error para que el usuario sepa en qué línea falló
+        error_trace = traceback.format_exc()
+        return {
+            "success": False,
+            "error_message": str(e),
+            "traceback": error_trace
+        }

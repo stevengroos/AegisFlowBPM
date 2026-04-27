@@ -49,12 +49,14 @@ class UserListResponse(BaseModel):
     is_superadmin: bool = False 
     is_active: bool = True 
     is_mfa_enabled: bool = False
+    language: str = "es"
     class Config:
         from_attributes = True
 
 class UserUpdateMe(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    language: Optional[str] = None
 
 class UserPasswordUpdate(BaseModel):
     current_password: str
@@ -593,17 +595,28 @@ def get_company_users(db: Session = Depends(get_db), current_user: models.User =
     for u in users:
         if u.is_mfa_enabled is None:
             u.is_mfa_enabled = False
+        if getattr(u, 'language', None) is None:
+            u.language = "es" # Si no tiene idioma, le asignamos español por defecto
             
     return users
 
 @router.put("/users/me")
 def update_user_me(user_in: UserUpdateMe, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(deps.get_current_user)):
     db_user = db.query(models.User).filter(models.User.id == current_user.id).first()
+    
     if user_in.first_name is not None: db_user.first_name = user_in.first_name
     if user_in.last_name is not None: db_user.last_name = user_in.last_name
+    if user_in.language is not None: db_user.language = user_in.language # 🔥 Guardar nuevo idioma
+    
     db.commit()
-    return {"message": "Perfil actualizado correctamente", "first_name": db_user.first_name, "last_name": db_user.last_name}
-
+    
+    return {
+        "message": "Perfil actualizado correctamente", 
+        "first_name": db_user.first_name, 
+        "last_name": db_user.last_name,
+        "language": db_user.language # 🔥 Devolver el idioma guardado
+    }
+    
 @router.put("/users/me/password")
 def update_password_me(passwords_in: UserPasswordUpdate, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(deps.get_current_user)):
     db_user = db.query(models.User).filter(models.User.id == current_user.id).first()

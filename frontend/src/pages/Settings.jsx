@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, LayoutGrid, Columns, Zap, Box, Users, Shield, Key, Loader2, ShieldAlert, Lock, FileText } from 'lucide-react'; 
+import { ArrowLeft, LayoutGrid, Columns, Zap, Box, Users, Shield, Key, Loader2, ShieldAlert, Lock, FileText, Plug } from 'lucide-react'; 
 import api from '../api/axios'; 
 
 import ModuleList from '../components/ModuleList';
@@ -7,6 +7,7 @@ import FieldBuilder from '../components/FieldBuilder';
 import BlueprintBuilder from '../components/BlueprintBuilder';
 import AutomationBuilder from '../components/AutomationBuilder'; 
 import TemplateBuilder from '../components/TemplateBuilder';
+import IntegrationBuilder from '../components/IntegrationBuilder';
 
 
 import UsersManager from '../components/UsersManager';
@@ -153,6 +154,17 @@ const Settings = () => {
           >
             <FileText size={16} className={activeTab === 'templates' ? "" : "text-indigo-500"} /> <span className="hidden sm:inline">Plantillas (PDFs)</span><span className="sm:hidden">PDFs</span>
           </button>
+          {/* 🔥 NUEVA PESTAÑA: INTEGRACIONES 🔥 */}
+          <button 
+            onClick={() => handleAttemptNavigation('tab', 'integrations')} 
+            className={`pb-4 px-2 text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'integrations' 
+                ? 'border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-500' 
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <Plug size={16} className={activeTab === 'integrations' ? "" : "text-emerald-500"} /> <span className="hidden sm:inline">Integraciones (iPaaS)</span><span className="sm:hidden">iPaaS</span>
+          </button>
         </div>
 
         <div className="flex-1 overflow-hidden">
@@ -160,8 +172,10 @@ const Settings = () => {
                 <FieldBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
             ) : activeTab === 'automations' ? (
                 <AutomationBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
-            ) : activeTab === 'templates' ? ( // 🔥 NUEVA CONDICIÓN PARA EL RENDER
+            ) : activeTab === 'templates' ? (
                 <TemplateBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
+            ) : activeTab === 'integrations' ? ( // 🔥 NUEVA CONDICIÓN
+                <IntegrationBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
             ) : (
                 <BlueprintBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} /> 
             )}

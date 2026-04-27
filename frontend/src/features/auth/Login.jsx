@@ -4,7 +4,7 @@ import DarkModeToggle from '../../components/DarkModeToggle';
 import { useAuth } from '../../context/AuthContext'; 
 import { QRCodeSVG } from 'qrcode.react'; 
 import api from '../../api/axios'; 
-import { ShieldAlert, ShieldCheck, Lock, ArrowLeft, Loader2 } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Lock, ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
   const { login, user } = useAuth(); 
@@ -13,6 +13,7 @@ const Login = () => {
   
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [status, setStatus] = useState({ loading: false, error: '', info: '' });
+  const [showPassword, setShowPassword] = useState(false);
 
   // ESTADOS PARA MULTIFACTOR (MFA)
   const [mfaStep, setMfaStep] = useState('LOGIN'); // 'LOGIN' | 'MFA_INPUT' | 'MFA_SETUP'
@@ -207,11 +208,31 @@ const Login = () => {
               
               <div className="mb-6">
                 <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Contraseña</label>
-                <input 
-                  name="password" type="password" autoComplete="current-password" 
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  placeholder="••••••••" value={credentials.password} onChange={handleChange} disabled={status.loading || setupLoading} required
-                />
+                <div className="relative">
+                  <input 
+                    name="password" 
+                    // 🔥 Aquí cambiamos dinámicamente entre text y password
+                    type={showPassword ? "text" : "password"} 
+                    autoComplete="current-password" 
+                    // 🔥 Le agregamos 'pr-12' para que el texto no se monte encima del ícono
+                    className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    placeholder="••••••••" 
+                    value={credentials.password} 
+                    onChange={handleChange} 
+                    disabled={status.loading || setupLoading} 
+                    required
+                  />
+                  
+                  {/* 🔥 EL BOTÓN DEL OJITO 🔥 */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={status.loading || setupLoading}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors focus:outline-none disabled:opacity-50"
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
               </div>
 
               <button 

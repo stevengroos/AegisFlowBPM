@@ -1,6 +1,9 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
+// 🔥 IMPORTAMOS EL MOTOR DE IDIOMAS (INTERNACIONALIZACIÓN) 🔥
+
+
 // 🔥 IMPORTAMOS NUESTRO CEREBRO, GUARDIÁN Y MARCO 🔥
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';

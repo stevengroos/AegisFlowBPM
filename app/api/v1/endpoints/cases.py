@@ -10,6 +10,8 @@ import pandas as pd
 import io
 import json
 import asyncio
+from fastapi.responses import StreamingResponse
+
 
 from app.core.emails import send_security_alert_async
 from app.db.session import get_db, SessionLocal
@@ -347,6 +349,40 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                                         </p>
                                     </div>
                                     """
+                                   # 🔥 MAGIA ENTERPRISE V2: BOTONES BASADOS EN CONFIGURACIÓN UI 🔥
+                                    email_actions = config.get("email_actions", [])
+                                    
+                                    if email_actions and len(email_actions) > 0:
+                                        from app.core.security import create_action_token
+                                        import os
+                                        
+                                        # Buscar SOLO las transiciones que el usuario eligió en el frontend
+                                        out_transitions = db.query(models.Transition).filter(
+                                            models.Transition.id.in_(email_actions),
+                                            models.Transition.company_id == case.company_id
+                                        ).all()
+                                        
+                                        if out_transitions:
+                                            buttons_html = "<div style='margin-top: 25px; margin-bottom: 10px; display: block; text-align: center;'>"
+                                            backend_url = os.getenv("BACKEND_URL", "http://localhost:8000") 
+                                            
+                                            for t in out_transitions:
+                                                token = create_action_token(case.id, t.id, target_id)
+                                                action_url = f"{backend_url}/api/v1/workflow/email-action?token={token}"
+                                                
+                                                t_name = t.name.lower()
+                                                if "rechazar" in t_name or "cancelar" in t_name or "denegar" in t_name:
+                                                    color = "#ef4444"
+                                                elif "aprobar" in t_name or "autorizar" in t_name or "aceptar" in t_name:
+                                                    color = "#10b981"
+                                                else:
+                                                    color = "#3b82f6"
+                                                
+                                                buttons_html += f"<a href='{action_url}' style='background-color: {color}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin: 5px; font-family: sans-serif;'>{t.name}</a>"
+                                            
+                                            buttons_html += "</div>"
+                                            # Lo pegamos elegantemente justo antes de cerrar el recuadro del correo
+                                            email_body = email_body.replace("</div>", f"{buttons_html}</div>")
                                     if background_tasks:
                                         background_tasks.add_task(
                                             safe_send_email_background,
@@ -829,6 +865,19 @@ def change_case_status(
                 try: 
                     if float(current_value) >= float(val.validation_value): failed = True
                 except: failed = True
+                # 🔥 NUEVA REGLA ENTERPRISE: BLOQUEO POR FALTA DE FIRMA 🔥
+            elif val.operator == "HAS_COMPLETED_SIGNATURE":
+                has_signed = db.query(models.SignatureRequest).filter(
+                    models.SignatureRequest.case_id == case_id,
+                    models.SignatureRequest.company_id == current_user.company_id,
+                    models.SignatureRequest.status.in_(["completed", "document_signed"])
+                ).first()
+                
+                if not has_signed:
+                    failed = True
+                    # Si el admin no configuró un mensaje de error personalizado, le damos uno bonito
+                    if not val.error_message:
+                        val.error_message = "⚠️ Acción denegada: Este paso requiere que el documento esté firmado por todas las partes."
 
             if failed:
                 error_msg = val.error_message or f"No se cumple la regla de validación para el campo '{val.target_field}'."
@@ -932,6 +981,79 @@ def change_case_status(
                             old_v=None,
                             new_v={"created_case_id": new_case.id, "target_module_id": target_mod_id}
                         )
+                
+                # 🔥 NUEVA AUTOMATIZACIÓN: ENVÍO SILENCIOSO DE SIGNATURIT 🔥
+                elif t == "SEND_SIGNATURIT":
+                    template_id = config.get("template_id")
+                    signers_map = config.get("signers", [])
+
+                    if template_id and signers_map:
+                        integration = db.query(models.ModuleIntegration).filter(
+                            models.ModuleIntegration.company_id == current_user.company_id,
+                            models.ModuleIntegration.module_id == case.module_id,
+                            models.ModuleIntegration.provider_name == "signaturit",
+                            models.ModuleIntegration.is_active == True
+                        ).first()
+
+                        if integration and integration.encrypted_token:
+                            import urllib3
+                            import json
+                            from app.core.encryption import decrypt_secret
+                            
+                            token = decrypt_secret(integration.encrypted_token).strip()
+                            base_url = "https://api.sandbox.signaturit.com" if integration.environment == "sandbox" else "https://api.signaturit.com"
+
+                            # Leemos el tipo de firma elegido, por defecto 'advanced'
+                            signature_type = config.get("signature_type", "advanced")
+
+                            # Preparamos el Payload silencioso
+                            payload = {
+                                "delivery_type": "email",
+                                "type": signature_type,
+                                "templates[0]": template_id
+                            }
+
+                            signers_data = []
+                            for i, smap in enumerate(signers_map):
+                                # 🔥 MAPEO MÁGICO: Extraemos los valores reales del caso usando los nombres de los campos configurados
+                                name = updated_data.get(smap.get("name_field"), f"Firmante {i+1}")
+                                email = updated_data.get(smap.get("email_field"), "")
+
+                                payload[f"recipients[{i}][name]"] = str(name)
+                                if email:
+                                    payload[f"recipients[{i}][email]"] = str(email)
+                                
+                                signers_data.append({"name": str(name), "email": str(email)})
+
+                            # Auto-rellenar campos adicionales de la plantilla si los nombres coinciden
+                            for key, value in updated_data.items():
+                                if value is not None and str(value).strip() != "":
+                                    payload[f"data[{key}]"] = str(value)
+
+                            headers = {"Authorization": f"Bearer {token}"}
+                            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                            
+                            try:
+                                # Ejecutamos la petición POST en el mismo instante de la transición
+                                response = requests.post(f"{base_url}/v3/signatures.json", data=payload, headers=headers, verify=False)
+                                
+                                if response.ok:
+                                    res_data = response.json()
+                                    # Guardamos el registro para que el Webhook lo encuentre
+                                    sig_request = models.SignatureRequest(
+                                        company_id=current_user.company_id,
+                                        case_id=case.id,
+                                        created_by=current_user.id,
+                                        signaturit_id=res_data.get("id"),
+                                        status="in_queue",
+                                        request_type="template",
+                                        signers_data=signers_data
+                                    )
+                                    db.add(sig_request)
+                                else:
+                                    print(f"Error de Signaturit Auto-Send: {response.text}")
+                            except Exception as e:
+                                print(f"Error en red Auto-Send: {str(e)}")
                         
                 elif t in ["WEBHOOK_OUT", "SEND_SLACK"]:
                     # 🔥 FASE 3: INTEGRACIONES EXTERNAS EN TRANSICIONES 🔥
@@ -995,6 +1117,38 @@ def change_case_status(
                                         </p>
                                     </div>
                                     """
+                                    # 🔥 MAGIA ENTERPRISE V2: BOTONES BASADOS EN CONFIGURACIÓN UI 🔥
+                                    email_actions = config.get("email_actions", [])
+                                    
+                                    if email_actions and len(email_actions) > 0:
+                                        from app.core.security import create_action_token
+                                        import os
+                                        
+                                        out_transitions = db.query(models.Transition).filter(
+                                            models.Transition.id.in_(email_actions),
+                                            models.Transition.company_id == case.company_id
+                                        ).all()
+                                        
+                                        if out_transitions:
+                                            buttons_html = "<div style='margin-top: 25px; margin-bottom: 10px; display: block; text-align: center;'>"
+                                            backend_url = os.getenv("BACKEND_URL", "http://localhost:8000") 
+                                            
+                                            for t in out_transitions:
+                                                token = create_action_token(case.id, t.id, target_id)
+                                                action_url = f"{backend_url}/api/v1/workflow/email-action?token={token}"
+                                                
+                                                t_name = t.name.lower()
+                                                if "rechazar" in t_name or "cancelar" in t_name or "denegar" in t_name:
+                                                    color = "#ef4444"
+                                                elif "aprobar" in t_name or "autorizar" in t_name or "aceptar" in t_name:
+                                                    color = "#10b981"
+                                                else:
+                                                    color = "#3b82f6"
+                                                
+                                                buttons_html += f"<a href='{action_url}' style='background-color: {color}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin: 5px; font-family: sans-serif;'>{t.name}</a>"
+                                            
+                                            buttons_html += "</div>"
+                                            email_body = email_body.replace("</div>", f"{buttons_html}</div>")
                                     background_tasks.add_task(
                                         safe_send_email_background,
                                         case.company_id,
@@ -1395,3 +1549,277 @@ def bulk_update_cases(
     db.commit()
 
     return {"message": f"{updated_count} registros actualizados exitosamente."}
+
+# =======================================================
+# 🔥 FASE 3: OPERACIÓN MANUAL DE SIGNATURIT 🔥
+# ==========================================
+import json
+from app.core.encryption import decrypt_secret
+import urllib3
+
+@router.post("/{case_id}/signaturit/send")
+async def send_to_signaturit(
+    case_id: int,
+    request: Request,
+    template_id: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    signers: str = Form(...), # JSON list [{"name": "...", "email": "..."}]
+    delivery_type: str = Form("email"), # 'email' o 'url'
+    signature_type: str = Form("advanced"), # 'advanced' o 'simple'
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    case = db.query(models.Case).filter(models.Case.id == case_id, models.Case.company_id == current_user.company_id).first()
+    if not case: raise HTTPException(404, "Caso no encontrado")
+
+    integration = db.query(models.ModuleIntegration).filter(
+        models.ModuleIntegration.company_id == current_user.company_id,
+        models.ModuleIntegration.module_id == case.module_id,
+        models.ModuleIntegration.provider_name == "signaturit"
+    ).first()
+
+    if not integration or not integration.is_active or not integration.encrypted_token:
+        raise HTTPException(400, "La integración con Signaturit no está configurada o está inactiva en este módulo.")
+
+    token = decrypt_secret(integration.encrypted_token).strip()
+    base_url = "https://api.sandbox.signaturit.com" if integration.environment == "sandbox" else "https://api.signaturit.com"
+
+    signers_data = json.loads(signers)
+    
+    # 1. Preparamos el payload base
+    payload = {
+        "delivery_type": delivery_type,
+        "type": signature_type
+    }
+    
+    # 2. Agregamos los firmantes requeridos por Signaturit
+    for i, signer in enumerate(signers_data):
+        payload[f"recipients[{i}][name]"] = signer.get("name", f"Firmante {i+1}")
+        payload[f"recipients[{i}][email]"] = signer.get("email")
+
+    files = {}
+
+    # 3. Decidimos si enviamos un Archivo Físico o un Template ID
+    if template_id:
+        payload["templates[0]"] = template_id
+        # Mapeo Mágico: Enviamos los datos del caso a los campos de Signaturit
+        for key, value in case.data.items():
+            if value is not None and str(value).strip() != "":
+                payload[f"data[{key}]"] = str(value)
+    elif file:
+        content = await file.read()
+        files["files[0]"] = (file.filename, content, file.content_type)
+    else:
+        raise HTTPException(400, "Debes seleccionar una plantilla o subir un documento.")
+
+    # 4. Hacemos la llamada
+    headers = {"Authorization": f"Bearer {token}"}
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    try:
+        response = requests.post(f"{base_url}/v3/signatures.json", data=payload, files=files if files else None, headers=headers, verify=False)
+        
+        if not response.ok:
+            raise HTTPException(400, f"Signaturit rechazó el envío: {response.text}")
+            
+        res_data = response.json()
+        
+        # 5. Guardamos el seguimiento en nuestra base de datos
+        sig_request = models.SignatureRequest(
+            company_id=current_user.company_id,
+            case_id=case.id,
+            created_by=current_user.id,
+            signaturit_id=res_data.get("id"),
+            status="in_queue",
+            request_type="template" if template_id else "document",
+            signers_data=signers_data
+        )
+        db.add(sig_request)
+        db.commit()
+
+        # 6. Buscador recursivo de la URL de firma (Si el usuario eligió "Firmar Yo")
+        signature_url = None
+        if delivery_type == "url":
+            def find_url(d):
+                if isinstance(d, dict):
+                    for k, v in d.items():
+                        if k == "url" and isinstance(v, str) and "signaturit.com" in v:
+                            return v
+                        res = find_url(v)
+                        if res: return res
+                elif isinstance(d, list):
+                    for item in d:
+                        res = find_url(item)
+                        if res: return res
+                return None
+            signature_url = find_url(res_data)
+
+        return {
+            "message": "Enviado a firmar con éxito.", 
+            "signaturit_id": res_data.get("id"),
+            "signature_url": signature_url
+        }
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(400, f"Fallo de red conectando con Signaturit: {str(e)}")
+    
+@router.get("/{case_id}/signatures")
+def get_case_signatures(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """Obtiene el historial de firmas solicitadas para un caso específico."""
+    case = db.query(models.Case).filter(
+        models.Case.id == case_id, 
+        models.Case.company_id == current_user.company_id
+    ).first()
+    
+    if not case: 
+        raise HTTPException(404, "Caso no encontrado")
+        
+    security_utils.check_record_permission(db, current_user, case, "view")
+
+    signatures = db.query(models.SignatureRequest).filter(
+        models.SignatureRequest.case_id == case_id,
+        models.SignatureRequest.company_id == current_user.company_id
+    ).order_by(models.SignatureRequest.created_at.desc()).all()
+    
+    return [{
+        "id": sig.id,
+        "signaturit_id": sig.signaturit_id,
+        "status": sig.status,
+        "request_type": sig.request_type,
+        "signers_data": sig.signers_data,
+        "created_at": sig.created_at
+    } for sig in signatures]
+    
+@router.post("/{case_id}/signatures/{signature_id}/remind")
+def remind_signature(
+    case_id: int,
+    signature_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """Reenvía el correo de recordatorio al cliente a través de Signaturit."""
+    sig_request = db.query(models.SignatureRequest).filter(
+        models.SignatureRequest.id == signature_id,
+        models.SignatureRequest.case_id == case_id,
+        models.SignatureRequest.company_id == current_user.company_id
+    ).first()
+    if not sig_request: raise HTTPException(404, "Solicitud de firma no encontrada.")
+
+    integration = db.query(models.ModuleIntegration).join(models.Case, models.Case.module_id == models.ModuleIntegration.module_id).filter(
+        models.Case.id == case_id,
+        models.ModuleIntegration.provider_name == "signaturit"
+    ).first()
+
+    token = decrypt_secret(integration.encrypted_token).strip()
+    base_url = "https://api.sandbox.signaturit.com" if integration.environment == "sandbox" else "https://api.signaturit.com"
+    headers = {"Authorization": f"Bearer {token}"}
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    try:
+        # Llamamos al endpoint de remind de Signaturit
+        response = requests.post(f"{base_url}/v3/signatures/{sig_request.signaturit_id}/remind.json", headers=headers, verify=False)
+        if not response.ok:
+            raise HTTPException(400, "Signaturit no pudo procesar el recordatorio. Verifica el estado del documento.")
+        return {"message": "Recordatorio enviado con éxito."}
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(400, f"Fallo de red: {str(e)}")
+
+@router.post("/{case_id}/signatures/{signature_id}/cancel")
+def cancel_signature(
+    case_id: int,
+    signature_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """Cancela una solicitud de firma en Signaturit."""
+    sig_request = db.query(models.SignatureRequest).filter(
+        models.SignatureRequest.id == signature_id,
+        models.SignatureRequest.case_id == case_id,
+        models.SignatureRequest.company_id == current_user.company_id
+    ).first()
+    if not sig_request: raise HTTPException(404, "Solicitud no encontrada.")
+
+    integration = db.query(models.ModuleIntegration).join(models.Case, models.Case.module_id == models.ModuleIntegration.module_id).filter(
+        models.Case.id == case_id,
+        models.ModuleIntegration.provider_name == "signaturit"
+    ).first()
+
+    token = decrypt_secret(integration.encrypted_token).strip()
+    base_url = "https://api.sandbox.signaturit.com" if integration.environment == "sandbox" else "https://api.signaturit.com"
+    headers = {"Authorization": f"Bearer {token}"}
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    try:
+        # 🔥 FIX: Signaturit exige que la cancelación sea con el método PATCH
+        response = requests.patch(f"{base_url}/v3/signatures/{sig_request.signaturit_id}/cancel.json", headers=headers, verify=False)
+        if not response.ok:
+            raise HTTPException(400, f"No se pudo cancelar. Signaturit dice: {response.text}")
+        
+        # Actualizamos la base de datos de inmediato para no esperar al webhook
+        sig_request.status = "canceled"
+        db.commit()
+        return {"message": "Envío cancelado con éxito."}
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(400, f"Fallo de red: {str(e)}")
+    
+@router.get("/{case_id}/signatures/{signature_id}/download")
+def download_signed_document(
+    case_id: int,
+    signature_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """Descarga el PDF final firmado desde Signaturit."""
+    sig_request = db.query(models.SignatureRequest).filter(
+        models.SignatureRequest.id == signature_id,
+        models.SignatureRequest.case_id == case_id,
+        models.SignatureRequest.company_id == current_user.company_id
+    ).first()
+    
+    if not sig_request: raise HTTPException(404, "Solicitud no encontrada.")
+
+    # Protegemos que solo se descargue si ya se firmó
+    if sig_request.status not in ["completed", "document_signed"]:
+        raise HTTPException(400, "El documento aún no ha sido firmado completamente.")
+
+    integration = db.query(models.ModuleIntegration).join(models.Case, models.Case.module_id == models.ModuleIntegration.module_id).filter(
+        models.Case.id == case_id,
+        models.ModuleIntegration.provider_name == "signaturit"
+    ).first()
+
+    token = decrypt_secret(integration.encrypted_token).strip()
+    base_url = "https://api.sandbox.signaturit.com" if integration.environment == "sandbox" else "https://api.signaturit.com"
+    headers = {"Authorization": f"Bearer {token}"}
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    try:
+        # 1. Pedimos los detalles para sacar el ID interno del documento
+        detail_res = requests.get(f"{base_url}/v3/signatures/{sig_request.signaturit_id}.json", headers=headers, verify=False)
+        if not detail_res.ok:
+            raise HTTPException(400, "No se pudieron obtener los detalles del documento en Signaturit.")
+        
+        documents = detail_res.json().get("documents", [])
+        if not documents:
+            raise HTTPException(404, "No se encontró el archivo dentro de esta firma.")
+            
+        document_id = documents[0].get("id")
+
+        # 2. Descargamos el PDF firmado directamente
+        pdf_res = requests.get(f"{base_url}/v3/signatures/{sig_request.signaturit_id}/documents/{document_id}/download/signed", headers=headers, verify=False, stream=True)
+        
+        if not pdf_res.ok:
+            raise HTTPException(400, "Error al descargar el PDF desde los servidores de Signaturit.")
+
+        # 3. Lo devolvemos como un archivo descargable al navegador
+        return StreamingResponse(
+            pdf_res.iter_content(chunk_size=8192),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=Contrato_Firmado_{sig_request.signaturit_id[:6]}.pdf"}
+        )
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(400, f"Fallo de red: {str(e)}")

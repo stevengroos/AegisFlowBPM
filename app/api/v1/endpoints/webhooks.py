@@ -10,7 +10,7 @@ from app.api import deps
 from app.core.global_audit import log_global_event
 
 # Importamos tu motor de reglas para que se disparen cuando el webhook cree un caso
-from app.api.v1.endpoints.cases import process_global_rules
+from app.api.v1.endpoints.cases import process_global_rules, StatusUpdate
 
 router = APIRouter()
 
@@ -189,3 +189,95 @@ def delete_webhook(
     )
 
     return {"message": "Webhook eliminado permanentemente."}
+
+# =======================================================
+# 🔥 3. EL OÍDO DE SIGNATURIT (WEBHOOK DE EVENTOS) 🔥
+# =======================================================
+@router.post("/signaturit")
+async def signaturit_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks, 
+    db: Session = Depends(get_db)
+):
+    """
+    Ruta pública que Signaturit llama automáticamente cuando ocurre un evento.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="El cuerpo debe ser un JSON válido.")
+
+    document = payload.get("document", {})
+    signaturit_id = document.get("id")
+    
+    if not signaturit_id:
+        signaturit_id = payload.get("signature", {}).get("id")
+
+    if not signaturit_id:
+        return {"status": "ignored", "message": "No se encontró un ID de firma válido en el payload."}
+
+    sig_request = db.query(models.SignatureRequest).filter(
+        models.SignatureRequest.signaturit_id == signaturit_id
+    ).first()
+
+    if not sig_request:
+        return {"status": "ignored", "message": "Registro no encontrado en AegisFlow."}
+
+    nuevo_estado = document.get("status")
+    if nuevo_estado:
+        sig_request.status = nuevo_estado
+
+    event_type = payload.get("event")
+    
+    if event_type == "document_signed":
+        log_global_event(
+            db=db, user_id=sig_request.created_by, company_id=sig_request.company_id,
+            entity_type="SIGNATURE", action="DOCUMENT_SIGNED", entity_id=sig_request.case_id,
+            details=f"Documento de Signaturit ({signaturit_id}) acaba de ser firmado.", request=request
+        )
+
+    # 🔥 MAGIA ENTERPRISE: EL AUTO-AVANCE INTELIGENTE 🔥
+    elif event_type == "signature_request_completed" or nuevo_estado == "completed":
+        log_global_event(
+            db=db, user_id=sig_request.created_by, company_id=sig_request.company_id,
+            entity_type="SIGNATURE", action="COMPLETED", entity_id=sig_request.case_id,
+            details=f"Todos los firmantes completaron el documento ({signaturit_id}).", request=request
+        )
+        
+        # 1. Traemos el caso actual
+        case = db.query(models.Case).filter(models.Case.id == sig_request.case_id).first()
+        if case and case.status_id:
+            # 2. Buscamos las transiciones que salen del estado actual
+            outgoing_transitions = db.query(models.Transition).filter(
+                models.Transition.from_status_id == case.status_id
+            ).all()
+            
+            for t in outgoing_transitions:
+                # 3. Revisamos si esta transición estaba bloqueada esperando la firma
+                val = db.query(models.TransitionValidation).filter(
+                    models.TransitionValidation.transition_id == t.id,
+                    models.TransitionValidation.operator == "HAS_COMPLETED_SIGNATURE"
+                ).first()
+                
+                if val:
+                    # ¡Bingo! Esta es la ruta. Hacemos el avance automático.
+                    from app.api.v1.endpoints.cases import change_case_status 
+                    
+                    system_user = db.query(models.User).filter(models.User.id == sig_request.created_by).first()
+                    
+                    if system_user:
+                        try:
+                            change_case_status(
+                                case_id=case.id,
+                                status_in=StatusUpdate(new_status_id=t.to_status_id),
+                                request=request,
+                                background_tasks=background_tasks,
+                                db=db,
+                                current_user=system_user
+                            )
+                        except Exception as e:
+                            print(f"Error en el auto-avance de Signaturit: {str(e)}")
+                    break 
+
+    db.commit()
+    return {"status": "success", "message": "Webhook procesado correctamente"}

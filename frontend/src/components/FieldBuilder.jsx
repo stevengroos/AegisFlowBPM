@@ -97,7 +97,8 @@ const FieldBuilder = ({ moduleId, setHasUnsavedChanges }) => {
       )}
 
       {view === 'canvas' && selectedForm && (
-        <FieldCanvas 
+        <FieldCanvas
+          moduleId={moduleId} 
           selectedForm={selectedForm} 
           onCloseCanvas={closeCanvas}
           fields={fields}

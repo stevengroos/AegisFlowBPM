@@ -40,7 +40,19 @@ const AutomationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
         api.get('/api/v1/security/profiles', { signal })
       ]);
 
-      setFields(fieldsRes.data?.filter(f => f.is_active) || []);
+      // 🔥 FIX: Limpiamos duplicados y preparamos el formato "Label (api_name)"
+      const activeFields = fieldsRes.data?.filter(f => f.is_active) || [];
+      const uniqueFieldsMap = new Map();
+      activeFields.forEach(f => {
+          const key = f.api_name || f.label;
+          if (!uniqueFieldsMap.has(key)) {
+              f.display_label = f.api_name && f.api_name !== f.label 
+                  ? `${f.label} (${f.api_name})` 
+                  : f.label;
+              uniqueFieldsMap.set(key, f);
+          }
+      });
+      setFields(Array.from(uniqueFieldsMap.values()));
       setRules(rulesRes.data || []);
       setCompanyUsers(usersRes.data || []);
       setAllModules(modRes.data || []);

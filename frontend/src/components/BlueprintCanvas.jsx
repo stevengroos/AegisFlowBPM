@@ -1,78 +1,171 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
-import { Star, Plus, Settings2, Trash2, ArrowRight, ArrowLeft, GitMerge, Zap, Save, Code, BellRing, DownloadCloud, UploadCloud, Loader2, CheckCircle2, User, Copy, Database, X, Edit2, ShieldAlert, History, RotateCcw, Shapes } from 'lucide-react';
+import { X, User, Copy, Database, BellRing, Code, Zap, Sparkles, Type, FileBox, UploadCloud, CheckCircle, Loader2, Edit2, Trash2, Plus, ShieldAlert } from 'lucide-react';
 import ReactFlow, { Background, Controls, MarkerType, applyNodeChanges, applyEdgeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
-import Select from 'react-select'; 
 import { useNotification } from '../context/NotificationContext';
-import { TaskNode, StartNode, EndNode, GatewayNode } from './BpmnNodes';
 
-// 🔥 AÑADIMOS LA PROP reloadBlueprints QUE VIENE DE BlueprintBuilder 🔥
+// Nodos y Modales
+import { TaskNode, StartNode, EndNode, GatewayNode } from './BpmnNodes';
+import ShapeSelectorModal from './modals/ShapeSelectorModal';
+import ValidationModal from './modals/ValidationModal';
+import ActionModal from './modals/ActionModal';
+import BlueprintHeader from './BlueprintHeader';
+import BlueprintSidebar from './BlueprintSidebar';
+
+// Nuestro nuevo Custom Hook con la lógica pesada
+import { useBlueprintManager } from './useBlueprintManager';
+
 const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsavedChanges, reloadBlueprints }) => {
   const { notify, confirm } = useNotification(); 
 
-  const [nodes, setNodes] = useState([]);
-  const [edges, setEdges] = useState([]);
-  
-  const [moduleFields, setModuleFields] = useState([]);
-  const [moduleSections, setModuleSections] = useState([]); 
-  const [companyUsers, setCompanyUsers] = useState([]);
-  const [companyRoles, setCompanyRoles] = useState([]); 
-  const [companyProfiles, setCompanyProfiles] = useState([]); 
-  
-  const [allModules, setAllModules] = useState([]);
-  const [allForms, setAllForms] = useState([]);
-  const [targetModuleFields, setTargetModuleFields] = useState([]); 
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
+  const [isActionsListOpen, setIsActionsListOpen] = useState(false);
+  const [isValidationsListOpen, setIsValidationsListOpen] = useState(false);
+  // =================================================================
+  // ESTADOS DE LA INTERFAZ (UI)
+  // =================================================================
   const [newStatus, setNewStatus] = useState({ name: '', is_initial: false, sla_hours: '' });
   const [isShapeModalOpen, setIsShapeModalOpen] = useState(false);
+  // 🔥 ESTADOS DEL ASISTENTE IA PARA BLUEPRINTS 🔥
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiMode, setAiMode] = useState('text'); // 'text' o 'file'
+  const [aiFile, setAiFile] = useState(null);
+  const aiBlueprintFileInputRef = useRef(null);
+
+  // Truco para conectar el botón del Header con este estado:
+  useEffect(() => {
+     if (isShapeModalOpen === 'ai_modal') {
+        setIsAiModalOpen(true);
+        setIsShapeModalOpen(false);
+     }
+  }, [isShapeModalOpen]);
   const nodeTypes = useMemo(() => ({ task: TaskNode, start: StartNode, end: EndNode, gateway: GatewayNode }), []);
   const [selectedElement, setSelectedElement] = useState(null);
-  
   const [renameValue, setRenameValue] = useState("");
-  const [editSlaHours, setEditSlaHours] = useState(""); // 🔥 NUEVO: Para editar el SLA
+  const [editSlaHours, setEditSlaHours] = useState(""); 
   const [isRenaming, setIsRenaming] = useState(false);
   
-  // 🔥 ESTADOS PARA EL HISTORIAL DE VERSIONES (FASE 1.1) 🔥
-  const [versions, setVersions] = useState([]);
   const [showVersions, setShowVersions] = useState(false);
-  const [loadingVersions, setLoadingVersions] = useState(false);
-  const [viewingOldVersion, setViewingOldVersion] = useState(false); // ¿Estamos viendo el pasado?
-  const [currentVersionId, setCurrentVersionId] = useState(selectedBlueprint.id); // Para saber qué versión estamos dibujando
+  const [viewingOldVersion, setViewingOldVersion] = useState(false); 
+  const [currentVersionId, setCurrentVersionId] = useState(selectedBlueprint.id); 
 
   const [activeTab, setActiveTab] = useState('actions'); 
 
-  const [transitionActions, setTransitionActions] = useState([]);
   const [isAddingAction, setIsAddingAction] = useState(false);
   const [editingActionId, setEditingActionId] = useState(null); 
-  const [editingValidationId, setEditingValidationId] = useState(null);
   const defaultActionState = { action_type: 'UPDATE_VALUE', target_field: '', action_value: '', function_code: '', action_config: {} };
   const [newAction, setNewAction] = useState(defaultActionState);
 
-  const [transitionValidations, setTransitionValidations] = useState([]);
   const [isAddingValidation, setIsAddingValidation] = useState(false);
+  const [editingValidationId, setEditingValidationId] = useState(null);
   const defaultValidationState = { target_field: '', operator: '==', validation_value: '', error_message: '' };
   const [newValidation, setNewValidation] = useState(defaultValidationState);
 
   const [pendingConnection, setPendingConnection] = useState(null);
   const [newTransitionName, setNewTransitionName] = useState('');
-
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
-  const fileInputRef = useRef(null); // Para el importador de JSON
+  const [targetModuleFields, setTargetModuleFields] = useState([]); 
 
+  const fileInputRef = useRef(null); 
+  const aiImageInputRef = useRef(null); 
   const selectedElementRef = useRef(selectedElement);
-  useEffect(() => {
-    selectedElementRef.current = selectedElement;
-  }, [selectedElement]);
 
+  useEffect(() => { selectedElementRef.current = selectedElement; }, [selectedElement]);
+
+  // =================================================================
+  // INVOCACIÓN DEL CUSTOM HOOK (LÓGICA DE NEGOCIO Y API)
+  // =================================================================
+  const {
+    nodes, setNodes, edges, setEdges,
+    moduleFields, moduleSections, companyUsers, companyRoles, companyProfiles, allModules, allForms,
+    versions, loadingVersions, transitionActions, transitionValidations,
+    fetchBlueprintData, loadTransitionDetails, fetchVersions,
+    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleGenerateFromImage, handleImportBlueprint
+  } = useBlueprintManager({
+    moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints
+  });
+
+  // =================================================================
+  // EFECTOS SECUNDARIOS
+  // =================================================================
   const reportChanges = useCallback((hasPendingChanges) => {
-      if (setHasUnsavedChanges) {
-          setHasUnsavedChanges(hasPendingChanges);
-      }
+      if (setHasUnsavedChanges) setHasUnsavedChanges(hasPendingChanges);
   }, [setHasUnsavedChanges]);
 
+  // =================================================================
+  // 🔥 LÓGICA PARA GENERAR EL FLUJO CON IA 🔥
+  // =================================================================
+  const handleGenerateBlueprintWithAI = async (e) => {
+    e.preventDefault();
+    if (aiMode === 'text' && !aiPrompt.trim()) return notify.warning("Describe el proceso que necesitas.");
+    if (aiMode === 'file' && !aiFile) return notify.warning("Por favor, selecciona un documento o imagen.");
+
+    setIsGenerating(true);
+    try {
+      let res;
+      // 1. Llamar al backend
+      if (aiMode === 'file') {
+         const formData = new FormData();
+         formData.append('file', aiFile);
+         res = await api.post('/api/v1/ai/generate-blueprint/file', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+         });
+      } else {
+         res = await api.post(`/api/v1/ai/generate-blueprint/text`, { prompt: aiPrompt });
+      }
+
+      const aiData = res.data;
+      if (!aiData || !aiData.statuses) throw new Error("La IA no devolvió un formato válido.");
+
+      // 2. Crear los estados en la BD
+      const statusMap = {};
+      let xOffset = 100;
+      let yOffset = 150;
+
+      for (const st of aiData.statuses) {
+         const statusRes = await api.post('/api/v1/statuses/', {
+            name: st.name,
+            is_initial: st.is_initial || false,
+            bpmn_shape: st.bpmn_shape || 'task',
+            position_x: xOffset,
+            position_y: yOffset,
+            blueprint_id: currentVersionId
+         });
+         statusMap[st.id] = statusRes.data.id; // Guardamos el ID real que le dio la BD
+         
+         // Acomodamos visualmente el siguiente nodo hacia la derecha
+         xOffset += 250; 
+         if (xOffset > 900) { xOffset = 100; yOffset += 200; } // Salto de línea si es muy largo
+      }
+
+      // 3. Crear las transiciones (flechas)
+      for (const tr of (aiData.transitions || [])) {
+         if (statusMap[tr.from_status_id] && statusMap[tr.to_status_id]) {
+            await api.post('/api/v1/transitions/', {
+               name: tr.name || 'Avanzar',
+               from_status_id: statusMap[tr.from_status_id],
+               to_status_id: statusMap[tr.to_status_id],
+               blueprint_id: currentVersionId
+            });
+         }
+      }
+
+      notify.success("¡Flujo BPMN generado mágicamente!");
+      setIsAiModalOpen(false);
+      setAiPrompt('');
+      setAiFile(null);
+      // Recargamos el lienzo para ver los nodos nuevos
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al generar el flujo. Revisa tu saldo de IA.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
   const isEditingName = selectedElement && renameValue !== selectedElement.data.name;
   const isWritingNewStatus = newStatus.name.trim().length > 0;
   const hasLocalChanges = isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation;
@@ -80,12 +173,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   useEffect(() => { reportChanges(hasLocalChanges); }, [hasLocalChanges, reportChanges]);
 
   useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (hasLocalChanges) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
+    const handleBeforeUnload = (e) => { if (hasLocalChanges) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasLocalChanges]);
@@ -96,240 +184,51 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const fetchCatalogs = async () => {
-      try {
-        const [fieldsRes, usersRes, modRes, formsRes, rolesRes, profilesRes] = await Promise.all([
-          api.get(`/api/v1/fields/?module_id=${moduleId}`),
-          api.get('/api/v1/auth/users'),
-          api.get('/api/v1/modules/'),
-          api.get('/api/v1/forms/'),
-          api.get('/api/v1/security/roles'),
-          api.get('/api/v1/security/profiles')
-        ]);
-        
-        setModuleFields(fieldsRes.data.filter(f => f.is_active));
-        setCompanyUsers(usersRes.data);
-        setAllModules(modRes.data);
-        setAllForms(formsRes.data);
-        setCompanyRoles(rolesRes.data);
-        setCompanyProfiles(profilesRes.data);
-
-        const modForms = formsRes.data.filter(f => f.module_id === parseInt(moduleId) && f.is_active);
-        let allSections = [];
-        for(let f of modForms) {
-            try {
-                const secRes = await api.get(`/api/v1/fields/sections?form_id=${f.id}`);
-                allSections = [...allSections, ...secRes.data];
-            } catch(e) {}
-        }
-        setModuleSections(allSections);
-
-      } catch (error) { 
-          notify.error("Error al cargar los catálogos del sistema."); 
-      }
-    };
-    if (moduleId) fetchCatalogs();
-  }, [moduleId, notify]);
+  useEffect(() => { fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef); }, [fetchBlueprintData]);
 
   useEffect(() => {
      if (newAction.action_type === 'CREATE_RECORD' && newAction.action_config?.module_id) {
-         api.get(`/api/v1/fields/?module_id=${newAction.action_config.module_id}`)
-            .then(res => setTargetModuleFields(res.data.filter(f => f.is_active)))
-            .catch(err => console.error(err));
-     } else {
-         setTargetModuleFields([]);
-     }
+         api.get(`/api/v1/fields/?module_id=${newAction.action_config.module_id}`).then(res => {
+                const activeTgt = res.data.filter(f => f.is_active);
+                const uniqueTgtMap = new Map();
+                activeTgt.forEach(f => {
+                    const key = f.api_name || f.label;
+                    if (!uniqueTgtMap.has(key)) {
+                        f.display_label = f.api_name && f.api_name !== f.label ? `${f.label} (${f.api_name})` : f.label;
+                        uniqueTgtMap.set(key, f);
+                    }
+                });
+                setTargetModuleFields(Array.from(uniqueTgtMap.values()));
+            }).catch(err => console.error(err));
+     } else { setTargetModuleFields([]); }
   }, [newAction.action_config?.module_id]);
-
-  const loadTransitionDetails = async (transitionId) => {
-    try {
-      const [actRes, valRes] = await Promise.all([
-         api.get(`/api/v1/transitions/${transitionId}/actions`),
-         api.get(`/api/v1/transitions/${transitionId}/validations`)
-      ]);
-      setTransitionActions(actRes.data);
-      setTransitionValidations(valRes.data);
-    } catch (error) { 
-        console.error("Error al cargar detalles de la transición:", error); 
-    }
-  };
-
-  // 🔥 FIX: Actualizamos para usar currentVersionId en lugar de selectedBlueprint.id 🔥
-  const fetchBlueprintData = useCallback(async () => {
-    try {
-      const [statusesRes, transRes] = await Promise.all([
-        api.get(`/api/v1/statuses/?blueprint_id=${currentVersionId}`),
-        api.get(`/api/v1/transitions/?blueprint_id=${currentVersionId}`)
-      ]);
-
-      const currentDarkMode = document.documentElement.classList.contains('dark');
-
-      setNodes(currentNodes => {
-         return statusesRes.data.map((status, index) => {
-           const existingNode = currentNodes.find(n => n.id === status.id.toString());
-           // FIX: Si el importador no mandó posición, calculamos una grilla básica
-           const xPos = status.position_x !== null ? status.position_x : (existingNode ? existingNode.position.x : (index % 4) * 250 + 50);
-           const yPos = status.position_y !== null ? status.position_y : (existingNode ? existingNode.position.y : Math.floor(index / 4) * 150 + 50);
-
-           return {
-             id: status.id.toString(),
-             data: { raw_data: status }, // 🔥 Ya no mandamos HTML en el label
-             position: { x: xPos, y: yPos },
-             type: status.bpmn_shape || 'task', // 🔥 AQUÍ ASIGNAMOS LA FORMA MAGICA 🔥
-           };
-         });
-      });
-
-      setEdges(transRes.data.map(t => ({
-        id: t.id.toString(), source: t.from_status_id.toString(), target: t.to_status_id.toString(), label: t.name, data: { raw_data: t }, 
-        labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
-        labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
-        labelBgPadding: [4, 4],
-        markerEnd: { type: MarkerType.ArrowClosed, color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
-        style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }, animated: true,
-      })));
-      
-      const currentSelected = selectedElementRef.current;
-      if (currentSelected) {
-         if (currentSelected.type === 'status') {
-             const updatedStatus = statusesRes.data.find(s => s.id === currentSelected.data.id);
-             if (updatedStatus) {
-                 setSelectedElement({ type: 'status', data: updatedStatus });
-                 setRenameValue(updatedStatus.name);
-                 setEditSlaHours(updatedStatus.sla_hours || "");
-             } else { setSelectedElement(null); }
-         } else {
-             const updatedTrans = transRes.data.find(t => t.id === currentSelected.data.id);
-             if (updatedTrans) {
-                 setSelectedElement({ type: 'transition', data: updatedTrans });
-                 setRenameValue(updatedTrans.name);
-             } else { setSelectedElement(null); }
-         }
-      }
-    } catch (error) { 
-        notify.error("Error al cargar el flujo de trabajo.");
-    }
-  }, [currentVersionId, notify]); 
-
-  useEffect(() => { fetchBlueprintData(); }, [fetchBlueprintData]);
-
-  // 🔥 FASE 1.1: CARGA DE VERSIONES 🔥
-  const fetchVersions = async () => {
-    setLoadingVersions(true);
-    try {
-      const res = await api.get(`/api/v1/blueprints/${selectedBlueprint.id}/versions`);
-      setVersions(res.data);
-      setShowVersions(true);
-    } catch (error) {
-      notify.error("Error al cargar el historial de versiones.");
-    } finally {
-      setLoadingVersions(false);
-    }
-  };
-
-  const handleLoadVersion = (versionId, isCurrent) => {
-    setCurrentVersionId(versionId);
-    setViewingOldVersion(!isCurrent);
-    setSelectedElement(null); // Limpiamos la selección para no romper la UI
-    setShowVersions(false);
-    notify.info(isCurrent ? "Viendo la versión actual." : "Viendo una versión antigua. Solo lectura.");
-  };
-
-  const handleRestoreVersion = async () => {
-    const isConfirmed = await confirm({
-      title: 'Restaurar Versión',
-      message: '¿Estás seguro de que deseas volver a esta versión? Se creará una NUEVA versión exacta a esta y se activará, desactivando la actual.',
-      confirmText: 'Sí, restaurar',
-      variant: 'primary'
-    });
-    
-    if (!isConfirmed) return;
-    
-    try {
-      // Usamos el endpoint PUT que ya actualizamos en el backend.
-      // Al hacer PUT a la versión antigua (currentVersionId), el backend creará una V+1 basada en ella.
-      const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, {
-         name: selectedBlueprint.name, // Mantenemos el nombre original
-         is_active: true
-      });
-      notify.success("¡Versión restaurada con éxito!");
-      
-      // Actualizamos la UI
-      setViewingOldVersion(false);
-      setCurrentVersionId(res.data.id);
-      
-      // Le avisamos al padre (BlueprintBuilder) que recargue la lista de la izquierda
-      if(reloadBlueprints) reloadBlueprints();
-      
-    } catch (error) {
-      notify.error("Error al intentar restaurar la versión.");
-    }
-  };
-  // 🔥 NUEVO: Botón para tomar una "Foto" y generar la siguiente versión 🔥
-  const handleCreateNewVersion = async () => {
-    const currentV = versions.find(v => v.id === currentVersionId)?.version || selectedBlueprint.version || 1;
-    
-    const isConfirmed = await confirm({
-      title: 'Generar Nueva Versión',
-      message: `Esto tomará una "foto" exacta de tu flujo actual y la guardará en el historial. Luego, creará la Versión ${currentV + 1} para que sigas trabajando en ella. ¿Deseas continuar?`,
-      confirmText: `Sí, crear V${currentV + 1}`,
-      variant: 'primary'
-    });
-    
-    if (!isConfirmed) return;
-    
-    try {
-      // Disparamos el PUT mágico del backend que clona todo en cascada
-      const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, {
-         name: selectedBlueprint.name,
-         is_active: true
-      });
-      
-      notify.success(`¡Versión ${res.data.version} generada con éxito!`);
-      
-      // Actualizamos el lienzo para que apunte al nuevo clon (V+1)
-      setCurrentVersionId(res.data.id);
-      
-      // Recargamos el historial en segundo plano
-      fetchVersions();
-      if(reloadBlueprints) reloadBlueprints();
-      
-    } catch (error) {
-      notify.error("Error al generar la nueva versión.");
-    }
-  };
 
   useEffect(() => {
     if (nodes.length === 0) return;
     setNodes((currentNodes) => currentNodes.map((node) => ({
-        ...node, style: { ...node.style, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb' },
+        ...node, style: { ...node.style, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb' }
     })));
     setEdges((currentEdges) => currentEdges.map((edge) => ({
-        ...edge, labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' }, labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9 }, markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? '#60a5fa' : '#2563eb' }, style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
+        ...edge, labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' }, labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9 }, markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? '#60a5fa' : '#2563eb' }, style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }
     })));
   }, [isDarkMode]);
 
-  const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
-  const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
-  // 🔥 FASE BPMN: GUARDAR COORDENADAS AL SOLTAR EL NODO 🔥
+  // =================================================================
+  // FUNCIONES DE MANIPULACIÓN DEL LIENZO (CRUD)
+  // =================================================================
+  const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), [setNodes]);
+  const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [setEdges]);
+
   const handleNodeDragStop = async (event, node) => {
-    if (viewingOldVersion) return; // Si es una versión vieja, no guardamos posiciones
+    if (viewingOldVersion) return; 
     try {
-      // Mandamos un PUT silencioso solo con las coordenadas X e Y
-      await api.put(`/api/v1/statuses/${node.id}`, {
-         position_x: Math.round(node.position.x),
-         position_y: Math.round(node.position.y)
-      });
-      // Marcamos que hay cambios sin guardar por si acaso
+      await api.put(`/api/v1/statuses/${node.id}`, { position_x: Math.round(node.position.x), position_y: Math.round(node.position.y) });
       reportChanges(true); 
-    } catch (error) {
-      console.error("Error guardando posición:", error);
-    }
+    } catch (error) { console.error("Error guardando posición:", error); }
   };
 
   const onConnect = (connection) => {
-    if(viewingOldVersion) return; // Bloqueo de solo lectura
+    if(viewingOldVersion) return; 
     setPendingConnection(connection);
     setNewTransitionName('');
   };
@@ -338,11 +237,10 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     e.preventDefault();
     if (!newTransitionName.trim() || !pendingConnection || viewingOldVersion) return;
     try {
-      await api.post('/api/v1/transitions/', { 
-          name: newTransitionName, from_status_id: parseInt(pendingConnection.source), to_status_id: parseInt(pendingConnection.target), blueprint_id: currentVersionId 
-      });
+      await api.post('/api/v1/transitions/', { name: newTransitionName, from_status_id: parseInt(pendingConnection.source), to_status_id: parseInt(pendingConnection.target), blueprint_id: currentVersionId });
       notify.success("Transición creada exitosamente.");
-      setPendingConnection(null); setNewTransitionName(''); fetchBlueprintData();
+      setPendingConnection(null); setNewTransitionName(''); 
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
     } catch (error) { notify.error("Error al crear la transición."); }
   };
 
@@ -351,32 +249,22 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     if (viewingOldVersion) return notify.warning("No puedes editar versiones antiguas.");
     if (!newStatus.name.trim()) return notify.warning("Escribe un nombre para el estado.");
     try {
-      await api.post('/api/v1/statuses/', { 
-          ...newStatus, 
-          sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null, // 🔥 Enviamos el SLA al backend
-          blueprint_id: currentVersionId 
-      });
+      await api.post('/api/v1/statuses/', { ...newStatus, sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null, blueprint_id: currentVersionId });
       notify.success("Nuevo estado agregado al lienzo.");
       setNewStatus({ name: '', is_initial: false, sla_hours: '' }); 
-      fetchBlueprintData();
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
     } catch (error) { notify.error("Error al crear el estado."); }
   };
 
   const handleRenameElement = async () => {
-    // 🔥 FIX: Quitamos la restricción de que el nombre deba ser distinto, porque quizás solo cambió el SLA
     if (!selectedElement || !renameValue || viewingOldVersion) return;
     setIsRenaming(true);
     try {
       if (selectedElement.type === 'status') {
-          await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { 
-              name: renameValue,
-              sla_hours: editSlaHours ? parseInt(editSlaHours) : null // 🔥 Guardamos el SLA editado
-          });
-      } else {
-          await api.put(`/api/v1/transitions/${selectedElement.data.id}`, { name: renameValue });
-      }
+          await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { name: renameValue, sla_hours: editSlaHours ? parseInt(editSlaHours) : null });
+      } else { await api.put(`/api/v1/transitions/${selectedElement.data.id}`, { name: renameValue }); }
       notify.success("Propiedades guardadas.");
-      fetchBlueprintData();
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
     } catch (error) { notify.error("Error al guardar las propiedades."); } finally { setIsRenaming(false); }
   };
 
@@ -386,26 +274,21 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
           await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { bpmn_shape: newShape });
           notify.success("Forma BPMN actualizada.");
           setIsShapeModalOpen(false);
-          fetchBlueprintData();
-      } catch (error) {
-          notify.error("Error al actualizar la forma.");
-      }
+          fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+      } catch (error) { notify.error("Error al actualizar la forma."); }
   };
 
   const handleDeleteElement = async () => {
     if (!selectedElement || viewingOldVersion) return;
-    const isConfirmed = await confirm({
-      title: `Eliminar ${selectedElement.type === 'status' ? 'Estado' : 'Transición'}`,
-      message: `¿Estás seguro de que deseas eliminar "${selectedElement.data.name}"? Esta acción no se puede deshacer.`,
-      confirmText: 'Sí, eliminar', variant: 'danger'
-    });
+    const isConfirmed = await confirm({ title: `Eliminar Elemento`, message: `¿Estás seguro de que deseas eliminar esto?`, confirmText: 'Sí, eliminar', variant: 'danger' });
     if (!isConfirmed) return;
     try {
       if (selectedElement.type === 'status') await api.delete(`/api/v1/statuses/${selectedElement.data.id}`);
       else await api.delete(`/api/v1/transitions/${selectedElement.data.id}`);
-      notify.success(`${selectedElement.type === 'status' ? 'Estado' : 'Transición'} eliminado.`);
-      setSelectedElement(null); fetchBlueprintData();
-    } catch (error) { notify.error(error.response?.data?.detail || "Error al eliminar el elemento. Revisa sus dependencias."); }
+      notify.success(`Elemento eliminado.`);
+      setSelectedElement(null); 
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    } catch (error) { notify.error("Error al eliminar el elemento. Revisa sus dependencias."); }
   };
 
   const handleSaveAction = async (e) => {
@@ -413,130 +296,87 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     if (viewingOldVersion) return;
     try {
       const payload = { ...newAction };
-      
-      if (payload.action_type === 'CHANGE_OWNER') {
-          payload.target_field = 'assigned_to';
-      } else if (payload.action_type === 'COPY_FIELD' || payload.action_type === 'CREATE_RECORD') {
-      } else if (payload.action_type === 'SEND_NOTIFICATION') {
-      } else {
+      if (payload.action_type === 'CHANGE_OWNER') payload.target_field = 'assigned_to';
+      else if (!['COPY_FIELD', 'CREATE_RECORD', 'SEND_NOTIFICATION'].includes(payload.action_type)) {
           payload.action_value = payload.action_type === 'UPDATE_VALUE' ? payload.action_value : '';
           payload.function_code = payload.action_type === 'CUSTOM_FUNCTION' ? payload.function_code : '';
           payload.action_config = {};
       }
-
-      if (editingActionId) {
-         await api.put(`/api/v1/transitions/actions/${editingActionId}`, payload);
-         notify.success("Acción actualizada.");
-      } else {
-         await api.post(`/api/v1/transitions/${selectedElement.data.id}/actions`, payload);
-         notify.success("Nueva acción agregada a la transición.");
-      }
-
-      closeActionModal();
-      loadTransitionDetails(selectedElement.data.id);
+      if (editingActionId) await api.put(`/api/v1/transitions/actions/${editingActionId}`, payload);
+      else await api.post(`/api/v1/transitions/${selectedElement.data.id}/actions`, payload);
+      notify.success("Acción guardada.");
+      closeActionModal(); loadTransitionDetails(selectedElement.data.id);
     } catch (error) { notify.error("Error al guardar la regla."); }
+  };
+
+  const handleDeleteAction = async (actionId) => {
+    if (viewingOldVersion) return;
+    const isConfirmed = await confirm({ title: 'Eliminar', message: '¿Seguro de eliminar esta automatización?', confirmText: 'Sí, eliminar', variant: 'danger' });
+    if (!isConfirmed) return;
+    try { await api.delete(`/api/v1/transitions/actions/${actionId}`); notify.success("Acción eliminada."); loadTransitionDetails(selectedElement.data.id); } 
+    catch (error) { notify.error("Error al eliminar la acción."); }
   };
 
   const handleSaveValidation = async (e) => {
     e.preventDefault();
     if (viewingOldVersion) return;
     try {
-       if (editingValidationId) {
-           await api.put(`/api/v1/transitions/validations/${editingValidationId}`, newValidation);
-           notify.success("Regla de validación actualizada.");
-       } else {
-           await api.post(`/api/v1/transitions/${selectedElement.data.id}/validations`, newValidation);
-           notify.success("Regla de validación agregada.");
-       }
-       closeValidationModal();
-       loadTransitionDetails(selectedElement.data.id);
+       if (editingValidationId) await api.put(`/api/v1/transitions/validations/${editingValidationId}`, newValidation);
+       else await api.post(`/api/v1/transitions/${selectedElement.data.id}/validations`, newValidation);
+       notify.success("Regla guardada.");
+       closeValidationModal(); loadTransitionDetails(selectedElement.data.id);
     } catch(err) { notify.error("Error al guardar validación."); }
   };
 
   const handleDeleteValidation = async (id) => {
      if (viewingOldVersion) return;
-     try {
-        await api.delete(`/api/v1/transitions/validations/${id}`);
-        notify.success("Regla de validación eliminada.");
-        loadTransitionDetails(selectedElement.data.id);
-     } catch(err) { notify.error("Error al eliminar validación."); }
+     try { 
+       await api.delete(`/api/v1/transitions/validations/${id}`); 
+       notify.success("Regla eliminada."); 
+       loadTransitionDetails(selectedElement.data.id); 
+     } catch(err) { 
+       notify.error("Error al eliminar validación."); 
+     }
   };
 
   const openEditActionModal = (action) => {
-     setNewAction({
-         action_type: action.action_type, target_field: action.target_field || '', action_value: action.action_value || '', function_code: action.function_code || '', action_config: action.action_config || {}
-     });
+     setNewAction({ action_type: action.action_type, target_field: action.target_field || '', action_value: action.action_value || '', function_code: action.function_code || '', action_config: action.action_config || {} });
      setEditingActionId(action.id); setIsAddingAction(true);
   };
-
   const openEditValidationModal = (validation) => {
-     setNewValidation({
-         target_field: validation.target_field || '', 
-         operator: validation.operator || '==', 
-         validation_value: validation.validation_value || '', 
-         error_message: validation.error_message || ''
-     });
-     setEditingValidationId(validation.id); 
-     setIsAddingValidation(true);
+     setNewValidation({ target_field: validation.target_field || '', operator: validation.operator || '==', validation_value: validation.validation_value || '', error_message: validation.error_message || '' });
+     setEditingValidationId(validation.id); setIsAddingValidation(true);
   };
 
-  const handleDeleteAction = async (actionId) => {
-    if (viewingOldVersion) return;
-    const isConfirmed = await confirm({
-      title: 'Eliminar Acción', message: '¿Estás seguro de que deseas eliminar esta automatización?', confirmText: 'Sí, eliminar', variant: 'danger'
-    });
-    if (!isConfirmed) return;
-    try {
-      await api.delete(`/api/v1/transitions/actions/${actionId}`);
-      notify.success("Acción eliminada.");
-      loadTransitionDetails(selectedElement.data.id);
-    } catch (error) { notify.error("Error al intentar eliminar la acción."); }
+  const closeActionModal = () => { 
+     setIsAddingAction(false); 
+     setEditingActionId(null); 
+     setNewAction(defaultActionState);
+     // Si tenemos una transición seleccionada, volvemos a abrir la lista para no perder el contexto
+     if (selectedElement?.type === 'transition') setIsActionsListOpen(true);
   };
-
-  const closeActionModal = () => { setIsAddingAction(false); setEditingActionId(null); setNewAction(defaultActionState); };
-  const closeValidationModal = () => { setIsAddingValidation(false); setEditingValidationId(null); setNewValidation(defaultValidationState); };
+  
+  const closeValidationModal = () => { 
+     setIsAddingValidation(false); 
+     setEditingValidationId(null); 
+     setNewValidation(defaultValidationState);
+     // Si tenemos una transición seleccionada, volvemos a abrir la lista
+     if (selectedElement?.type === 'transition') setIsValidationsListOpen(true);
+  };
 
   const handleCloseAttempt = async () => {
     if (hasLocalChanges) {
-        const isConfirmed = await confirm({
-            title: 'Cambios sin guardar', message: 'Tienes cambios en progreso que no se han guardado. ¿Seguro que deseas descartarlos y salir?', confirmText: 'Descartar y salir', variant: 'danger'
-        });
+        const isConfirmed = await confirm({ title: 'Cambios sin guardar', message: '¿Seguro que deseas descartarlos y salir?', confirmText: 'Descartar', variant: 'danger' });
         if (isConfirmed) { reportChanges(false); closeCanvas(); }
     } else { reportChanges(false); closeCanvas(); }
   };
 
-  const handleAddMappingRow = () => {
-      const currentConfig = { ...newAction.action_config };
-      if (!currentConfig.mapping) currentConfig.mapping = {};
-      const mappedKeys = Object.keys(currentConfig.mapping);
-      const availableTarget = targetModuleFields.find(f => !mappedKeys.includes(f.api_name || f.label));
-      
-      if(availableTarget) {
-         currentConfig.mapping[availableTarget.api_name || availableTarget.label] = { type: 'static', value: '' };
-         setNewAction({ ...newAction, action_config: currentConfig });
-      } else { notify.info("Ya mapeaste todos los campos disponibles en el formulario destino."); }
+  const handleLoadVersion = (versionId, isCurrent) => {
+    setCurrentVersionId(versionId); setViewingOldVersion(!isCurrent); setSelectedElement(null); setShowVersions(false);
+    notify.info(isCurrent ? "Viendo la versión actual." : "Viendo una versión antigua. Solo lectura.");
   };
 
-  const handleUpdateMappingRow = (oldTargetKey, newTargetKey, type, value) => {
-      const currentConfig = { ...newAction.action_config };
-      const map = { ...currentConfig.mapping };
-      if (oldTargetKey !== newTargetKey) delete map[oldTargetKey];
-      map[newTargetKey] = { type, value };
-      currentConfig.mapping = map;
-      setNewAction({ ...newAction, action_config: currentConfig });
-  };
-
-  const handleRemoveMappingRow = (targetKey) => {
-      const currentConfig = { ...newAction.action_config };
-      delete currentConfig.mapping[targetKey];
-      setNewAction({ ...newAction, action_config: currentConfig });
-  };
-
-  const getActionLabel = (type) => {
-    const labels = { UPDATE_VALUE: 'Cambiar Valor', CUSTOM_FUNCTION: 'Low-Code', SET_REQUIRED: 'Obligatorio', SET_OPTIONAL: 'Opcional', SET_READONLY: 'Bloquear', SET_EDITABLE: 'Desbloquear', SET_HIDDEN: 'Ocultar', SET_VISIBLE: 'Mostrar', SEND_NOTIFICATION: 'Disparar Alerta', CHANGE_OWNER: 'Cambiar Propietario', COPY_FIELD: 'Copiar Campo', CREATE_RECORD: 'Crear Registro' };
-    return labels[type] || type;
-  };
-
+  const getActionLabel = (type) => { const labels = { UPDATE_VALUE: 'Cambiar Valor', CUSTOM_FUNCTION: 'Low-Code', SET_REQUIRED: 'Obligatorio', SET_OPTIONAL: 'Opcional', SET_READONLY: 'Bloquear', SET_EDITABLE: 'Desbloquear', SET_HIDDEN: 'Ocultar', SET_VISIBLE: 'Mostrar', SEND_NOTIFICATION: 'Disparar Alerta', CHANGE_OWNER: 'Cambiar Propietario', COPY_FIELD: 'Copiar Campo', CREATE_RECORD: 'Crear Registro' }; return labels[type] || type; };
   const getActionIcon = (type) => {
      if (type === 'CHANGE_OWNER') return <User size={12} className="text-purple-500"/>;
      if (type === 'COPY_FIELD') return <Copy size={12} className="text-teal-500"/>;
@@ -546,422 +386,54 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
      return <Zap size={12} className="text-blue-500"/>;
   };
 
-  const handleExportBlueprint = async () => {
-    try {
-       const [sRes, tRes] = await Promise.all([
-          api.get(`/api/v1/statuses/?blueprint_id=${currentVersionId}`),
-          api.get(`/api/v1/transitions/?blueprint_id=${currentVersionId}`)
-       ]);
-       const transitions = [];
-       for (const t of tRes.data) {
-           const [aRes, vRes] = await Promise.all([
-              api.get(`/api/v1/transitions/${t.id}/actions`),
-              api.get(`/api/v1/transitions/${t.id}/validations`)
-           ]);
-           transitions.push({ ...t, actions: aRes.data, validations: vRes.data });
-       }
-       const exportData = { blueprint: selectedBlueprint, statuses: sRes.data, transitions: transitions };
-       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-       const url = URL.createObjectURL(blob);
-       const a = document.createElement('a'); a.href = url; a.download = `flujo_${selectedBlueprint.name.replace(/\s+/g, '_').toLowerCase()}_v${selectedBlueprint.version || 1}.json`; a.click(); URL.revokeObjectURL(url);
-       notify.success("Exportación completada.");
-    } catch(err) { notify.error("Error al exportar el flujo."); }
-  };
-
-  // 🔥 FIX IMPORTADOR DE JSON (A PRUEBA DE FALLOS) 🔥
-  const handleImportBlueprint = (event) => {
-    if (viewingOldVersion) return;
-    
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const importedData = JSON.parse(e.target.result);
-        
-        // 1. Limpiamos el lienzo actual (Borramos transiciones y luego estados)
-        const currentEdges = edges.map(edge => edge.data.raw_data.id);
-        const currentNodes = nodes.map(node => node.data.raw_data.id);
-        
-        for (const tid of currentEdges) {
-           await api.delete(`/api/v1/transitions/${tid}`);
-        }
-        for (const sid of currentNodes) {
-           await api.delete(`/api/v1/statuses/${sid}`);
-        }
-
-        // 2. Insertamos los nuevos Estados (Statuses)
-        const oldToNewStatusId = {};
-        for (const status of importedData.statuses) {
-           const res = await api.post('/api/v1/statuses/', {
-               name: status.name,
-               is_initial: status.is_initial,
-               blueprint_id: currentVersionId,
-               
-               // 🔥 FASE BPMN Y SLA: RECUPERAMOS LOS DATOS DEL JSON 🔥
-               sla_hours: status.sla_hours,
-               bpmn_shape: status.bpmn_shape,
-               position_x: status.position_x,
-               position_y: status.position_y
-           });
-           oldToNewStatusId[status.id] = res.data.id;
-        }
-
-        // 3. Insertamos las Transiciones y sus dependencias
-        for (const transition of importedData.transitions) {
-           const newTransRes = await api.post('/api/v1/transitions/', {
-               name: transition.name,
-               blueprint_id: currentVersionId,
-               from_status_id: oldToNewStatusId[transition.from_status_id],
-               to_status_id: oldToNewStatusId[transition.to_status_id]
-           });
-           
-           // Validaciones
-           if (transition.validations && transition.validations.length > 0) {
-               for (const val of transition.validations) {
-                   await api.post(`/api/v1/transitions/${newTransRes.data.id}/validations`, {
-                       target_field: val.target_field,
-                       operator: val.operator,
-                       validation_value: val.validation_value || '',
-                       error_message: val.error_message || ''
-                   });
-               }
-           }
-           
-           // Acciones
-           if (transition.actions && transition.actions.length > 0) {
-               for (const act of transition.actions) {
-                   await api.post(`/api/v1/transitions/${newTransRes.data.id}/actions`, {
-                       action_type: act.action_type,
-                       target_field: act.target_field || '',
-                       action_value: act.action_value || '',
-                       function_code: act.function_code || '',
-                       action_config: act.action_config || {}
-                   });
-               }
-           }
-        }
-
-        notify.success("¡Flujo importado con éxito!");
-        fetchBlueprintData(); // Recargamos el lienzo
-
-      } catch (err) {
-        notify.error("Error al importar el archivo JSON. Verifica que sea un archivo válido de AegisFlow.");
-      }
-      
-      // Limpiamos el input para permitir subir el mismo archivo de nuevo
-      event.target.value = '';
-    };
-    reader.readAsText(file);
-  };
-
-  const customSingleSelectStyles = {
-    control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.75rem', padding: '0.1rem', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black', '&:hover': { borderColor: isDarkMode ? '#4b5563' : '#9ca3af' } }),
-    singleValue: (provided) => ({ ...provided, color: isDarkMode ? '#f9fafb' : '#111827' }),
-    menu: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb', borderRadius: '0.75rem', overflow: 'hidden', zIndex: 99999 }),
-    menuPortal: base => ({ ...base, zIndex: 99999 }),
-    option: (provided, state) => ({ ...provided, fontSize: '0.875rem', backgroundColor: state.isSelected ? (isDarkMode ? '#374151' : '#eff6ff') : state.isFocused ? (isDarkMode ? '#111827' : '#f9fafb') : 'transparent', color: state.isSelected ? (isDarkMode ? '#60a5fa' : '#1d4ed8') : (isDarkMode ? '#d1d5db' : '#1f2937'), cursor: 'pointer' }),
-  };
-
-  const customMultiSelectStyles = {
-    control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.75rem', padding: '0.1rem', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black' }),
-    // 🔥 FIX: Limitamos la altura del contenedor de los chips seleccionados 🔥
-    valueContainer: (provided) => ({ ...provided, maxHeight: '70px', overflowY: 'auto' }),
-    menu: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb', borderRadius: '0.75rem', overflow: 'hidden' }),
-    menuPortal: base => ({ ...base, zIndex: 999999 }), 
-    option: (provided, state) => ({ ...provided, fontSize: '0.875rem', backgroundColor: state.isSelected ? (isDarkMode ? '#374151' : '#eff6ff') : state.isFocused ? (isDarkMode ? '#111827' : '#f9fafb') : 'transparent', color: state.isSelected ? (isDarkMode ? '#60a5fa' : '#1d4ed8') : (isDarkMode ? '#d1d5db' : '#1f2937'), cursor: 'pointer' }),
-    multiValue: (provided) => ({ ...provided, backgroundColor: isDarkMode ? '#374151' : '#eff6ff', borderRadius: '0.5rem' }),
-    multiValueLabel: (provided) => ({ ...provided, color: isDarkMode ? '#93c5fd' : '#1d4ed8', fontWeight: 'bold' }),
-    multiValueRemove: (provided) => ({ ...provided, color: isDarkMode ? '#9ca3af' : '#6b7280', ':hover': { backgroundColor: isDarkMode ? '#ef4444' : '#fee2e2', color: isDarkMode ? 'white' : '#ef4444' } }),
-  };
-
-  const notificationOptions = [
-    { label: 'Usuarios Específicos', options: companyUsers.map(u => ({ value: `user_${u.id}`, label: `👤 ${u.first_name ? u.first_name + ' ' + (u.last_name || '') : u.email}` })) },
-    { label: 'Roles (Jerarquía)', options: companyRoles.map(r => ({ value: `role_${r.id}`, label: `🏢 Rol: ${r.name}` })) },
-    { label: 'Perfiles (Permisos)', options: companyProfiles.map(p => ({ value: `profile_${p.id}`, label: `🛡️ Perfil: ${p.name}` })) }
-  ];
-
-  const getSelectedNotificationTargets = () => {
-     const cfg = newAction.action_config || {};
-     let selected = [];
-     if(cfg.notify_users) selected = [...selected, ...cfg.notify_users.map(id => notificationOptions[0].options.find(o => o.value === `user_${id}`))];
-     if(cfg.notify_roles) selected = [...selected, ...cfg.notify_roles.map(id => notificationOptions[1].options.find(o => o.value === `role_${id}`))];
-     if(cfg.notify_profiles) selected = [...selected, ...cfg.notify_profiles.map(id => notificationOptions[2].options.find(o => o.value === `profile_${id}`))];
-     return selected.filter(Boolean);
-  };
-
-  const handleNotificationTargetsChange = (selectedOptions) => {
-     const cfg = { notify_users: [], notify_roles: [], notify_profiles: [] };
-     selectedOptions.forEach(opt => {
-        const [type, id] = opt.value.split('_');
-        if(type === 'user') cfg.notify_users.push(parseInt(id));
-        if(type === 'role') cfg.notify_roles.push(parseInt(id));
-        if(type === 'profile') cfg.notify_profiles.push(parseInt(id));
-     });
-     setNewAction({ ...newAction, action_config: cfg });
-  };
-
   return (
-    <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950/50 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
-      
-      {/* HEADER DEL LIENZO */}
-      <div className={`px-6 py-4 border-b flex justify-between items-center z-10 shadow-sm transition-colors ${viewingOldVersion ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'}`}>
-        <div className="flex items-center gap-4">
-          <button onClick={handleCloseAttempt} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Volver y guardar cambios">
-              <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h2 className={`text-lg font-bold flex items-center gap-2 ${viewingOldVersion ? 'text-amber-700 dark:text-amber-500' : 'text-gray-900 dark:text-white'}`}>
-              <GitMerge size={18} className={viewingOldVersion ? "text-amber-500" : "text-blue-500"} /> 
-              {selectedBlueprint.name} {viewingOldVersion ? '(Moviendo al Pasado)' : ''}
-            </h2>
-            <div className="flex items-center gap-2">
-                <p className="text-[11px] text-gray-500 font-medium tracking-wide uppercase mt-0.5">
-                  Blueprint & Automatizaciones
-                </p>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${viewingOldVersion ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'}`}>
-                  V{versions.find(v => v.id === currentVersionId)?.version || selectedBlueprint.version || 1}
-                </span>
-            </div>
-          </div>
-        </div>
+  <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950/50 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
+    {/* HEADER EXTRAÍDO */}
+    <BlueprintHeader
+      selectedBlueprint={selectedBlueprint} viewingOldVersion={viewingOldVersion} currentVersionId={currentVersionId} versions={versions}
+      handleCloseAttempt={handleCloseAttempt} 
+      handleRestoreVersion={() => handleRestoreVersion(setCurrentVersionId, setViewingOldVersion)}
+      setCurrentVersionId={setCurrentVersionId} setViewingOldVersion={setViewingOldVersion} selectedElement={selectedElement}
+      setIsShapeModalOpen={setIsShapeModalOpen} aiImageInputRef={aiImageInputRef}
+      handleGenerateFromImage={(e) => handleGenerateFromImage(e, () => fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef))}
+      handleCreateNewVersion={() => handleCreateNewVersion(setCurrentVersionId)}
+      fetchVersions={() => fetchVersions(setShowVersions)}
+      handleExportBlueprint={handleExportBlueprint} fileInputRef={fileInputRef}
+      handleImportBlueprint={(e) => handleImportBlueprint(e, () => fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef))}
+      showVersions={showVersions} setShowVersions={setShowVersions} loadingVersions={loadingVersions} handleLoadVersion={handleLoadVersion}
+      setIsActionsListOpen={setIsActionsListOpen} 
+      setIsValidationsListOpen={setIsValidationsListOpen}
+      transitionActions={transitionActions} 
+      transitionValidations={transitionValidations}
+    />
 
-        <div className="flex items-center gap-3">
-          {viewingOldVersion ? (
-            <div className="flex items-center gap-3">
-              {/* 🔥 FIX 1: Botón para salir del modo histórico y volver al presente 🔥 */}
-              <button 
-                onClick={() => {
-                  setCurrentVersionId(selectedBlueprint.id);
-                  setViewingOldVersion(false);
-                }} 
-                className="px-4 py-2 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              
-              <button onClick={handleRestoreVersion} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
-                <RotateCcw size={16} /> Restaurar esta versión
-              </button>
-            </div>
-          ) : (
-            <div className="flex border-r border-gray-200 dark:border-gray-700 pr-3 mr-1 gap-2">
-               {/* 🔥 BOTÓN PARA CAMBIAR FORMA BPMN 🔥 */}
-               {selectedElement?.type === 'status' && !viewingOldVersion && (
-                 <button onClick={() => setIsShapeModalOpen(true)} className="p-2 text-purple-600 hover:text-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold mr-2 border border-purple-200 dark:border-purple-800/50 shadow-sm" title="Cambiar Forma Visual">
-                    <Shapes size={16} /> <span className="hidden sm:inline">Forma</span>
-                 </button>
-               )}
+    <div className="flex flex-1 overflow-hidden relative z-0">
+      {/* SIDEBAR EXTRAÍDO */}
+      <BlueprintSidebar
+        viewingOldVersion={viewingOldVersion} newStatus={newStatus} setNewStatus={setNewStatus} handleCreateStatus={handleCreateStatus}
+        selectedElement={selectedElement} renameValue={renameValue} setRenameValue={setRenameValue}
+        handleRenameElement={handleRenameElement} isRenaming={isRenaming} editSlaHours={editSlaHours} setEditSlaHours={setEditSlaHours}
+        activeTab={activeTab} setActiveTab={setActiveTab} transitionActions={transitionActions}
+        getActionIcon={getActionIcon} getActionLabel={getActionLabel} allModules={allModules}
+        openEditActionModal={openEditActionModal} handleDeleteAction={handleDeleteAction} setIsAddingAction={setIsAddingAction}
+        transitionValidations={transitionValidations} openEditValidationModal={openEditValidationModal} handleDeleteValidation={handleDeleteValidation}
+        setIsAddingValidation={setIsAddingValidation} handleDeleteElement={handleDeleteElement}
+      />
 
-               {/* 🔥 NUEVO BOTÓN: GENERAR VERSIÓN 🔥 */}
-               
-               <button onClick={handleCreateNewVersion} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold" title="Tomar foto y crear nueva versión">
-                  <Copy size={18} /> <span className="hidden sm:inline">Versionar</span>
-               </button>
-               <button onClick={fetchVersions} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Historial de Versiones">
-                  <History size={18} />
-               </button>
-               <button onClick={handleExportBlueprint} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Exportar Flujo JSON">
-                  <DownloadCloud size={18} />
-               </button>
-               <button onClick={() => fileInputRef.current.click()} className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Importar JSON de Flujo">
-                  <UploadCloud size={18} />
-               </button>
-               {/* Input oculto para cargar archivos */}
-               <input type="file" ref={fileInputRef} onChange={handleImportBlueprint} accept=".json" className="hidden" />
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden relative z-0">
-        
-        {/* 🔥 PANEL IZQUIERDO (HERRAMIENTAS / DETALLES) 🔥 */}
-        <div className={`w-80 border-r border-gray-200 dark:border-gray-800 flex flex-col z-10 overflow-y-auto custom-scrollbar shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-colors ${viewingOldVersion ? 'bg-amber-50/30 dark:bg-amber-950/20' : 'bg-white dark:bg-gray-900'}`}>
-            
-            <div className="p-5 border-b border-gray-100 dark:border-gray-800 shrink-0">
-               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Plus size={14}/> Nuevo Estado</h3>
-               <form onSubmit={handleCreateStatus} className="space-y-4">
-                 <div>
-                   <input disabled={viewingOldVersion} type="text" required value={newStatus.name} onChange={(e) => setNewStatus({...newStatus, name: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed" placeholder="Ej: En Progreso" />
-                 </div>
-                 <div>
-                   <input disabled={viewingOldVersion} type="number" min="1" value={newStatus.sla_hours} onChange={(e) => setNewStatus({...newStatus, sla_hours: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-2" placeholder="Límite de tiempo en horas (SLA)" />
-                 </div>
-                 <div className="flex items-center gap-2 px-1">
-                   <input disabled={viewingOldVersion} type="checkbox" checked={newStatus.is_initial} onChange={(e) => setNewStatus({...newStatus, is_initial: e.target.checked})} className="w-4 h-4 rounded text-blue-600 cursor-pointer disabled:cursor-not-allowed" />
-                   <label className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Definir como Estado Inicial</label>
-                 </div>
-                 <button disabled={viewingOldVersion} type="submit" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 text-sm py-2 rounded-lg font-bold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Agregar al Lienzo</button>
-               </form>
-            </div>
-
-            {selectedElement ? (
-              <div className="flex-1 flex flex-col h-full overflow-hidden">
-                 <div className="p-5 border-b border-gray-100 dark:border-gray-800 shrink-0">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5 mb-2"><Settings2 size={14} /> Propiedades</h3>
-                    <div className="flex items-center gap-2">
-                       <div className="relative flex-1">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                             {selectedElement.type === 'transition' ? <ArrowRight size={14} className="text-blue-500"/> : <Star size={14} className="text-amber-500"/>}
-                          </div>
-                          <input 
-                             disabled={viewingOldVersion}
-                             type="text" 
-                             value={renameValue} 
-                             onChange={(e) => setRenameValue(e.target.value)}
-                             onKeyDown={(e) => e.key === 'Enter' && handleRenameElement()}
-                             className="w-full pl-9 pr-3 py-2 text-sm font-bold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 rounded-lg outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
-                       </div>
-                       {/* 🔥 FIX UX: Ahora el botón de guardar también se muestra si cambia el SLA 🔥 */}
-                       {(renameValue !== selectedElement.data.name || (selectedElement.type === 'status' && editSlaHours !== (selectedElement.data.sla_hours || ""))) && !viewingOldVersion && (
-                          <button onClick={handleRenameElement} disabled={isRenaming} className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-sm disabled:opacity-50">
-                             {isRenaming ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>}
-                          </button>
-                       )}
-                    </div>
-
-                    {/* 🔥 NUEVO: Input de SLA para edición 🔥 */}
-                    {selectedElement.type === 'status' && (
-                        <div className="mt-3">
-                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Límite SLA (Horas)</label>
-                           <input 
-                              disabled={viewingOldVersion} type="number" min="1" value={editSlaHours} onChange={(e) => setEditSlaHours(e.target.value)}
-                              placeholder="Sin límite..."
-                              className="w-full px-3 py-2 text-sm font-medium text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:border-blue-500 rounded-lg outline-none transition-all disabled:opacity-50"
-                           />
-                        </div>
-                    )}
-                 </div>
-
-                 {selectedElement.type === 'transition' && (
-                    <div className="flex-1 flex flex-col overflow-hidden">
-                       <div className="flex border-b border-gray-200 dark:border-gray-800 shrink-0">
-                          <button onClick={() => setActiveTab('actions')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-1.5 transition-colors ${activeTab === 'actions' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
-                             <Zap size={14}/> Acciones
-                          </button>
-                          <button onClick={() => setActiveTab('validations')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-1.5 transition-colors ${activeTab === 'validations' ? 'border-b-2 border-red-500 text-red-600 dark:text-red-400 bg-red-50/50 dark:bg-red-900/10' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
-                             <ShieldAlert size={14}/> Validaciones
-                          </button>
-                       </div>
-
-                       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                           
-                           {activeTab === 'actions' && (
-                              <div className="space-y-4">
-                                 {transitionActions.length > 0 ? (
-                                   <div className="space-y-2">
-                                     {transitionActions.map(action => (
-                                       <div key={action.id} className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 p-2.5 rounded-xl flex justify-between items-center shadow-sm group">
-                                         <div className="flex items-center gap-2 overflow-hidden">
-                                            <div className="p-1.5 bg-white dark:bg-gray-900 rounded shadow-sm shrink-0">
-                                               {getActionIcon(action.action_type)}
-                                            </div>
-                                            <div className="truncate pr-2">
-                                               <p className="text-[10px] font-bold text-gray-900 dark:text-gray-100 truncate">{getActionLabel(action.action_type)}</p>
-                                               <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                                                 {action.action_type === 'CREATE_RECORD' ? `Destino: ${allModules.find(m=>m.id==action.action_config?.module_id)?.name || '?'}` : 
-                                                  action.action_type === 'CHANGE_OWNER' ? 'Asignación' :
-                                                  action.action_type === 'CUSTOM_FUNCTION' ? 'Script Python' : 
-                                                  action.action_type === 'COPY_FIELD' ? `${action.action_value} ➔ ${action.target_field}` :
-                                                  action.target_field?.startsWith('section_') ? `Sección ID ${action.target_field.replace('section_','')}` : action.target_field}
-                                               </p>
-                                            </div>
-                                         </div>
-                                         {!viewingOldVersion && (
-                                           <div className="flex gap-1 shrink-0">
-                                              <button onClick={() => openEditActionModal(action)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-blue-500 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"><Edit2 size={14} /></button>
-                                              <button onClick={() => handleDeleteAction(action.id)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-500 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"><Trash2 size={14} /></button>
-                                           </div>
-                                         )}
-                                       </div>
-                                     ))}
-                                   </div>
-                                 ) : (
-                                   <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-4 text-center"><p className="text-[11px] text-gray-400 font-medium">Ninguna acción post-transición.</p></div>
-                                 )}
-                                 {!viewingOldVersion && (
-                                   <button onClick={() => setIsAddingAction(true)} className="w-full bg-white dark:bg-gray-900 border border-dashed border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm">
-                                     <Plus size={14} /> Añadir Acción
-                                   </button>
-                                 )}
-                              </div>
-                           )}
-
-                           {activeTab === 'validations' && (
-                              <div className="space-y-4">
-                                 {transitionValidations.length > 0 ? (
-                                   <div className="space-y-2">
-                                     {transitionValidations.map(val => (
-                                       <div key={val.id} className="bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-2.5 rounded-xl flex justify-between items-start shadow-sm group">
-                                         <div className="flex flex-col overflow-hidden">
-                                            <p className="text-[10px] font-bold text-red-900 dark:text-red-400 mb-0.5 truncate">
-                                               Si [{val.target_field}] {val.operator} {val.validation_value ? `"${val.validation_value}"` : ''}
-                                            </p>
-                                            <p className="text-[9px] text-red-600/80 dark:text-red-300/60 font-medium leading-tight">➔ Desbloquear transición</p>
-                                         </div>
-                                         {!viewingOldVersion && (
-                                           <div className="flex gap-1 shrink-0">
-                                            <button onClick={() => openEditValidationModal(val)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-blue-600 p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all"><Edit2 size={14} /></button>
-                                            <button onClick={() => handleDeleteValidation(val.id)} className="text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-all"><Trash2 size={14} /></button>                                       </div>
-                                         )}
-                                       </div>
-                                     ))}
-                                   </div>
-                                 ) : (
-                                   <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-4 text-center"><p className="text-[11px] text-gray-400 font-medium">No hay bloqueos. La transición es libre.</p></div>
-                                 )}
-                                 {!viewingOldVersion && (
-                                   <button onClick={() => setIsAddingValidation(true)} className="w-full bg-white dark:bg-gray-900 border border-dashed border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm">
-                                     <ShieldAlert size={14} /> Añadir Validación
-                                   </button>
-                                 )}
-                              </div>
-                           )}
-
-                       </div>
-                    </div>
-                 )}
-
-                 {!viewingOldVersion && (
-                   <div className="p-5 border-t border-gray-100 dark:border-gray-800 shrink-0 mt-auto">
-                     <button onClick={handleDeleteElement} className="w-full flex justify-center items-center gap-2 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/30 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm">
-                       <Trash2 size={16} /> Quitar del Lienzo
-                     </button>
-                   </div>
-                 )}
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
-                 <GitMerge size={40} className="mb-4 opacity-20"/>
-                 <p className="text-sm font-medium">Selecciona un Estado o una Transición (Flecha) en el lienzo para ver sus propiedades.</p>
-              </div>
-            )}
-        </div>
-
-        {/* 🔥 LIENZO (REACTFLOW) 🔥 */}
+        {/* LIENZO (REACTFLOW) */}
         <div className="flex-1 relative bg-gray-50/50 dark:bg-gray-950 shadow-inner">
           <ReactFlow 
             nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} 
-            nodeTypes={nodeTypes}
-            nodesDraggable={!viewingOldVersion} // Bloqueamos el arrastre si es versión antigua
-            nodesConnectable={!viewingOldVersion}
-            elementsSelectable={true}
+            nodeTypes={nodeTypes} nodesDraggable={!viewingOldVersion} nodesConnectable={!viewingOldVersion} elementsSelectable={true}
             onNodeDragStop={handleNodeDragStop}
             onNodeClick={(e,n) => { 
-               const statusData = n.data.raw_data;
-               setSelectedElement({ type: 'status', data: statusData }); 
-               setRenameValue(statusData.name);
-               setEditSlaHours(statusData.sla_hours || ""); // 🔥 CARGAMOS EL SLA
+               setSelectedElement({ type: 'status', data: n.data.raw_data }); 
+               setRenameValue(n.data.raw_data.name); setEditSlaHours(n.data.raw_data.sla_hours || ""); 
                closeActionModal(); closeValidationModal();
             }}
             onEdgeClick={(e, edge) => { 
-               const transData = edge.data.raw_data;
-               setSelectedElement({ type: 'transition', data: transData }); 
-               setRenameValue(transData.name);
-               loadTransitionDetails(transData.id); 
+               setSelectedElement({ type: 'transition', data: edge.data.raw_data }); 
+               setRenameValue(edge.data.raw_data.name); loadTransitionDetails(edge.data.raw_data.id); 
                closeActionModal(); closeValidationModal();
             }} 
             onPaneClick={() => { setSelectedElement(null); setTransitionActions([]); setTransitionValidations([]); closeActionModal(); closeValidationModal(); }} 
@@ -970,41 +442,9 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
             <Background color={isDarkMode ? '#4b5563' : '#ccc'} gap={16} size={1} />
             <Controls className="dark:bg-gray-800 dark:text-white dark:border-gray-700 shadow-md" />
           </ReactFlow>
-
-          {/* 🔥 PANEL FLOTANTE DE HISTORIAL DE VERSIONES 🔥 */}
-          {showVersions && (
-            <div className="absolute top-4 left-4 z-50 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 flex flex-col max-h-[80vh]">
-               <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
-                  <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><History size={16} className="text-blue-500" /> Historial de Versiones</h3>
-                  <button onClick={() => setShowVersions(false)} className="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"><X size={16}/></button>
-               </div>
-               <div className="overflow-y-auto p-2 custom-scrollbar">
-                  {loadingVersions ? (
-                    <div className="flex justify-center p-8"><Loader2 className="animate-spin text-blue-500" size={24}/></div>
-                  ) : (
-                    versions.map((v) => (
-                      <button 
-                        key={v.id} 
-                        onClick={() => handleLoadVersion(v.id, v.is_active)}
-                        className={`w-full text-left p-3 rounded-xl mb-1 transition-all border ${currentVersionId === v.id ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800/50' : 'bg-transparent border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/50'} flex flex-col gap-1`}
-                      >
-                        <div className="flex justify-between items-center w-full">
-                          <span className={`font-bold ${currentVersionId === v.id ? 'text-blue-700 dark:text-blue-400' : 'text-gray-900 dark:text-gray-200'}`}>Versión {v.version}</span>
-                          {v.is_active && <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 px-2 py-0.5 rounded">Activa</span>}
-                        </div>
-                        <span className="text-xs text-gray-500">ID del Registro: #{v.id}</span>
-                      </button>
-                    ))
-                  )}
-               </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* 🔥 MODALES ORIGINALES ... (Conectar, Validaciones, Acciones) ... 🔥 */}
-      {/* ... (Se mantienen idénticos, solo asegúrate de no haber borrado ninguno de tus modales aquí) ... */}
-      
       {pendingConnection && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
@@ -1014,10 +454,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                </div>
                <form onSubmit={handleCreateTransition} className="p-6">
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Nombre de la transición</label>
-                  <input 
-                     type="text" autoFocus required placeholder="Ej: Aprobar Documento" value={newTransitionName} onChange={e => setNewTransitionName(e.target.value)} 
-                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all shadow-sm"
-                  />
+                  <input type="text" autoFocus required placeholder="Ej: Aprobar Documento" value={newTransitionName} onChange={e => setNewTransitionName(e.target.value)} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all shadow-sm" />
                   <div className="flex justify-end gap-3 mt-6">
                      <button type="button" onClick={() => setPendingConnection(null)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
                      <button type="submit" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors active:scale-95">Conectar</button>
@@ -1027,355 +464,186 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
          </div>, document.body
       )}
 
-      {isAddingValidation && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg shadow-2xl rounded-2xl animate-in zoom-in-95 duration-200 overflow-hidden border border-gray-200 dark:border-gray-800">
-             <div className="p-5 border-b border-red-100 dark:border-red-900/30 flex justify-between items-center bg-red-50/50 dark:bg-red-900/10">
-               <h3 className="font-bold text-red-900 dark:text-red-400 flex items-center gap-2"><ShieldAlert size={18}/> Regla de Validación (Bloqueo)</h3>
-               <button onClick={closeValidationModal} className="text-gray-400 hover:bg-red-100 dark:hover:bg-red-900/50 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-             </div>
-             <form id="validation-form" onSubmit={handleSaveValidation} className="p-6 space-y-5">
-                <div>
-                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Bloquear la transición si el campo...</label>
-                   <Select 
-                      options={moduleFields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
-                      value={newValidation.target_field ? { value: newValidation.target_field, label: moduleFields.find(f => (f.api_name || f.label) === newValidation.target_field)?.label || newValidation.target_field } : null}
-                      onChange={(opt) => setNewValidation({...newValidation, target_field: opt.value})}
-                      placeholder="Buscar campo..."
-                      styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
-                   />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                   <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Condición de Desbloqueo</label>
-                      <select required value={newValidation.operator} onChange={e => setNewValidation({...newValidation, operator: e.target.value})} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-red-500 shadow-sm">
-                         <option value="IS_EMPTY">Está Vacío</option>
-                         <option value="NOT_EMPTY">No está Vacío</option>
-                         <option value="==">Es igual a...</option>
-                         <option value="!=">Es diferente de...</option>
-                         <option value="CONTAINS">Contiene texto...</option>
-                         <option value=">">Es mayor a (Numérico)...</option>
-                         <option value="<">Es menor a (Numérico)...</option>
-                      </select>
-                   </div>
-                   {!['IS_EMPTY', 'NOT_EMPTY'].includes(newValidation.operator) && (
-                      <div className="animate-in fade-in zoom-in-95">
-                         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Valor</label>
-                         <input type="text" required placeholder="Ej: Rechazado" value={newValidation.validation_value} onChange={e => setNewValidation({...newValidation, validation_value: e.target.value})} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-red-500 shadow-sm" />
-                      </div>
-                   )}
-                </div>
-                <div>
-                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mensaje de Error para el Usuario</label>
-                   <textarea rows={2} required placeholder="Ej: No puedes avanzar sin adjuntar el documento de identidad." value={newValidation.error_message} onChange={e => setNewValidation({...newValidation, error_message: e.target.value})} className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-red-500 shadow-sm resize-none custom-scrollbar" />
-                </div>
-             </form>
-             <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
-               <button type="button" onClick={closeValidationModal} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
-               <button type="submit" form="validation-form" className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95">Guardar Bloqueo</button>
-             </div>
-          </div>
-        </div>, document.body
-      )}
-
-      {isAddingAction && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-2xl max-h-[90vh] shadow-2xl rounded-2xl animate-in zoom-in-95 duration-200 flex flex-col overflow-hidden border border-gray-200 dark:border-gray-800">
-            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
-               <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                 <Zap size={18} className="text-blue-500 fill-blue-500"/> {editingActionId ? 'Editar Acción' : 'Configurar Nueva Acción'}
-               </h3>
-               <button onClick={closeActionModal} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-            </div>
-            
-            <form id="action-form" onSubmit={handleSaveAction} className="p-6 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
-                <div>
-                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Tipo de Acción</label>
-                   <select value={newAction.action_type} onChange={e => setNewAction({...defaultActionState, action_type: e.target.value})} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition-colors">
-                     <optgroup label="Súper Acciones">
-                        <option value="CHANGE_OWNER">Asignar Registro (Round Robin)</option>
-                        <option value="COPY_FIELD">Copiar Valor de Campo</option>
-                        <option value="CREATE_RECORD">Crear Registro en otro Módulo</option>
-                     </optgroup>
-                     <optgroup label="Datos y Lógica">
-                        <option value="UPDATE_VALUE">Sobrescribir Valor Fijo</option>
-                        <option value="CUSTOM_FUNCTION">Script Low-Code (Python)</option>
-                        <option value="SEND_NOTIFICATION">Notificaciones (Multicast)</option>
-                     </optgroup>
-                     <optgroup label="Reglas de Interfaz (UI)">
-                        <option value="SET_REQUIRED">Hacer Campo Obligatorio</option>
-                        <option value="SET_OPTIONAL">Quitar Obligatoriedad</option>
-                        <option value="SET_READONLY">Bloquear Campo (Solo Lectura)</option>
-                        <option value="SET_EDITABLE">Desbloquear Campo</option>
-                        <option value="SET_HIDDEN">Ocultar (Campo o Sección)</option>
-                        <option value="SET_VISIBLE">Mostrar (Campo o Sección)</option>
-                     </optgroup>
-                   </select>
-                </div>
-
-                {newAction.action_type === 'CHANGE_OWNER' && (
-                   <div className="animate-in fade-in duration-200 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 p-5 rounded-xl">
-                      <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase mb-2 flex items-center gap-1.5"><User size={14}/> Destino de Asignación</label>
-                      <Select 
-                         options={[
-                            { label: 'Usuarios', options: companyUsers.map(u => ({ value: u.id.toString(), label: ` ${u.first_name ? u.first_name + ' ' + (u.last_name || '') : u.email}` })) },
-                            { label: 'Roles (Round Robin)', options: companyRoles.map(r => ({ value: `role_${r.id}`, label: ` Rol: ${r.name}` })) },
-                            { label: 'Perfiles (Round Robin)', options: companyProfiles.map(p => ({ value: `profile_${p.id}`, label: ` Perfil: ${p.name}` })) }
-                         ]}
-                         value={newAction.action_value ? { value: newAction.action_value, label: newAction.action_value } : null} 
-                         onChange={(opt) => setNewAction({...newAction, action_value: opt.value})}
-                         placeholder="Buscar destinatario..."
-                         styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
-                      />
-                      <p className="text-[10px] text-purple-600/70 dark:text-purple-400/70 mt-2 italic">Si eliges Rol o Perfil, el sistema asignará los casos equitativamente uno a uno a los miembros del grupo.</p>
-                   </div>
-                )}
-
-                {newAction.action_type === 'SEND_NOTIFICATION' && (
-                   <div className="animate-in fade-in duration-200 space-y-4">
-                     <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 p-5 rounded-xl">
-                        <label className="block text-xs font-bold text-amber-600 dark:text-amber-500 uppercase mb-2 flex items-center gap-1.5"><BellRing size={14}/> Destinatarios (Multicast)</label>
-                        <Select 
-                           isMulti 
-                           options={notificationOptions} 
-                           value={getSelectedNotificationTargets()} 
-                           onChange={handleNotificationTargetsChange} 
-                           placeholder="Buscar usuarios, roles o perfiles..." 
-                           styles={customMultiSelectStyles} 
-                           menuPortalTarget={document.body} 
-                           menuPosition={'fixed'} 
-                           menuShouldScrollIntoView={false}
-                        />
-                        <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 mt-2 italic">Si no seleccionas a nadie, se notificará únicamente al creador del registro.</p>
-                     </div>
-                     
-                     {/* 🔥 NUEVO: Botón para abrir el Modal de Plantilla 🔥 */}
-                     <button 
-                        type="button" 
-                        onClick={() => setIsEmailModalOpen(true)}
-                        className="w-full bg-white dark:bg-gray-900 border border-dashed border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
-                     >
-                        <Edit2 size={16} /> Configurar Plantilla y Correo
-                     </button>
-                   </div>
-                )}
-
-                {['UPDATE_VALUE', 'SET_REQUIRED', 'SET_OPTIONAL', 'SET_READONLY', 'SET_EDITABLE', 'SET_HIDDEN', 'SET_VISIBLE'].includes(newAction.action_type) && (
-                   <div className="animate-in fade-in duration-200">
-                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">¿A qué elemento de este registro aplica?</label>
-                     <Select 
-                        options={(() => {
-                           let opts = [];
-                           if (['SET_HIDDEN', 'SET_VISIBLE'].includes(newAction.action_type) && moduleSections.length > 0) {
-                              opts.push({ label: 'Secciones Completas', options: moduleSections.map(s => ({ value: `section_${s.id}`, label: `🗂️ Sección: ${s.title}` })) });
-                           }
-                           opts.push({ label: 'Campos Individuales', options: moduleFields.map(f => ({ value: f.api_name || f.label, label: `📝 Campo: ${f.label}` })) });
-                           return opts;
-                        })()}
-                        value={newAction.target_field ? { value: newAction.target_field, label: newAction.target_field.startsWith('section_') ? `Sección ID ${newAction.target_field.split('_')[1]}` : newAction.target_field } : null}
-                        onChange={(opt) => setNewAction({...newAction, target_field: opt.value})}
-                        placeholder="Buscar campo o sección..."
-                        styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
-                     />
-                   </div>
-                )}
-
-                {newAction.action_type === 'COPY_FIELD' && (
-                   <div className="animate-in fade-in duration-200 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-4 bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl border border-gray-100 dark:border-gray-800">
-                      <div>
-                         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Copiar Desde (Origen)</label>
-                         <Select 
-                            options={moduleFields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
-                            value={newAction.action_value ? { value: newAction.action_value, label: moduleFields.find(f => (f.api_name || f.label) === newAction.action_value)?.label } : null}
-                            onChange={(opt) => setNewAction({...newAction, action_value: opt.value})}
-                            placeholder="Buscar Origen..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
-                         />
-                      </div>
-                      <div className="flex justify-center text-gray-400 mt-6 sm:mt-0"><ArrowRight size={24} className="rotate-90 sm:rotate-0"/></div>
-                      <div>
-                         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Pegar En (Destino)</label>
-                         <Select 
-                            options={moduleFields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
-                            value={newAction.target_field ? { value: newAction.target_field, label: moduleFields.find(f => (f.api_name || f.label) === newAction.target_field)?.label } : null}
-                            onChange={(opt) => setNewAction({...newAction, target_field: opt.value})}
-                            placeholder="Buscar Destino..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
-                         />
-                      </div>
-                   </div>
-                )}
-
-                {newAction.action_type === 'CREATE_RECORD' && (
-                   <div className="animate-in fade-in duration-200 space-y-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                           <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase mb-2 flex items-center gap-1.5"><Database size={14}/> Módulo Destino</label>
-                           <Select 
-                              options={allModules.filter(m => m.id !== moduleId).map(m => ({ value: m.id, label: m.name }))}
-                              value={newAction.action_config?.module_id ? { value: newAction.action_config.module_id, label: allModules.find(m => m.id === parseInt(newAction.action_config.module_id))?.name } : null}
-                              onChange={(opt) => setNewAction({...newAction, action_config: { module_id: opt.value, form_id: '', mapping: {} }})}
-                              placeholder="Buscar módulo..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
-                           />
-                        </div>
-                        {newAction.action_config?.module_id && (
-                           <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Formulario a usar</label>
-                              <Select 
-                                 options={allForms.filter(f => f.module_id == newAction.action_config.module_id).map(form => ({ value: form.id, label: form.name }))}
-                                 value={newAction.action_config?.form_id ? { value: newAction.action_config.form_id, label: allForms.find(f => f.id === parseInt(newAction.action_config.form_id))?.name } : null}
-                                 onChange={(opt) => setNewAction({...newAction, action_config: { ...newAction.action_config, form_id: opt.value }})}
-                                 placeholder="Buscar Formulario..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
-                              />
-                           </div>
-                        )}
-                      </div>
-
-                      {newAction.action_config?.form_id && targetModuleFields.length > 0 && (
-                         <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
-                            <div className="flex justify-between items-center mb-4">
-                               <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-widest flex items-center gap-2"><Copy size={16}/> Mapeo de Campos</label>
-                               <button type="button" onClick={handleAddMappingRow} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"><Plus size={14}/> Añadir Campo</button>
-                            </div>
-                            
-                            <div className="space-y-3">
-                               {Object.keys(newAction.action_config.mapping || {}).length === 0 && <p className="text-sm text-gray-400 italic text-center py-6 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">No hay campos mapeados. El registro se creará vacío.</p>}
-                               {Object.entries(newAction.action_config.mapping || {}).map(([targetKey, configData]) => (
-                                  <div key={targetKey} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr_auto] gap-3 items-center bg-white dark:bg-gray-900 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm group">
-                                     <select value={targetKey} onChange={e => handleUpdateMappingRow(targetKey, e.target.value, configData.type, configData.value)} className="w-full text-sm font-semibold bg-transparent border-b border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-white pb-1 focus:border-blue-500">
-                                        {targetModuleFields.map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
-                                     </select>
-                                     <div className="hidden sm:flex text-gray-400"><ArrowLeft size={16}/></div>
-                                     <div className="flex items-center gap-2">
-                                        <select value={configData.type} onChange={e => handleUpdateMappingRow(targetKey, targetKey, e.target.value, '')} className="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 outline-none text-gray-700 dark:text-gray-300 font-medium">
-                                           <option value="static">Fijo</option>
-                                           <option value="dynamic">Dinámico</option>
-                                        </select>
-                                        {configData.type === 'static' ? (
-                                           <input type="text" placeholder="Escribe un valor..." value={configData.value} onChange={e => handleUpdateMappingRow(targetKey, targetKey, 'static', e.target.value)} className="flex-1 text-sm px-3 py-2 rounded-lg bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 outline-none text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500" />
-                                        ) : (
-                                           <select value={configData.value} onChange={e => handleUpdateMappingRow(targetKey, targetKey, 'dynamic', e.target.value)} className="flex-1 text-sm px-3 py-2 rounded-lg bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 outline-none text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500">
-                                              <option value="">Copiar desde campo actual...</option>
-                                              {moduleFields.map(f => <option key={`map-src-${f.id}`} value={f.api_name || f.label}>{f.label}</option>)}
-                                           </select>
-                                        )}
-                                     </div>
-                                     <button type="button" onClick={() => handleRemoveMappingRow(targetKey)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
-                                  </div>
-                               ))}
-                            </div>
-                         </div>
-                      )}
-                   </div>
-                )}
-
-                {newAction.action_type === 'UPDATE_VALUE' && (
-                   <div className="animate-in fade-in duration-200">
-                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Nuevo Valor (Puedes usar {'{NOW}'} para la fecha actual)</label>
-                     <input type="text" required placeholder="Ej: Aprobado, o {NOW}" value={newAction.action_value} onChange={e => setNewAction({...newAction, action_value: e.target.value})} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm" />
-                   </div>
-                )}
-
-                {newAction.action_type === 'CUSTOM_FUNCTION' && (
-                   <div className="animate-in fade-in duration-200">
-                     <label className="block text-xs font-bold text-green-600 dark:text-green-500 uppercase mb-2 flex items-center gap-1.5"><Code size={14}/> Script en Python</label>
-                     <textarea required rows={6} placeholder='case["data"]["prioridad"] = "Alta"' value={newAction.function_code} onChange={e => setNewAction({...newAction, function_code: e.target.value})} className="w-full px-4 py-3 bg-gray-900 text-green-400 font-mono text-sm border border-gray-800 rounded-xl outline-none focus:border-green-500 shadow-inner resize-y custom-scrollbar" />
-                   </div>
-                )}
-            </form>
-            
-            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 shrink-0 flex justify-end gap-3">
-               <button type="button" onClick={closeActionModal} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
-               <button type="submit" form="action-form" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-2"><Save size={16}/> Guardar Regla</button>
-            </div>
-          </div>
-        </div>, document.body
-      )}
-      {/* 🔥 MODAL FLOTANTE DE PLANTILLA DE CORREO 🔥 */}
-      {isEmailModalOpen && createPortal(
+      {/* MODALES EXTRAÍDOS */}
+      <ValidationModal isOpen={isAddingValidation} onClose={closeValidationModal} onSave={handleSaveValidation} newValidation={newValidation} setNewValidation={setNewValidation} moduleFields={moduleFields} />
+      <ActionModal isOpen={isAddingAction} onClose={closeActionModal} onSave={handleSaveAction} newAction={newAction} setNewAction={setNewAction} editingActionId={editingActionId} moduleFields={moduleFields} moduleSections={moduleSections} allModules={allModules} allForms={allForms} targetModuleFields={targetModuleFields} companyUsers={companyUsers} companyRoles={companyRoles} companyProfiles={companyProfiles} moduleId={moduleId} blueprintId={currentVersionId} selectedElement={selectedElement} />
+      <ShapeSelectorModal isOpen={isShapeModalOpen} onClose={() => setIsShapeModalOpen(false)} selectedElement={selectedElement} onChangeShape={handleChangeShape} />
+      {/* 🔥 MODAL DEL ASISTENTE DE IA PARA BLUEPRINTS 🔥 */}
+      {isAiModalOpen && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
-              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <BellRing size={18} className="text-amber-500" /> Plantilla de Alerta
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-purple-200 dark:border-purple-800/50 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-1 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-purple-50/30 dark:bg-purple-900/10">
+              <h3 className="font-bold text-purple-900 dark:text-purple-300 flex items-center gap-2">
+                <Sparkles size={18} className="text-purple-500" /> Creador de Flujos IA
               </h3>
-              <button type="button" onClick={() => setIsEmailModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors">
+              <button onClick={() => !isGenerating && setIsAiModalOpen(false)} disabled={isGenerating} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors disabled:opacity-50">
                 <X size={18}/>
               </button>
             </div>
             
-            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar max-h-[70vh]">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Título de la Alerta (Asunto del Correo)</label>
-                <input type="text" placeholder="Ej: Registro Actualizado" required value={newAction.target_field} onChange={e => setNewAction({...newAction, target_field: e.target.value})} className="w-full text-sm px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mensaje / Cuerpo del Correo</label>
-                <textarea rows={4} placeholder="Ej: Se han aplicado nuevas reglas automáticas." value={newAction.action_value} onChange={e => setNewAction({...newAction, action_value: e.target.value})} className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm resize-none custom-scrollbar" />
-              </div>
+            <form onSubmit={handleGenerateBlueprintWithAI} className="p-6">
               
-              <div className="flex items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">
-                <input
-                  type="checkbox"
-                  id="send_email_check_modal_bp"
-                  checked={newAction.action_config?.send_email || false}
-                  onChange={e => {
-                    const currentConfig = newAction.action_config || {};
-                    setNewAction({...newAction, action_config: { ...currentConfig, send_email: e.target.checked } });
-                  }}
-                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-                />
-                <label htmlFor="send_email_check_modal_bp" className="text-sm font-bold text-gray-700 dark:text-gray-300 cursor-pointer">
-                  ✉️ Enviar también copia por correo electrónico
-                </label>
+              {/* PESTAÑAS (TABS) */}
+              <div className="flex gap-2 mb-6 bg-gray-100 dark:bg-gray-800/50 p-1 rounded-xl">
+                <button 
+                  type="button" 
+                  onClick={() => setAiMode('text')} 
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${aiMode === 'text' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                >
+                  <Type size={14}/> Describir (Texto)
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setAiMode('file')} 
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${aiMode === 'file' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                >
+                  <FileBox size={14}/> Extraer (PDF/IMG)
+                </button>
               </div>
-            </div>
-            
-            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end">
-              <button type="button" onClick={() => setIsEmailModalOpen(false)} className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95">
-                Confirmar Plantilla
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-      {/* 🔥 MODAL PARA CAMBIAR FORMA BPMN 🔥 */}
-      {isShapeModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
-              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Shapes size={18} className="text-purple-500" /> Seleccionar Forma (BPMN)
-              </h3>
-              <button onClick={() => setIsShapeModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-            </div>
-            
-            <div className="p-6 grid grid-cols-2 gap-4">
-               {/* Opción Task */}
-               <button onClick={() => handleChangeShape('task')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'task' || !selectedElement?.data?.raw_data?.bpmn_shape ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
-                  <div className="w-16 h-10 border-2 border-gray-400 dark:border-gray-500 rounded-md bg-white dark:bg-gray-800"></div>
-                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Actividad / Tarea</span>
-               </button>
 
-               {/* Opción Gateway */}
-               <button onClick={() => handleChangeShape('gateway')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'gateway' ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
-                  <div className="w-10 h-10 border-2 border-amber-500 bg-amber-100 dark:bg-amber-900/50 rotate-45 rounded-sm"></div>
-                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Decisión (Gateway)</span>
-               </button>
-
-               {/* Opción Start */}
-               <button onClick={() => handleChangeShape('start')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'start' ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
-                  <div className="w-10 h-10 border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 rounded-full"></div>
-                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Evento de Inicio</span>
-               </button>
-
-               {/* Opción End */}
-               <button onClick={() => handleChangeShape('end')} className={`p-4 border-2 rounded-xl flex flex-col items-center gap-3 transition-all hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 ${selectedElement?.data?.raw_data?.bpmn_shape === 'end' ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-900/30' : 'border-gray-200 dark:border-gray-700'}`}>
-                  <div className="w-10 h-10 border-4 border-rose-500 bg-rose-100 dark:bg-rose-900/50 rounded-full"></div>
-                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Evento de Fin</span>
-               </button>
-            </div>
+              {aiMode === 'text' ? (
+                <>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                    Describe el procedimiento
+                  </label>
+                  <textarea 
+                    rows={4} 
+                    autoFocus
+                    disabled={isGenerating}
+                    placeholder="Ej: El flujo inicia cuando un empleado envía una solicitud de vacaciones. Luego pasa al gerente para revisión. Si el gerente lo aprueba, va a Recursos Humanos. Si lo rechaza, termina."
+                    value={aiPrompt} 
+                    onChange={e => setAiPrompt(e.target.value)} 
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 text-sm text-gray-900 dark:text-white transition-all resize-none custom-scrollbar disabled:opacity-50"
+                  />
+                </>
+              ) : (
+                <div className="space-y-3">
+                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">
+                      Sube un manual (PDF/Word) o dibujo
+                   </label>
+                   <div 
+                      onClick={() => !isGenerating && aiBlueprintFileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${aiFile ? 'border-purple-400 bg-purple-50 dark:bg-purple-900/20' : 'border-gray-300 dark:border-gray-700 hover:border-purple-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
+                   >
+                      <input 
+                         type="file" 
+                         ref={aiBlueprintFileInputRef} 
+                         onChange={(e) => setAiFile(e.target.files[0])} 
+                         className="hidden" 
+                         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
+                      />
+                      {aiFile ? (
+                         <div className="flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center"><CheckCircle size={24} /></div>
+                            <p className="text-sm font-bold text-purple-700 dark:text-purple-300">{aiFile.name}</p>
+                            <p className="text-xs text-purple-500/70">Listo para mapear el proceso.</p>
+                         </div>
+                      ) : (
+                         <div className="flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded-full flex items-center justify-center"><UploadCloud size={24} /></div>
+                            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Haz clic para buscar archivo</p>
+                            <p className="text-xs text-gray-500">PDF, Word o Imágenes (Max 5MB)</p>
+                         </div>
+                      )}
+                   </div>
+                </div>
+              )}
+              
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" disabled={isGenerating} onClick={() => { setIsAiModalOpen(false); setAiFile(null); }} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-50">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isGenerating || (aiMode === 'text' ? !aiPrompt.trim() : !aiFile)} className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                  {isGenerating ? (
+                    <><Loader2 size={16} className="animate-spin" /> Mapeando Flujo...</>
+                  ) : (
+                    <><Sparkles size={16} /> Crear Flujo</>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>, document.body
+      )}
+      {/* 🔥 MODAL DE LISTA DE ACCIONES 🔥 */}
+      {isActionsListOpen && createPortal(
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-blue-200 dark:border-blue-800/50 overflow-hidden flex flex-col max-h-[80vh]">
+               <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-blue-50/50 dark:bg-blue-900/10">
+                  <h3 className="font-bold text-blue-900 dark:text-blue-400 flex items-center gap-2"><Zap size={18} className="fill-blue-500"/> Acciones Automáticas</h3>
+                  <button onClick={() => setIsActionsListOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+               </div>
+               <div className="p-6 overflow-y-auto custom-scrollbar space-y-3">
+                  {transitionActions.length > 0 ? (
+                     transitionActions.map(action => (
+                        <div key={action.id} className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 p-4 rounded-xl flex justify-between items-center shadow-sm group">
+                           <div className="flex items-center gap-3">
+                              <div className="p-2 bg-white dark:bg-gray-900 rounded-lg shadow-sm">{getActionIcon(action.action_type)}</div>
+                              <div>
+                                 <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{getActionLabel(action.action_type)}</p>
+                                 <p className="text-xs text-gray-500">
+                                    {action.action_type === 'CREATE_RECORD' ? `Destino: ${allModules.find(m=>m.id==action.action_config?.module_id)?.name || '?'}` : 
+                                     action.action_type === 'COPY_FIELD' ? `${action.action_value} ➔ ${action.target_field}` :
+                                     action.target_field?.startsWith('section_') ? `Sección ID ${action.target_field.replace('section_','')}` : action.target_field}
+                                 </p>
+                              </div>
+                           </div>
+                           <div className="flex gap-2">
+                              <button onClick={() => { openEditActionModal(action); setIsActionsListOpen(false); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"><Edit2 size={16} /></button>
+                              <button onClick={() => handleDeleteAction(action.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"><Trash2 size={16} /></button>
+                           </div>
+                        </div>
+                     ))
+                  ) : (
+                     <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center"><p className="text-sm text-gray-400 font-medium">Ninguna acción configurada para esta transición.</p></div>
+                  )}
+               </div>
+               <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                  <button onClick={() => { setIsAddingAction(true); setIsActionsListOpen(false); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><Plus size={16} /> Añadir Nueva Acción</button>
+               </div>
+            </div>
+         </div>, document.body
+      )}
+
+      {/* 🔥 MODAL DE LISTA DE VALIDACIONES 🔥 */}
+      {isValidationsListOpen && createPortal(
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-red-200 dark:border-red-800/50 overflow-hidden flex flex-col max-h-[80vh]">
+               <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-red-50/50 dark:bg-red-900/10">
+                  <h3 className="font-bold text-red-900 dark:text-red-400 flex items-center gap-2"><ShieldAlert size={18} className="fill-red-500"/> Reglas de Validación (Bloqueos)</h3>
+                  <button onClick={() => setIsValidationsListOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+               </div>
+               <div className="p-6 overflow-y-auto custom-scrollbar space-y-3">
+                  {transitionValidations.length > 0 ? (
+                     transitionValidations.map(val => (
+                        <div key={val.id} className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 p-4 rounded-xl flex justify-between items-center shadow-sm group">
+                           <div>
+                              <p className="text-sm font-bold text-red-900 dark:text-red-400">Si [{val.target_field}] {val.operator} {val.validation_value ? `"${val.validation_value}"` : ''}</p>
+                              <p className="text-xs text-gray-500 mt-1">Mensaje: "{val.error_message}"</p>
+                           </div>
+                           <div className="flex gap-2">
+                              <button onClick={() => { openEditValidationModal(val); setIsValidationsListOpen(false); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"><Edit2 size={16} /></button>
+                              <button onClick={async () => {
+                                const isConfirmed = await confirm({
+                                    title: 'Eliminar Validación',
+                                    message: '¿Estás seguro de eliminar este bloqueo? Cualquier usuario podrá avanzar el caso.',
+                                    confirmText: 'Sí, eliminar',
+                                    variant: 'danger'
+                                });
+                                if (isConfirmed) handleDeleteValidation(val.id);
+                              }} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"><Trash2 size={16} /></button>                           </div>
+                        </div>
+                     ))
+                  ) : (
+                     <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center"><p className="text-sm text-gray-400 font-medium">No hay bloqueos. La transición es libre.</p></div>
+                  )}
+               </div>
+               <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                  <button onClick={() => { setIsAddingValidation(true); setIsValidationsListOpen(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><Plus size={16} /> Añadir Regla de Bloqueo</button>
+               </div>
+            </div>
+         </div>, document.body
       )}
 
     </div>

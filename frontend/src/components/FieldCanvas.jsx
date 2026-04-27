@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
-import { LayoutGrid, Trash2, Edit2, X, RotateCcw, Eye, EyeOff, FileText, ArrowLeft, Database, CopyPlus, Link as LinkIcon, Star, Plus, GripVertical, Save, Loader2, Link2, Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, AlertTriangle, UploadCloud, DownloadCloud, ArchiveRestore, CheckCircle, Sparkles } from 'lucide-react';
+import { LayoutGrid, Trash2, Edit2, X, RotateCcw, Eye, EyeOff, FileText, ArrowLeft, Database, CopyPlus, Link as LinkIcon, Star, Plus, GripVertical, Save, Loader2, Link2, Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, AlertTriangle, UploadCloud, DownloadCloud, ArchiveRestore, CheckCircle, Sparkles, PenTool } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, useDraggable } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -93,7 +93,7 @@ const SortableSection = ({ section, fields, onEditField, onDeleteField, onEditSe
 };
 
 // 🔥 AÑADIDA LA PROP setHasUnsavedChanges 🔥
-const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedChanges }) => {
+const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHasUnsavedChanges }) => {
   const { notify, confirm } = useNotification(); 
 
   const [localSections, setLocalSections] = useState([]);
@@ -116,26 +116,124 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [showArchivedModal, setShowArchivedModal] = useState(false); 
   const [importSummary, setImportSummary] = useState(null); 
-  // 🔥 FASE 3.2: ESTADOS DEL ASISTENTE IA 🔥
+  // 🔥 ESTADOS DEL ASISTENTE IA 🔥
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [aiMode, setAiMode] = useState('text'); // 'text' o 'file'
+  const [aiFile, setAiFile] = useState(null);
+  const aiFileInputRef = useRef(null);
+  // 🔥 ESTADOS DE SIGNATURIT 🔥
+  const [isSignaturitModalOpen, setIsSignaturitModalOpen] = useState(false);
+  const [signaturitTemplates, setSignaturitTemplates] = useState([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [importingTemplateId, setImportingTemplateId] = useState(null);
+
+  const handleOpenSignaturit = async () => {
+    setIsSignaturitModalOpen(true);
+    setIsLoadingTemplates(true);
+    try {
+      // 🔥 OJO: Usa la prop moduleId que le pasamos desde FieldBuilder
+      const res = await api.get(`/api/v1/modules/${moduleId}/integrations/signaturit/templates`);
+      setSignaturitTemplates(res.data || []);
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "No se pudieron cargar las plantillas. ¿Configuraste la integración?");
+      setIsSignaturitModalOpen(false);
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  };
+
+  const handleImportSignaturitTemplate = async (templateId, templateName) => {
+    setImportingTemplateId(templateId);
+    try {
+       // 1. Pedimos los detalles (widgets) de la plantilla
+       const res = await api.get(`/api/v1/modules/${moduleId}/integrations/signaturit/templates/${templateId}`);
+       const templateDetails = res.data;
+       
+       // Dependiendo de si la respuesta vino de v3 o v4, los widgets están en distinto nivel
+       let widgets = [];
+       if (templateDetails.widgets) {
+           widgets = templateDetails.widgets; // Formato V4
+       } else if (templateDetails.documents && templateDetails.documents.length > 0) {
+           widgets = templateDetails.documents[0].widgets || []; // Formato V3 Detail
+       }
+
+       const editableWidgets = widgets.filter(w => w.editable && w.type !== 'signature');
+       
+       if (editableWidgets.length === 0) {
+          return notify.warning("Esta plantilla no tiene campos editables configurados para extraer.");
+       }
+
+       // 2. Creamos la sección y los campos
+       const newSectionId = `temp-sec-${Date.now()}`;
+       const newSection = {
+           id: newSectionId,
+           title: `Contrato: ${templateName}`,
+           order: localSections.length,
+           columns: 2
+       };
+
+       const newFields = editableWidgets.map((w, idx) => {
+           let fType = 'text';
+           if (w.type === 'date') fType = 'date';
+           if (w.type === 'check' || w.type === 'radio') fType = 'checkbox';
+
+           return {
+               id: `temp-sig-field-${Date.now()}-${idx}`,
+               label: w.name || w.key || 'Campo Signaturit',
+               api_name: w.key, 
+               field_type: fType,
+               section_id: newSectionId,
+               order: localFields.length + idx,
+               required: w.required || false,
+               is_primary: false,
+               show_in_create: true,
+               options: '',
+               subform_config: []
+           };
+       });
+
+       setLocalSections([...localSections, newSection]);
+       setLocalFields([...localFields, ...newFields]);
+       
+       notify.success(`¡Se extrajeron ${newFields.length} campos de la plantilla!`);
+       setIsSignaturitModalOpen(false);
+       markAsChanged();
+
+    } catch (error) {
+       notify.error("Error al extraer los campos de la plantilla.");
+    } finally {
+       setImportingTemplateId(null);
+    }
+  };
 
   const handleGenerateWithAI = async (e) => {
     e.preventDefault();
-    if (!aiPrompt.trim()) return notify.warning("Describe cómo quieres que sea tu formulario.");
+    if (aiMode === 'text' && !aiPrompt.trim()) return notify.warning("Describe cómo quieres que sea tu formulario.");
+    if (aiMode === 'file' && !aiFile) return notify.warning("Por favor, selecciona un documento o imagen.");
     
     setIsGenerating(true);
     try {
-      // El backend enviará el prompt a la IA y nos devolverá un JSON estructurado
-      const res = await api.post(`/api/v1/ai/generate-form`, {
-        form_id: selectedForm.id,
-        prompt: aiPrompt
-      });
+      let res;
+      
+      // Dependiendo del modo, llamamos a un endpoint u otro
+      if (aiMode === 'file') {
+         const formData = new FormData();
+         formData.append('file', aiFile);
+         res = await api.post('/api/v1/ai/generate-form/file', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+         });
+      } else {
+         res = await api.post(`/api/v1/ai/generate-form`, {
+            form_id: selectedForm.id,
+            prompt: aiPrompt
+         });
+      }
       
       const aiData = res.data;
       
-      // 1. Mapeamos las nuevas secciones generadas por IA (les damos un ID temporal)
+      // 1. Mapeamos las nuevas secciones
       const aiSections = (aiData.sections || []).map((sec, idx) => ({
          id: `temp-ai-sec-${Date.now()}-${idx}`,
          title: sec.title,
@@ -143,7 +241,7 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
          order: localSections.length + idx
       }));
       
-      // 2. Mapeamos los campos y los asignamos a sus secciones correspondientes
+      // 2. Mapeamos los campos
       const aiFields = (aiData.fields || []).map((fld, idx) => {
          const targetSec = aiSections.find(s => s.title === fld.section_title) || aiSections[0] || localSections[0];
          return {
@@ -161,13 +259,14 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
          };
       });
       
-      // 3. Pintamos la magia instantáneamente en el lienzo (preview)
+      // 3. Pintamos la magia
       setLocalSections(prev => [...prev, ...aiSections]);
       setLocalFields(prev => [...prev, ...aiFields]);
       
-      notify.success("¡Formulario generado mágicamente! Revisa, edita si hace falta, y presiona 'Guardar Diseño'.");
+      notify.success("¡Formulario extraído y generado mágicamente!");
       setIsAiModalOpen(false);
       setAiPrompt('');
+      setAiFile(null);
       markAsChanged();
     } catch (error) {
       notify.error(error.response?.data?.detail || "Error al conectar con el Asistente IA.");
@@ -488,6 +587,11 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
              </button>
              <input type="file" accept=".json" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
           </div>
+          {/* 🔥 BOTÓN IMPORTAR DE SIGNATURIT 🔥 */}
+          <button onClick={handleOpenSignaturit} className="px-4 py-2 text-sm font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2">
+            <PenTool size={16}/> 
+            <span className="hidden sm:inline">Traer de Signaturit</span>
+          </button>
           {/* 🔥 BOTÓN ASISTENTE IA 🔥 */}
           <button onClick={() => setIsAiModalOpen(true)} className="px-4 py-2 text-sm font-bold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800/50 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2">
             <Sparkles size={16} className={isGenerating ? "animate-spin" : "animate-pulse"}/> 
@@ -740,32 +844,144 @@ const FieldCanvas = ({ selectedForm, onCloseCanvas, fetchFields, setHasUnsavedCh
             </div>
             
             <form onSubmit={handleGenerateWithAI} className="p-6">
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-                ¿Qué tipo de formulario necesitas?
-              </label>
-              <textarea 
-                rows={4} 
-                autoFocus
-                disabled={isGenerating}
-                placeholder="Ej: Necesito un formulario para gestionar reembolsos de viáticos. Debe tener una sección para los datos del empleado, fecha, centro de costos, y una tabla (subformulario) para listar los tickets con monto, concepto y comprobante..."
-                value={aiPrompt} 
-                onChange={e => setAiPrompt(e.target.value)} 
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm text-gray-900 dark:text-white transition-all resize-none custom-scrollbar disabled:opacity-50"
-              />
+              
+              {/* PESTAÑAS (TABS) */}
+              <div className="flex gap-2 mb-6 bg-gray-100 dark:bg-gray-800/50 p-1 rounded-xl">
+                <button 
+                  type="button" 
+                  onClick={() => setAiMode('text')} 
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${aiMode === 'text' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                >
+                  <Type size={14}/> Describir (Texto)
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setAiMode('file')} 
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${aiMode === 'file' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                >
+                  <FileBox size={14}/> Extraer (PDF/IMG)
+                </button>
+              </div>
+
+              {aiMode === 'text' ? (
+                <>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                    ¿Qué tipo de formulario necesitas?
+                  </label>
+                  <textarea 
+                    rows={4} 
+                    autoFocus
+                    disabled={isGenerating}
+                    placeholder="Ej: Necesito un formulario para gestionar reembolsos de viáticos. Debe tener una sección para los datos del empleado, fecha, centro de costos, y una tabla (subformulario) para listar los tickets..."
+                    value={aiPrompt} 
+                    onChange={e => setAiPrompt(e.target.value)} 
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm text-gray-900 dark:text-white transition-all resize-none custom-scrollbar disabled:opacity-50"
+                  />
+                </>
+              ) : (
+                <div className="space-y-3">
+                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">
+                      Sube tu manual o foto del formulario
+                   </label>
+                   <div 
+                      onClick={() => !isGenerating && aiFileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${aiFile ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' : 'border-gray-300 dark:border-gray-700 hover:border-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
+                   >
+                      <input 
+                         type="file" 
+                         ref={aiFileInputRef} 
+                         onChange={(e) => setAiFile(e.target.files[0])} 
+                         className="hidden" 
+                         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
+                      />
+                      {aiFile ? (
+                         <div className="flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center"><CheckCircle size={24} /></div>
+                            <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{aiFile.name}</p>
+                            <p className="text-xs text-indigo-500/70">Archivo listo para extracción mágica.</p>
+                         </div>
+                      ) : (
+                         <div className="flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded-full flex items-center justify-center"><UploadCloud size={24} /></div>
+                            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Haz clic para buscar archivo</p>
+                            <p className="text-xs text-gray-500">PDF, Word, Excel, JPG, PNG (Max 5MB)</p>
+                         </div>
+                      )}
+                   </div>
+                </div>
+              )}
               
               <div className="mt-6 flex justify-end gap-3">
-                <button type="button" disabled={isGenerating} onClick={() => setIsAiModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-50">
+                <button type="button" disabled={isGenerating} onClick={() => { setIsAiModalOpen(false); setAiFile(null); }} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-50">
                   Cancelar
                 </button>
-                <button type="submit" disabled={isGenerating || !aiPrompt.trim()} className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                <button type="submit" disabled={isGenerating || (aiMode === 'text' ? !aiPrompt.trim() : !aiFile)} className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                   {isGenerating ? (
-                    <><Loader2 size={16} className="animate-spin" /> Pensando...</>
+                    <><Loader2 size={16} className="animate-spin" /> Extrayendo Datos...</>
                   ) : (
                     <><Sparkles size={16} /> Crear Magia</>
                   )}
                 </button>
               </div>
             </form>
+          </div>
+        </div>, document.body
+      )}
+      {/* 🔥 MODAL DE PLANTILLAS SIGNATURIT 🔥 */}
+      {isSignaturitModalOpen && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[600] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-emerald-200 dark:border-emerald-800/50 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+            <div className="p-1 h-1 bg-gradient-to-r from-emerald-500 to-teal-500"></div>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-emerald-50/30 dark:bg-emerald-900/10 shrink-0">
+              <div>
+                <h3 className="font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
+                  <PenTool size={18} className="text-emerald-500" /> Plantillas de Signaturit
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Selecciona una plantilla para extraer sus campos (widgets) a tu formulario.</p>
+              </div>
+              <button onClick={() => setIsSignaturitModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors">
+                <X size={18}/>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-gray-50/50 dark:bg-gray-950">
+               {isLoadingTemplates ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-emerald-600">
+                     <Loader2 className="animate-spin" size={32} />
+                     <p className="text-sm font-bold">Conectando con Signaturit...</p>
+                  </div>
+               ) : signaturitTemplates.length === 0 ? (
+                  <div className="text-center py-12 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                     <PenTool size={32} className="mx-auto text-gray-300 dark:text-gray-700 mb-3" />
+                     <h4 className="font-bold text-gray-700 dark:text-gray-300">No hay plantillas</h4>
+                     <p className="text-sm text-gray-500">Asegúrate de haber creado al menos una plantilla en tu panel de Signaturit.</p>
+                  </div>
+               ) : (
+                  <div className="grid gap-4">
+                     {signaturitTemplates.map(template => (
+                        <div key={template.id} className="bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between group hover:border-emerald-300 transition-colors">
+                           <div>
+                              <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">📄 {template.name}</h4>
+                              <p className="text-xs text-gray-500 mt-1 font-mono">ID: {template.id}</p>
+                              <div className="flex gap-2 mt-2">
+                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                                    Creada: {new Date(template.created_at).toLocaleDateString()}
+                                 </span>
+                              </div>
+                           </div>
+                           <button 
+                              onClick={() => handleImportSignaturitTemplate(template.id, template.name)} 
+                              disabled={importingTemplateId === template.id}
+                              className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-600 text-emerald-600 hover:text-white dark:text-emerald-400 font-bold text-sm rounded-lg transition-colors shadow-sm border border-emerald-200 dark:border-emerald-800 disabled:opacity-50 flex items-center gap-2"
+                           >
+                              {importingTemplateId === template.id ? <Loader2 size={16} className="animate-spin" /> : null}
+                              {importingTemplateId === template.id ? 'Extrayendo...' : 'Importar Campos'}
+                           </button>
+                        </div>
+                     ))}
+                  </div>
+               )}
+            </div>
           </div>
         </div>, document.body
       )}

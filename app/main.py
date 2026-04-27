@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from app.db.base_class import Base
 from app.db.session import engine, get_db
 from app.models import models 
-from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards, webhooks, ai, chat, templates
+from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards, webhooks, ai, chat, templates, workflow
 from app.api import deps
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles 
@@ -80,6 +80,7 @@ app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["Webhooks"]
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["Artificial Intelligence"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["Templates"])
+app.include_router(workflow.router, prefix="/api/v1/workflow", tags=["Workflow"])
 
 Base.metadata.create_all(bind=engine)
 
@@ -103,6 +104,7 @@ class UserMeResponse(BaseModel):
     permissions: Dict[str, Any]
     is_mfa_enabled: bool = False
     is_system_company: bool = False
+    language: str = "es"
 
     class Config:
         from_attributes = True
@@ -129,5 +131,8 @@ def read_user_me(
         
         # 🔥 FIX: Si la BD devuelve NULL (None), forzamos a que sea False 🔥
         "is_mfa_enabled": current_user.is_mfa_enabled or False,
-        "is_system_company": company.is_system_company == True if company else False
+        "is_system_company": company.is_system_company == True if company else False,
+        
+        # 🔥 DEVOLVEMOS EL IDIOMA GUARDADO EN LA BD 🔥
+        "language": getattr(current_user, 'language', 'es') or "es"
     }

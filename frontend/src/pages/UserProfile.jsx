@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios'; // 🔥 Verifica que esta ruta sea la correcta en tu proyecto
-import { User, Mail, Shield, Key, Lock, Save, Loader2, CheckCircle2, Smartphone, ShieldCheck, ShieldAlert, X } from 'lucide-react';
+import { User, Mail, Shield, Key, Lock, Save, Loader2, CheckCircle2, Smartphone, ShieldCheck, ShieldAlert, X, Globe } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react'; // 🔥 Importamos el generador de QR
 import { useNotification } from '../context/NotificationContext';
+import { useTranslation } from 'react-i18next';
 
 const UserProfile = () => {
   const { notify, confirm } = useNotification();
+  const { i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
   
   // Estados para Datos Personales
   const [profileData, setProfileData] = useState({ 
-    first_name: '', last_name: '', email: '', role_name: '', profile_name: '', is_mfa_enabled: false 
+    first_name: '', last_name: '', email: '', role_name: '', profile_name: '', is_mfa_enabled: false , language: 'es'
   });
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
@@ -37,7 +39,8 @@ const UserProfile = () => {
           email: res.data.email || '',
           role_name: res.data.role_name || 'Sin rol',
           profile_name: res.data.profile_name || 'Sin perfil',
-          is_mfa_enabled: res.data.is_mfa_enabled || false // Asumimos que el backend lo envía
+          is_mfa_enabled: res.data.is_mfa_enabled || false, // Asumimos que el backend lo envía
+          language: res.data.language || 'es' // Asumimos que el backend envía la preferencia de idioma
         });
       } catch (error) {
         if (error.name !== 'CanceledError') {
@@ -64,10 +67,14 @@ const UserProfile = () => {
     try {
       await api.put('/api/v1/auth/users/me', {
         first_name: profileData.first_name,
-        last_name: profileData.last_name
+        last_name: profileData.last_name,
+        language: profileData.language
       });
+
+      i18n.changeLanguage(profileData.language);
+
       setProfileSuccess(true);
-      notify.success("Datos personales actualizados.");
+      notify.success("Datos personales e idioma actualizados.");
       setTimeout(() => setProfileSuccess(false), 3000);
     } catch (error) {
       notify.error("Error al actualizar tu perfil. Inténtalo de nuevo.");
@@ -232,6 +239,21 @@ const UserProfile = () => {
                 <input type="email" disabled autoComplete="email" value={profileData.email} className="w-full px-4 py-2.5 bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 rounded-xl text-gray-500 dark:text-gray-500 text-sm cursor-not-allowed" title="Contacta al administrador para cambiar tu correo" />
               </div>
             </div>
+            {/* 🔥 NUEVO SELECTOR DE IDIOMA 🔥 */}
+              <div className="pt-2 border-t border-gray-100 dark:border-gray-800 mt-4">
+                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                  <Globe size={12}/> Idioma del Sistema
+                </label>
+                <select
+                  value={profileData.language}
+                  onChange={e => setProfileData({...profileData, language: e.target.value})}
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-gray-900 dark:text-white text-sm transition-all cursor-pointer"
+                >
+                  <option value="es">🇪🇸 Español</option>
+                  <option value="en">🇺🇸 English</option>
+                  <option value="pt">🇧🇷 Português</option>
+                </select>
+              </div>
             <div className="mt-8 pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
               {profileSuccess ? (
                 <span className="text-sm font-bold text-emerald-500 flex items-center gap-1.5 animate-in fade-in slide-in-from-left-2"><CheckCircle2 size={16}/> Cambios guardados</span>
@@ -240,6 +262,7 @@ const UserProfile = () => {
                 {savingProfile ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Guardar Cambios
               </button>
             </div>
+            
           </form>
         </div>
 

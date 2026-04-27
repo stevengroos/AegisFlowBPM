@@ -4,6 +4,7 @@ import api from '../../api/axios';
 import { Zap, Save, X, Code, Play, Filter, ArrowRight, Database, Plus, Trash2, ArrowLeft, Loader2, BellRing, User, Copy, Edit2, Globe, MessageSquare } from 'lucide-react'; // 🔥 Añadidos Globe y MessageSquare
 import { useNotification } from '../../context/NotificationContext';
 import Select from 'react-select';
+import CodeEditorModalGlobal from "../../components/modals/CodeEditorModalGlobal";
 
 const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModules, allForms, companyRoles, companyProfiles, moduleSections, onSave, onCancel, setHasUnsavedChanges }) => {
   const { notify, confirm } = useNotification();
@@ -12,6 +13,7 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
   const [targetModuleFields, setTargetModuleFields] = useState([]);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
+  const [isCodeEditorOpen, setIsCodeEditorOpen] = useState(false);
   
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
   useEffect(() => {
@@ -255,8 +257,8 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 animate-in fade-in">
                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Selecciona el campo detonante</label>
                            <Select 
-                              options={fields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
-                              value={rule.trigger_field ? { value: rule.trigger_field, label: fields.find(f => (f.api_name || f.label) === rule.trigger_field)?.label || rule.trigger_field } : null}
+                              options={fields.map(f => ({ value: f.api_name || f.label, label: f.display_label }))}
+                              value={rule.trigger_field ? { value: rule.trigger_field, label: fields.find(f => (f.api_name || f.label) === rule.trigger_field)?.display_label || rule.trigger_field } : null}
                               onChange={(opt) => updateRule({ trigger_field: opt.value })}
                               placeholder="Buscar campo..."
                               styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
@@ -271,8 +273,8 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Filter size={14} className="text-gray-900 dark:text-white"/> 2. Y se cumple que (Opcional)</h3>
                   <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
                      <Select 
-                        options={[{value: '', label: 'Aplicar siempre (Sin condición)'}, ...fields.map(f => ({ value: f.api_name || f.label, label: f.label }))]}
-                        value={{ value: rule.condition_field || '', label: rule.condition_field ? (fields.find(f => (f.api_name || f.label) === rule.condition_field)?.label || rule.condition_field) : 'Aplicar siempre (Sin condición)' }}
+                        options={[{value: '', label: 'Aplicar siempre (Sin condición)'}, ...fields.map(f => ({ value: f.api_name || f.label, label: f.display_label }))]}
+                        value={{ value: rule.condition_field || '', label: rule.condition_field ? (fields.find(f => (f.api_name || f.label) === rule.condition_field)?.display_label || rule.condition_field) : 'Aplicar siempre (Sin condición)' }}
                         onChange={(opt) => {
                            const val = opt.value;
                            const field = fields.find(f => (f.api_name || f.label) === val);
@@ -378,10 +380,10 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                                  if (['SET_HIDDEN', 'SET_VISIBLE'].includes(rule.action_type) && (moduleSections||[]).length > 0) {
                                     opts.push({ label: 'Secciones Completas', options: moduleSections.map(s => ({ value: `section_${s.id}`, label: `🗂️ Sección: ${s.title}` })) });
                                  }
-                                 opts.push({ label: 'Campos Individuales', options: fields.map(f => ({ value: f.api_name || f.label, label: `📝 Campo: ${f.label}` })) });
+                                 opts.push({ label: 'Campos Individuales', options: fields.map(f => ({ value: f.api_name || f.label, label: `📝 Campo: ${f.display_label}` })) });
                                  return opts;
                               })()}
-                              value={rule.target_field ? { value: rule.target_field, label: rule.target_field.startsWith('section_') ? `Sección ID ${rule.target_field.split('_')[1]}` : rule.target_field } : null}
+                              value={rule.target_field ? { value: rule.target_field, label: rule.target_field.startsWith('section_') ? `Sección ID ${rule.target_field.split('_')[1]}` : fields.find(f => (f.api_name || f.label) === rule.target_field)?.display_label || rule.target_field } : null}
                               onChange={(opt) => updateRule({ target_field: opt.value })}
                               placeholder="Buscar campo o sección..."
                               styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
@@ -402,8 +404,8 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                            <div>
                               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Copiar Desde (Origen)</label>
                               <Select 
-                                 options={fields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
-                                 value={rule.action_value ? { value: rule.action_value, label: fields.find(f => (f.api_name || f.label) === rule.action_value)?.label } : null}
+                                 options={fields.map(f => ({ value: f.api_name || f.label, label: f.display_label }))}
+                                 value={rule.action_value ? { value: rule.action_value, label: fields.find(f => (f.api_name || f.label) === rule.action_value)?.display_label || rule.action_value } : null}
                                  onChange={(opt) => updateRule({ action_value: opt.value })}
                                  placeholder="Buscar Origen..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
                               />
@@ -412,8 +414,8 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                            <div>
                               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Pegar En (Destino)</label>
                               <Select 
-                                 options={fields.map(f => ({ value: f.api_name || f.label, label: f.label }))}
-                                 value={rule.target_field ? { value: rule.target_field, label: fields.find(f => (f.api_name || f.label) === rule.target_field)?.label } : null}
+                                 options={fields.map(f => ({ value: f.api_name || f.label, label: f.display_label }))}
+                                 value={rule.target_field ? { value: rule.target_field, label: fields.find(f => (f.api_name || f.label) === rule.target_field)?.display_label || rule.target_field } : null}
                                  onChange={(opt) => updateRule({ target_field: opt.value })}
                                  placeholder="Buscar Destino..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
                               />
@@ -455,7 +457,7 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                                        <div key={targetKey} className="flex flex-col gap-1.5 bg-gray-50 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
                                           <div className="flex items-center gap-2">
                                              <select value={targetKey} onChange={e => handleUpdateMappingRow(targetKey, e.target.value, configData?.type || 'static', configData?.value || '')} className="flex-1 text-[10px] font-bold bg-transparent border-b border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-white pb-0.5">
-                                                {targetModuleFields.map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                                                {targetModuleFields.map(f => <option key={f.id} value={f.api_name || f.label}>{f.display_label}</option>)}
                                              </select>
                                              <button type="button" onClick={() => handleRemoveMappingRow(targetKey)} className="text-gray-400 hover:text-red-500"><X size={12}/></button>
                                           </div>
@@ -469,7 +471,7 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                                              ) : (
                                                 <select value={configData?.value || ''} onChange={e => handleUpdateMappingRow(targetKey, targetKey, 'dynamic', e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 outline-none text-gray-900 dark:text-white">
                                                    <option value="">Campo actual...</option>
-                                                   {fields.map(f => <option key={`map-src-${f.id}`} value={f.api_name || f.label}>{f.label}</option>)}
+                                                   {fields.map(f => <option key={`map-src-${f.id}`} value={f.api_name || f.label}>{f.display_label}</option>)}
                                                 </select>
                                              )}
                                           </div>
@@ -482,9 +484,40 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                      )}
 
                      {rule.action_type === 'CUSTOM_FUNCTION' && (
-                        <div className="mt-4 animate-in fade-in">
-                           <label className="block text-[10px] font-bold text-green-600 dark:text-green-500 uppercase mb-1.5 flex items-center gap-1.5"><Code size={14}/> Script en Python</label>
-                           <textarea required rows={6} placeholder='case_data["prioridad"] = "Alta"' value={rule.function_code} onChange={e => updateRule({ function_code: e.target.value })} className="w-full px-4 py-3 bg-gray-900 text-green-400 font-mono text-sm border border-gray-800 rounded-xl outline-none focus:border-green-500 shadow-inner resize-y custom-scrollbar relative z-50" />
+                        <div className="mt-4 animate-in fade-in space-y-3">
+                           <label className="block text-xs font-bold text-green-600 dark:text-green-500 uppercase mb-2 flex items-center gap-1.5">
+                             <Code size={14}/> Lógica Programable (Low-Code)
+                           </label>
+                           
+                           <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-inner group">
+                              <div className="flex items-center justify-between mb-4">
+                                 <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                    <span className="text-[10px] font-mono text-green-500/80 tracking-widest uppercase">Entorno Python 3.11</span>
+                                 </div>
+                                 <button 
+                                    type="button"
+                                    onClick={() => setIsCodeEditorOpen(true)}
+                                    className="text-xs font-bold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-all flex items-center gap-2"
+                                 >
+                                    <Edit2 size={14}/> Abrir Editor Avanzado
+                                 </button>
+                              </div>
+                              <pre className="text-xs text-gray-400 font-mono bg-black/30 p-4 rounded-lg border border-gray-800 max-h-[100px] overflow-hidden opacity-60">
+                                 {rule.function_code || "# No hay código definido aún..."}
+                              </pre>
+                           </div>
+
+                           <CodeEditorModalGlobal 
+                              isOpen={isCodeEditorOpen}
+                              onClose={() => setIsCodeEditorOpen(false)}
+                              initialCode={rule.function_code}
+                              mockDataInitial={null} 
+                              onSave={(updatedCode) => {
+                                 updateRule({ function_code: updatedCode });
+                                 setIsCodeEditorOpen(false);
+                              }}
+                           />
                         </div>
                      )}
                      {/* 🔥 FASE 3: BOTÓN PARA ABRIR MODAL DE WEBHOOK/SLACK 🔥 */}

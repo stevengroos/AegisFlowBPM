@@ -66,6 +66,7 @@ class User(Base):
     password_changed_at = Column(DateTime(timezone=True), server_default=func.now()) # Para calcular expiración
     mfa_secret = Column(String, nullable=True) # La llave secreta de Google Authenticator
     is_mfa_enabled = Column(Boolean, default=False) # ¿El usuario ya escaneó el QR?
+    language = Column(String, default="es") # 'es' (Español), 'en' (Inglés), 'pt' (Portugués)
     # =========================================================
     # 🔥 NUEVO: IDENTIDAD DE ORIGEN (FASE 6) 🔥
     # =========================================================
@@ -590,3 +591,53 @@ class GeneratedDocument(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     template = relationship("DocumentTemplate", back_populates="generated_docs")
+    
+# =======================================================
+# 🔥 FASE INTEGRACIONES: SIGNATURIT Y TERCEROS 🔥
+# =======================================================
+
+class ModuleIntegration(Base):
+    """
+    Guarda la configuración de integraciones (como Signaturit) a nivel de módulo.
+    Los tokens SE GUARDAN ENCRIPTADOS, nunca en texto plano.
+    """
+    __tablename__ = "module_integrations"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"), index=True)
+    
+    provider_name = Column(String, nullable=False, index=True) # Ej: 'signaturit'
+    environment = Column(String, default="sandbox") # 'sandbox' o 'production'
+    
+    # El token cifrado con una llave maestra (Fernet)
+    encrypted_token = Column(String, nullable=False) 
+    
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class SignatureRequest(Base):
+    """
+    Tabla de seguimiento en tiempo real de cada envío a firmar.
+    Permite saber en qué estado está el documento sin consultar a Signaturit todo el tiempo.
+    """
+    __tablename__ = "signature_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    case_id = Column(Integer, ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    
+    # El ID único que nos devuelve Signaturit al hacer el envío
+    signaturit_id = Column(String, unique=True, index=True, nullable=False)
+    
+    # Estado del proceso: 'in_queue', 'in_progress', 'completed', 'declined', 'error'
+    status = Column(String, default="in_queue", index=True)
+    
+    # Tipo de envío: 'template' (Plantilla de Signaturit) o 'document' (PDF subido/generado)
+    request_type = Column(String, nullable=False) 
+    
+    # Historial de firmantes (quién firmó y quién falta)
+    signers_data = Column(JSON, nullable=True, default=[]) 
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
