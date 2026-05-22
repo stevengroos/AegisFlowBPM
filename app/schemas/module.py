@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # ==========================
@@ -36,6 +36,7 @@ class ModuleBase(BaseModel):
     
     # 🔥 NUEVO CAMPO PARA LAS CARPETAS 🔥
     category_id: Optional[int] = Field(None, description="ID de la categoría a la que pertenece. Nulo si está suelto.")
+    mobile_config: Optional[Dict[str, Any]] = {}
 
 class ModuleCreate(ModuleBase):
     pass

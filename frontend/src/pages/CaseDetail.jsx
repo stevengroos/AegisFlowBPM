@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 // 🔥 Importaciones Arquitectura Limpia 🔥
 import { useNotification } from '../context/NotificationContext';
@@ -10,11 +10,14 @@ import FileUploadField from '../components/ui/FileUploadField';
 import SubformTable from '../features/cases/SubformTable';
 import ExportPdfButton from '../components/ExportPdfButton';
 import CaseComments from '../features/cases/CaseComments';
+import CaseExternalChat from '../features/cases/CaseExternalChat';
+
 const CaseDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { notify, confirm } = useNotification();
-  
+  const [linkedCases, setLinkedCases] = useState({});
+  const [loadingLinked, setLoadingLinked] = useState(false);
   const [caseData, setCaseData] = useState(null);
   const [history, setHistory] = useState([]);
   const [fields, setFields] = useState([]);
@@ -36,6 +39,7 @@ const CaseDetail = () => {
   const [userData, setUserData] = useState(null);
   const [hasSignaturit, setHasSignaturit] = useState(false); // 🔥 NUEVO ESTADO
   const [signaturesList, setSignaturesList] = useState([]); // 🔥 NUEVO ESTADO PARA EL HISTORIAL DE FIRMAS
+  const [isModulePublished, setIsModulePublished] = useState(false);
 
   const fetchAllData = async (signal) => {
     try {
@@ -46,6 +50,24 @@ const CaseDetail = () => {
       const caseRes = await api.get(`/api/v1/cases/${id}`, { signal });
       const currentCase = caseRes.data;
       const moduleId = currentCase.module_id; 
+
+      // 🔥 VERIFICAR SI EL MÓDULO TIENE CHAT B2C (CATÁLOGO O COMPRAS) 🔥
+      try {
+        // Consultamos la info del módulo y la configuración global de la App al mismo tiempo
+        const [moduleRes, settingsRes] = await Promise.all([
+          api.get(`/api/v1/modules/${moduleId}`, { signal }),
+          api.get(`/api/v1/mobile/settings/mobile`, { signal }).catch(() => ({ data: {} }))
+        ]);
+        
+        const isPublished = moduleRes.data?.mobile_config?.is_published === true;
+        // Verificamos si este módulo es el que elegimos en Settings para guardar los pedidos
+        const isPurchasesModule = String(settingsRes.data?.purchases_module_id) === String(moduleId);
+        
+        // Habilitamos el chat si es un catálogo público O si es la bandeja de compras B2C
+        setIsModulePublished(isPublished || isPurchasesModule);
+      } catch (err) {
+        console.error("No se pudo verificar configuración B2C");
+      }
 
       // 🔥 Consultamos si Signaturit está activo
       const sigPromise = api.get(`/api/v1/modules/${moduleId}/integrations/signaturit`, { signal }).catch(() => ({ data: { is_active: false, has_token: false } }));
@@ -120,6 +142,16 @@ const CaseDetail = () => {
       setRelationData(relData);
       setHasSignaturit(sigRes.data?.is_active && sigRes.data?.has_token);
       setSignaturesList(sigListRes.data || []);
+      // BÚSQUEDA INVERSA DE REGISTROS RELACIONADOS 
+      try {
+         setLoadingLinked(true);
+         const linkedRes = await api.get(`/api/v1/cases/${id}/linked`, { signal });
+         setLinkedCases(linkedRes.data || {});
+      } catch (err) {
+         if (err.name !== 'CanceledError') console.error("Error al cargar vinculados");
+      } finally {
+         setLoadingLinked(false);
+      }
     } catch (error) {
       if (error.name !== 'CanceledError') {
         console.error("🔥 EL CULPABLE ES:", error); // Lo movimos aquí adentro
@@ -258,6 +290,10 @@ const CaseDetail = () => {
   };
 
   useEffect(() => { 
+    // 🔥 FIX: Resetear la pestaña y el modo edición al navegar a un nuevo caso
+    setActiveTab('details');
+    setIsEditing(false);
+    
     const controller = new AbortController();
     fetchAllData(controller.signal); 
     return () => controller.abort();
@@ -398,6 +434,22 @@ const CaseDetail = () => {
   
   const showTransitions = canEdit && availableTransitions.length > 0;
 
+  const calculateVisualFormula = (formulaStr, currentData) => {
+      if (!formulaStr) return '';
+      try {
+          let expr = formulaStr;
+          const vars = expr.match(/\[(.*?)\]/g) || [];
+          vars.forEach(v => {
+              const key = v.replace('[', '').replace(']', '');
+              const val = currentData[key] || 0;
+              expr = expr.replace(v, val);
+          });
+          // eslint-disable-next-line no-eval
+          const result = eval(expr);
+          return isNaN(result) ? '...' : Number(result).toFixed(2);
+      } catch (e) { return '...'; }
+  };
+
   // Renderizador Dinámico de Campos
   const renderField = (field) => {
     const fieldKey = field.api_name || field.label; 
@@ -423,8 +475,23 @@ const CaseDetail = () => {
              <FileUploadField type={field.field_type} value={value || ''} onChange={() => {}} disabled={true} />
           ) : field.field_type === 'relation' && value ? (
              <button onClick={() => navigate(`/cases/${value}`)} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline text-left flex items-center gap-1.5"><LinkIcon size={14}/> Ir al Registro vinculado</button>
+          
+          
+          ) : field.field_type === 'user_relation' && value ? (
+             <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+               <Users size={14}/> 
+               {(() => {
+                  const u = companyUsers.find(user => String(user.id) === String(value));
+                  return u ? (u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.email) : `Usuario ID: ${value}`;
+               })()}
+             </span>
+
           ) : field.field_type === 'url' && value ? (
              <a href={value.startsWith('http') ? value : `https://${value}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"><Link2 size={14}/> {value}</a>
+          ) : field.field_type === 'map' && value ? (
+             <a href={`https://www.google.com/maps/search/?api=1&query=${value}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1.5"><MapPin size={14}/> Ver en Google Maps ({value})</a>
+          ) : field.field_type === 'formula' ? (
+             <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5"><Calculator size={14}/> {value !== undefined ? value : '--'}</span>
           ) : field.field_type === 'subform' ? (
              <SubformTable field={field} value={value || []} relationData={relationData} isEditing={false} />
           ) : (
@@ -449,18 +516,56 @@ const CaseDetail = () => {
         </label>
         
         {field.field_type === 'select' ? <select required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses}><option value="">Seleccione...</option>{field.options?.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}</select> 
+        
         : field.field_type === 'relation' ? <SearchableSelect placeholder="Buscar registro..." value={value || ''} onChange={(val) => setEditFormData({...editFormData, [fieldKey]: val})} disabled={isReadOnly} options={relationData[field.options?.target_module_id] || []} /> 
-        : field.field_type === 'textarea' ? <textarea required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} /> 
+        
+        /* 🔥 NUEVO: EDICIÓN DE RELACIÓN CON USUARIOS 🔥 */
+        : field.field_type === 'user_relation' ? (
+          <SearchableSelect 
+             placeholder="Buscar usuario..." 
+             value={value || ''} 
+             onChange={(val) => setEditFormData({...editFormData, [fieldKey]: val})} 
+             disabled={isReadOnly} 
+             options={(() => {
+                let filtered = companyUsers;
+                const rId = field.options?.role_id;
+                const pId = field.options?.profile_id;
+                if (rId) filtered = filtered.filter(u => String(u.role_id) === String(rId));
+                if (pId) filtered = filtered.filter(u => String(u.profile_id) === String(pId));
+                return filtered.map(u => ({ value: u.id, label: u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.email }));
+             })()} 
+          />
+        )
+
+        : field.field_type === 'textarea' ? <textarea required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} />
         : field.field_type === 'checkbox' ? <input type="checkbox" disabled={isReadOnly} checked={value || false} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.checked})} className={`w-5 h-5 rounded text-blue-600 focus:ring-blue-500 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} /> 
-       : field.field_type === 'file' || field.field_type === 'image' ? (
+        
+        /* 🔥 AQUÍ ESTÁN TUS DOS CAMPOS NUEVOS 🔥 */
+        : field.field_type === 'map' ? (
+          <div className="flex gap-2">
+             <input type="text" required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses} placeholder="Latitud, Longitud" />
+             <button type="button" disabled={isReadOnly} onClick={() => {
+                 if (navigator.geolocation) {
+                     navigator.geolocation.getCurrentPosition((pos) => {
+                         setEditFormData({...editFormData, [fieldKey]: `${pos.coords.latitude}, ${pos.coords.longitude}`});
+                     });
+                 }
+             }} className="p-2.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl disabled:opacity-50 border border-red-100 shrink-0 transition-colors"><MapPin size={20}/></button>
+          </div>
+        ) : field.field_type === 'formula' ? (
+          <div className="relative">
+             <Calculator className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={16} />
+             <input type="text" disabled value={calculateVisualFormula(field.options, editFormData)} className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} placeholder="Calculado automáticamente" />
+          </div>
+        )
+        
+        : field.field_type === 'file' || field.field_type === 'image' ? (
              <FileUploadField 
                 type={field.field_type} 
                 value={value || ''} 
                 onChange={(url) => setEditFormData({...editFormData, [fieldKey]: url})} 
                 disabled={isReadOnly}
-                // 🔥 FASE 3.3: Le pasamos a la IA solo los nombres de los campos de texto, números y fechas
                 expectedFields={formFields.filter(f => !['file', 'image', 'subform', 'url'].includes(f.field_type)).map(f => f.api_name || f.label)}
-                // 🔥 FASE 3.3: Cuando la IA responda, mezclamos los datos extraídos con lo que ya está en el formulario
                 onDataExtracted={(aiData) => setEditFormData(prev => ({ ...prev, ...aiData }))}
              />
         )
@@ -555,10 +660,22 @@ const CaseDetail = () => {
           <button onClick={() => setActiveTab('comments')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'comments' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
             <MessageSquare size={16} /> Comentarios
           </button>
+          {/* 🔥 NUEVA PESTAÑA: CHAT CON CLIENTE (SOLO SI ES MÓDULO B2C) 🔥 */}
+          {isModulePublished && (
+            <button onClick={() => setActiveTab('external_chat')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'external_chat' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
+              <MessageCircle size={16} /> Chat B2C
+            </button>
+          )}
           {/* 🔥 NUEVA PESTAÑA CONDICIONADA 🔥 */}
           {hasSignaturit && (
             <button onClick={() => setActiveTab('signatures')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'signatures' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
               <PenTool size={16} /> Firmas Digitales
+            </button>
+          )}
+          {/*  NUEVA PESTAÑA CONDICIONADA SI HAY REGISTROS VINCULADOS  */}
+          {Object.keys(linkedCases).length > 0 && (
+            <button onClick={() => setActiveTab('linked')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'linked' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
+              <LinkIcon size={16} /> Relacionados ({Object.values(linkedCases).flat().length})
             </button>
           )}
         </div>
@@ -687,6 +804,48 @@ const CaseDetail = () => {
         {activeTab === 'comments' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-3xl mx-auto">
             <CaseComments caseId={id} currentUser={userData} />
+          </div>
+        )}
+        {/* 🔥 RENDERIZAR EL CHAT EXTERNO B2C 🔥 */}
+        {activeTab === 'external_chat' && isModulePublished && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-4xl mx-auto">
+            <CaseExternalChat caseId={id} currentUser={userData} />
+          </div>
+        )}
+        {/* 🔥 PESTAÑA DE REGISTROS VINCULADOS (MAGIA RELACIONAL) 🔥 */}
+        {activeTab === 'linked' && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-4xl mx-auto space-y-6">
+             {loadingLinked ? (
+                <div className="flex justify-center py-10"><Loader2 className="animate-spin text-blue-500" size={32}/></div>
+             ) : (
+                Object.entries(linkedCases).map(([moduleName, casesList]) => (
+                   <div key={moduleName} className="bg-white dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800/60 overflow-hidden shadow-sm">
+                      <div className="p-5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex items-center gap-2">
+                         <LayoutGrid className="text-blue-500" size={18}/>
+                         <h3 className="font-bold text-gray-900 dark:text-white text-base">Registros de {moduleName}</h3>
+                         <span className="ml-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs px-2 py-0.5 rounded-full font-bold">{casesList.length}</span>
+                      </div>
+                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                         {casesList.map(c => (
+                            <div key={c.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors flex items-center justify-between group">
+                               <div>
+                                  <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                     Registro #{c.id}
+                                     <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 border border-gray-200 dark:border-gray-700 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                        Estado: {statuses.find(s => s.id === c.status_id)?.name || 'N/A'}
+                                     </span>
+                                  </p>
+                                  <p className="text-xs text-gray-500 mt-1">Creado: {new Date(c.created_at).toLocaleDateString()}</p>
+                               </div>
+                               <button onClick={() => navigate(`/cases/${c.id}`)} className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  Ver Detalles <ArrowRight size={14}/>
+                               </button>
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                ))
+             )}
           </div>
         )}
         {/* 🔥 RENDERIZAR EL TABLERO DE FIRMAS 🔥 */}

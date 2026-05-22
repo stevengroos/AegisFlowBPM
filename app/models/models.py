@@ -28,6 +28,32 @@ class Company(Base):
     # =========================================================
     ai_active_provider = Column(String, nullable=True) # Ej: 'openai', 'anthropic', 'gemini'
     ai_api_key = Column(String, nullable=True)         # El API Key secreto de la empresa
+    # =========================================================
+    # 🔥 NUEVO: CONFIGURACIÓN GLOBAL B2C Y APP MÓVIL 🔥
+    # =========================================================
+    mobile_app_config = Column(JSON, nullable=True, default={
+        "is_b2c_enabled": False,
+        "onboarding_module_id": None,
+        "onboarding_form_id": None,
+        
+        # Flujo de Ventas (Ofertas)
+        "purchases_module_id": None,
+        "purchases_form_id": None,
+        "purchases_volume_field": None,
+        "purchases_price_field": None,
+        
+        # Flujo de Compras (Demandas)
+        "demands_module_id": None,
+        "demands_form_id": None,
+        "fulfillment_module_id": None,
+        "fulfillment_form_id": None,
+        "fulfillment_volume_field": None,
+        "fulfillment_price_field": None,
+        
+        "require_manual_approval": True,
+        "theme_color": "#000000",
+        "hide_prices_from_guests": False
+    })
 
 class Profile(Base):
     __tablename__ = "profiles"
@@ -35,6 +61,11 @@ class Profile(Base):
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     name = Column(String) 
     permissions = Column(JSON) 
+    # =========================================================
+    # 🔥 FASE 1: PERFILES EXTERNOS Y PORTALES (HEADLESS) 🔥
+    # =========================================================
+    is_external = Column(Boolean, default=False) 
+    portal_access = Column(JSON, nullable=True, default={})
 
 class Role(Base):
     __tablename__ = "roles"
@@ -67,10 +98,11 @@ class User(Base):
     mfa_secret = Column(String, nullable=True) # La llave secreta de Google Authenticator
     is_mfa_enabled = Column(Boolean, default=False) # ¿El usuario ya escaneó el QR?
     language = Column(String, default="es") # 'es' (Español), 'en' (Inglés), 'pt' (Portugués)
-    # =========================================================
-    # 🔥 NUEVO: IDENTIDAD DE ORIGEN (FASE 6) 🔥
-    # =========================================================
     auth_provider = Column(String, default="local") # Puede ser: "local", "google", "microsoft"
+    is_external = Column(Boolean, default=False) # Si es True, no puede entrar al panel de administración
+    contact_record_id = Column(Integer, nullable=True) # Lo vincularemos con su registro de "Productor"
+    profile_data = Column(JSON, nullable=True, default={})
+    favorite_offers = Column(JSON, nullable=True, default=[])
 
 class ImportBatch(Base):
     __tablename__ = "import_batches"
@@ -110,7 +142,7 @@ class Module(Base):
     # 🔥 NUEVA COLUMNA Y RELACIÓN PARA LAS CARPETAS 🔥
     category_id = Column(Integer, ForeignKey("module_categories.id", ondelete="SET NULL"), nullable=True)
     category = relationship("ModuleCategory", back_populates="modules")
-    
+    mobile_config = Column(JSON, nullable=True, default={})
     forms = relationship("Form", back_populates="module")
     blueprints = relationship("Blueprint", back_populates="module")
     cases = relationship("Case", back_populates="module")
@@ -641,3 +673,30 @@ class SignatureRequest(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    
+# =======================================================
+# 🔥 FASE 2: CHAT B2B EXTERNO (APP MÓVIL <-> BACKOFFICE) 🔥
+# =======================================================
+
+class CaseExternalMessage(Base):
+    """
+    Chat directo entre el usuario externo de la App (Comprador/Vendedor) 
+    y los empleados del Backoffice de la empresa.
+    """
+    __tablename__ = "case_external_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    case_id = Column(Integer, ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    
+    # Quién envía el mensaje
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True) 
+    
+    content = Column(String, nullable=False)
+    
+    # Para saber rápidamente de qué lado de la pantalla dibujarlo:
+    # True = Lo mandó el cliente desde la App. 
+    # False = Lo mandó un empleado desde el Backoffice Web.
+    is_from_client = Column(Boolean, default=True) 
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

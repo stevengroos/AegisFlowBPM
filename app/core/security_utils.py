@@ -178,3 +178,26 @@ def check_support_access(db: Session, user: models.User, target_company_id: int)
         status_code=403, 
         detail="Acceso denegado. No tienes permisos para ver o interactuar en esta sesión de soporte."
     )
+   # =========================================================
+# 🔥 FASE 1: SEGURIDAD A NIVEL DE CAMPO (FIELD-LEVEL SECURITY) 🔥
+# =========================================================
+def get_field_level_security(db: Session, user: models.User, module_id: int) -> dict:
+    """
+    Devuelve las reglas de visibilidad y edición de campos para un usuario específico.
+    """
+    if user.is_superadmin:
+        return {} # Súper admin no tiene restricciones de campos
+
+    if not user.profile_id:
+        return {}
+
+    profile = db.query(models.Profile).filter(
+        models.Profile.id == user.profile_id,
+        models.Profile.company_id == user.company_id
+    ).first()
+
+    if not profile or not profile.permissions:
+        return {}
+
+    mod_perms = profile.permissions.get("modules", {}).get(str(module_id), {})
+    return mod_perms.get("field_rules", {})

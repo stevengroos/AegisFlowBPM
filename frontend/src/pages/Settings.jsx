@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, LayoutGrid, Columns, Zap, Box, Users, Shield, Key, Loader2, ShieldAlert, Lock, FileText, Plug } from 'lucide-react'; 
+import { ArrowLeft, LayoutGrid, Columns, Zap, Box, Users, Shield, Key, Loader2, ShieldAlert, Lock, FileText, Plug, Smartphone } from 'lucide-react'; 
 import api from '../api/axios'; 
 
 import ModuleList from '../components/ModuleList';
@@ -8,6 +8,7 @@ import BlueprintBuilder from '../components/BlueprintBuilder';
 import AutomationBuilder from '../components/AutomationBuilder'; 
 import TemplateBuilder from '../components/TemplateBuilder';
 import IntegrationBuilder from '../components/IntegrationBuilder';
+import ChannelBuilder from '../components/ChannelBuilder';
 
 
 import UsersManager from '../components/UsersManager';
@@ -16,6 +17,8 @@ import ProfilesManager from '../components/ProfilesManager';
 import GlobalAudit from '../components/GlobalAudit'; 
 // 🔥 IMPORTAMOS EL NUEVO COMPONENTE DE POLÍTICAS 🔥
 import SecurityPolicies from '../components/SecurityPolicies';
+// 🔥 IMPORTAMOS EL NUEVO COMPONENTE DE APP MÓVIL 🔥
+import MobileSettings from '../components/MobileSettings';
 
 // 🔥 Importamos notificaciones y portal para un modal genérico opcional
 import { useNotification } from '../context/NotificationContext';
@@ -165,6 +168,17 @@ const Settings = () => {
           >
             <Plug size={16} className={activeTab === 'integrations' ? "" : "text-emerald-500"} /> <span className="hidden sm:inline">Integraciones (iPaaS)</span><span className="sm:hidden">iPaaS</span>
           </button>
+          {/* 🔥 NUEVA PESTAÑA: CANALES / APP B2C 🔥 */}
+          <button 
+            onClick={() => handleAttemptNavigation('tab', 'channels')} 
+            className={`pb-4 px-2 text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'channels' 
+                ? 'border-fuchsia-600 dark:border-fuchsia-500 text-fuchsia-600 dark:text-fuchsia-500' 
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <Smartphone size={16} className={activeTab === 'channels' ? "" : "text-fuchsia-500"} /> <span className="hidden sm:inline">Catálogo (App Móvil)</span><span className="sm:hidden">App</span>
+          </button>
         </div>
 
         <div className="flex-1 overflow-hidden">
@@ -174,8 +188,10 @@ const Settings = () => {
                 <AutomationBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
             ) : activeTab === 'templates' ? (
                 <TemplateBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
-            ) : activeTab === 'integrations' ? ( // 🔥 NUEVA CONDICIÓN
+            ) : activeTab === 'integrations' ? (
                 <IntegrationBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
+            ) : activeTab === 'channels' ? ( // 🔥 NUESTRO NUEVO COMPONENTE B2C
+                <ChannelBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} />
             ) : (
                 <BlueprintBuilder moduleId={activeModule.id} setHasUnsavedChanges={setHasUnsavedChanges} /> 
             )}
@@ -201,6 +217,18 @@ const Settings = () => {
                 }`}
               >
                 <Box size={18} /> Personalización (Módulos)
+              </button>
+              
+              {/* 🔥 NUEVO BOTÓN: APP MÓVIL Y B2C 🔥 */}
+              <button 
+                onClick={() => setActiveMenu('mobile_app')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                  activeMenu === 'mobile_app' 
+                    ? 'bg-fuchsia-50 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400' 
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                <Smartphone size={18} /> App Móvil & B2C
               </button>
             </div>
           </div>
@@ -240,6 +268,8 @@ const Settings = () => {
         {/* 🔥 RENDERIZADO CONDICIONAL DE LOS COMPONENTES 🔥 */}
         {activeMenu === 'modules' && canManageModules && <ModuleList onSelectModule={(mod) => handleAttemptNavigation('module', mod)} />}
         
+        {/* 🔥 RENDERIZAMOS EL NUEVO COMPONENTE B2C 🔥 */}
+        {activeMenu === 'mobile_app' && canManageModules && <MobileSettings />}
         {/* 🔥 NUESTRO NUEVO COMPONENTE 🔥 */}
         {activeMenu === 'policies' && canManageSecurity && <SecurityPolicies />}
         

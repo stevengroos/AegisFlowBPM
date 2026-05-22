@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
-import { Users, UserPlus, Mail, Shield, Key, Loader2, Edit2, X, Save, Lock, Trash2, Search, ChevronLeft, ChevronRight, AlertTriangle, Ban, CheckCircle, LogOut, ShieldAlert } from 'lucide-react'; 
+import { Users, UserPlus, Mail, Shield, Key, Loader2, Edit2, X, Save, Lock, Trash2, Search, ChevronLeft, ChevronRight, AlertTriangle, Ban, CheckCircle, LogOut, ShieldAlert, Building, UserCheck, Clock } from 'lucide-react'; 
 import { useNotification } from '../context/NotificationContext';
 
 const UsersManager = () => {
@@ -22,8 +22,41 @@ const UsersManager = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [sendInvite, setSendInvite] = useState(true);
 
-  const [createData, setCreateData] = useState({ email: '', first_name: '', last_name: '', role_id: '', profile_id: '', password: '' });
+  const [createData, setCreateData] = useState({ email: '', first_name: '', last_name: '', role_id: '', profile_id: '', password: '', is_external: false });  
   const [editData, setEditData] = useState({ first_name: '', last_name: '', role_id: '', profile_id: '', password: '' });
+  // 🔥 NUEVOS ESTADOS PARA APROBACIÓN Y TABS
+  const [activeTab, setActiveTab] = useState('internal'); 
+  const [isApproveOpen, setIsApproveOpen] = useState(false);
+  const [approveData, setApproveData] = useState({ role_id: '', profile_id: '' });
+
+  const openApproveModal = (user) => {
+    setSelectedUser(user);
+    setApproveData({ role_id: '', profile_id: '' });
+    setIsApproveOpen(true);
+  };
+
+  const handleApproveUser = async (e) => {
+    e.preventDefault();
+    if (!approveData.profile_id) {
+      notify.error("Debes asignarle un Perfil para aprobarlo.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const payload = {
+        profile_id: parseInt(approveData.profile_id, 10),
+        role_id: approveData.role_id ? parseInt(approveData.role_id, 10) : null
+      };
+      await api.put(`/api/v1/security/users/${selectedUser.id}/approve`, payload);
+      notify.success(`¡Usuario ${selectedUser.first_name} aprobado con éxito!`);
+      setIsApproveOpen(false);
+      fetchData(new AbortController().signal);
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al aprobar usuario.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const fetchData = useCallback(async (signal) => {
     setLoading(true);
@@ -82,9 +115,10 @@ const UsersManager = () => {
       
       // 🔥 Usamos el mensaje dinámico que nos devuelve el backend
       notify.success(response.data.message || "Usuario creado con éxito.");
+      setActiveTab(createData.is_external ? 'external_active' : 'internal');
       
       setIsCreateOpen(false);
-      setCreateData({ email: '', first_name: '', last_name: '', role_id: '', profile_id: '', password: '' });
+      setCreateData({ email: '', first_name: '', last_name: '', role_id: '', profile_id: '', password: '', is_external: false });
       setSendInvite(true); // Reiniciamos el switch para el próximo usuario
       fetchData(new AbortController().signal);
     } catch (error) { 
@@ -243,11 +277,19 @@ const UsersManager = () => {
     );
   };
 
+  // 🔥 FILTRO ACTUALIZADO CON TABS
   const filteredUsers = users.filter(user => {
     const term = searchTerm.toLowerCase();
     const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
     const email = (user.email || '').toLowerCase();
-    return fullName.includes(term) || email.includes(term);
+    const matchesSearch = fullName.includes(term) || email.includes(term);
+
+    if (!matchesSearch) return false;
+
+    if (activeTab === 'internal') return !user.is_external;
+    if (activeTab === 'external_active') return user.is_external && user.is_active;
+    if (activeTab === 'external_pending') return user.is_external && !user.is_active;
+    return true;
   });
 
   const indexOfLastUser = currentPage * usersPerPage;
@@ -283,12 +325,30 @@ const UsersManager = () => {
           </button>
         </div>
       </div>
+      {/* 🔥 TABS DE NAVEGACIÓN */}
+      <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6 gap-6">
+        <button onClick={() => setActiveTab('internal')} className={`pb-3 font-bold text-sm flex items-center gap-2 border-b-2 transition-all ${activeTab === 'internal' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <Shield size={16}/> Staff Interno
+        </button>
+        <button onClick={() => setActiveTab('external_active')} className={`pb-3 font-bold text-sm flex items-center gap-2 border-b-2 transition-all ${activeTab === 'external_active' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <UserCheck size={16}/> Clientes App
+        </button>
+        <button onClick={() => setActiveTab('external_pending')} className={`pb-3 font-bold text-sm flex items-center gap-2 border-b-2 transition-all relative ${activeTab === 'external_pending' ? 'border-amber-500 text-amber-500' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <Clock size={16}/> Solicitudes
+          {users.filter(u => u.is_external && !u.is_active).length > 0 && (
+            <span className="bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-full ml-1 animate-pulse">
+              {users.filter(u => u.is_external && !u.is_active).length}
+            </span>
+          )}
+        </button>
+      </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800 text-xs uppercase tracking-widest text-gray-500 dark:text-gray-400 font-bold">
-              <tr><th className="px-6 py-4">Usuario</th><th className="px-6 py-4">Rol (Jerarquía)</th><th className="px-6 py-4">Perfil (Permisos)</th><th className="px-6 py-4 text-right">Acciones</th></tr>
+            {activeTab !== 'external_pending' && <th className="px-6 py-4">Rol (Jerarquía)</th>}
+            {activeTab !== 'external_pending' && <th className="px-6 py-4">Perfil (Permisos)</th>}
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {currentUsers.length > 0 ? (
@@ -302,23 +362,30 @@ const UsersManager = () => {
                       </div>
                       <div className="text-xs font-medium text-gray-500 flex items-center gap-1 mt-0.5"><Mail size={12} className="opacity-70"/> {user.email}</div>
                     </td>
+                    {activeTab !== 'external_pending' && (
                     <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
                       {user.role_id ? (
                         <span className="inline-flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-2.5 py-1 rounded-lg border border-blue-100 dark:border-blue-800/50 font-medium">
                           <Shield size={14}/> {roles.find(r => r.id === user.role_id)?.name}
                         </span>
                       ) : <span className="text-gray-400 italic font-medium px-2.5 py-1">Sin Rol</span>}
-                    </td>
+                    </td>)}
+                    {activeTab !== 'external_pending' && (
+
                     <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
                       {user.profile_id ? (
                         <span className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-500 px-2.5 py-1 rounded-lg border border-amber-100 dark:border-amber-800/50 font-medium">
                           <Key size={14}/> {profiles.find(p => p.id === user.profile_id)?.name}
                         </span>
                       ) : <span className="text-gray-400 italic font-medium px-2.5 py-1">Sin Perfil</span>}
-                    </td>
+                    </td>)}
                     <td className="px-6 py-4 text-right">
+                      {activeTab === 'external_pending' ? (
+                      <button onClick={() => openApproveModal(user)} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95">
+                        Revisar y Aprobar
+                      </button>
+                    ) : (
                       <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        
                         {user.is_active && !user.is_superadmin && (
                            <button onClick={() => handleRevokeMfa(user.id, user.first_name)} className="text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 p-2 rounded-xl transition-colors" title="Revocar Doble Factor (MFA)"><ShieldAlert size={16}/></button>
                         )}
@@ -334,6 +401,7 @@ const UsersManager = () => {
                         <button onClick={() => openEditModal(user)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 p-2 rounded-xl transition-colors" title="Editar Accesos"><Edit2 size={16}/></button>
                         <button onClick={() => handleDeleteUser(user.id, user.first_name)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded-xl transition-colors" title="Eliminar definitivamente"><Trash2 size={16}/></button>
                       </div>
+                    )}
                     </td>
                   </tr>
                 ))
@@ -388,7 +456,25 @@ const UsersManager = () => {
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Email Corporativo</label>
                 <input type="email" required value={createData.email} onChange={e => setCreateData({...createData, email: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm" placeholder="usuario@empresa.com" />
               </div>
-              
+              {/* 🔥 NUEVO: TIPO DE USUARIO (INTERNO VS EXTERNO) 🔥 */}
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                 <button 
+                    type="button"
+                    onClick={() => setCreateData({...createData, is_external: false})}
+                    className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all ${!createData.is_external ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/50 text-blue-700 dark:text-blue-400 shadow-sm ring-1 ring-blue-500' : 'bg-gray-50 border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                 >
+                    <Shield size={20} />
+                    <span className="text-xs font-bold">Staff / Back-office</span>
+                 </button>
+                 <button 
+                    type="button"
+                    onClick={() => setCreateData({...createData, is_external: true})}
+                    className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all ${createData.is_external ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 shadow-sm ring-1 ring-emerald-500' : 'bg-gray-50 border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                 >
+                    <Users size={20} />
+                    <span className="text-xs font-bold">Cliente / App (B2C)</span>
+                 </button>
+              </div>
               {/* 🔥 NUEVO: SWITCH DE INVITACIÓN POR CORREO 🔥 */}
               <label className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer ${sendInvite ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/50' : 'bg-gray-50 border-gray-200 dark:bg-gray-800/50 dark:border-gray-700'}`}>
                 <input 
@@ -435,16 +521,37 @@ const UsersManager = () => {
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Shield size={12} className="text-blue-500"/> Rol (Jerarquía)</label>
-                  <select value={createData.role_id} onChange={e => setCreateData({...createData, role_id: e.target.value})} className="w-full px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm">
-                    <option value="">Sin Rol</option>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                    <Shield size={12} className="text-blue-500"/> Rol (Jerarquía) 
+                    {!createData.is_external && <span className="text-red-500 text-sm">*</span>}
+                  </label>
+                  <select 
+                    required={!createData.is_external} 
+                    value={createData.role_id} 
+                    onChange={e => setCreateData({...createData, role_id: e.target.value})} 
+                    className="w-full px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm"
+                  >
+                    {/* Si es Staff, la opción vacía está deshabilitada. Si es externo, sí puede elegir "Sin Rol" */}
+                    <option value="" disabled={!createData.is_external}>
+                      {!createData.is_external ? "Selecciona un Rol..." : "Sin Rol (Opcional)"}
+                    </option>
                     {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Key size={12} className="text-emerald-500"/> Perfil (Permisos)</label>
-                  <select value={createData.profile_id} onChange={e => setCreateData({...createData, profile_id: e.target.value})} className="w-full px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm">
-                    <option value="">Sin Perfil</option>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                    <Key size={12} className="text-emerald-500"/> Perfil (Permisos) 
+                    {!createData.is_external && <span className="text-red-500 text-sm">*</span>}
+                  </label>
+                  <select 
+                    required={!createData.is_external} 
+                    value={createData.profile_id} 
+                    onChange={e => setCreateData({...createData, profile_id: e.target.value})} 
+                    className="w-full px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm"
+                  >
+                    <option value="" disabled={!createData.is_external}>
+                      {!createData.is_external ? "Selecciona un Perfil..." : "Sin Perfil (Opcional)"}
+                    </option>
                     {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
@@ -525,6 +632,66 @@ const UsersManager = () => {
                 <button type="submit" disabled={isSaving} className="px-6 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-md hover:bg-blue-700 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-70">
                   {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 
                   Aplicar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 MODAL DE APROBACIÓN */}
+      {isApproveOpen && selectedUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99] p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-800 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-amber-50/50 dark:bg-amber-900/10">
+               <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><Clock size={18} className="text-amber-500"/> Aprobar Solicitud</h3>
+                  <p className="text-xs text-gray-500 font-medium mt-1">Revisa los datos enviados desde la App</p>
+               </div>
+               <button onClick={() => setIsApproveOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 p-1.5 rounded-lg"><X size={20}/></button>
+            </div>
+            
+            <form onSubmit={handleApproveUser} className="p-6 space-y-5">
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
+                 <h4 className="text-xs font-bold text-gray-500 mb-3 flex items-center gap-1.5"><Building size={14}/> Datos de Registro</h4>
+                 <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="block text-[10px] text-gray-400 uppercase font-bold">Email</span><span className="font-medium dark:text-white">{selectedUser.email}</span></div>
+
+                    {/* 🔥 RENDERIZADO DINÁMICO DE TODOS LOS CAMPOS DEL FORMULARIO 🔥 */}
+                    {selectedUser.profile_data && Object.entries(selectedUser.profile_data).map(([key, value]) => (
+                       <div key={key}>
+                          <span className="block text-[10px] text-gray-400 uppercase font-bold">
+                             {key.replace(/_/g, ' ')} {/* Formatea "tipo_de_documento" a "tipo de documento" */}
+                          </span>
+                          <span className="font-medium dark:text-white">
+                             {value !== null && value !== '' ? value.toString() : 'No provisto'}
+                          </span>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">Perfil Definitivo *</label>
+                  <select required value={approveData.profile_id} onChange={e => setApproveData({...approveData, profile_id: e.target.value})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/50">
+                    <option value="">Selecciona Perfil...</option>
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">Rol (Opcional)</label>
+                  <select value={approveData.role_id} onChange={e => setApproveData({...approveData, role_id: e.target.value})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/50">
+                    <option value="">Sin Rol</option>
+                    {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-800 mt-2">
+                <button type="button" onClick={() => setIsApproveOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl">Cancelar</button>
+                <button type="submit" disabled={isSaving} className="px-6 py-2.5 bg-amber-500 text-white text-sm font-bold rounded-xl shadow-md hover:bg-amber-600 flex items-center gap-2">
+                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Autorizar Acceso
                 </button>
               </div>
             </form>

@@ -152,14 +152,64 @@ class _CaseCreateScreenState extends State<CaseCreateScreen> {
   }
 
   // ==========================================
-  // RENDERIZADOR DINÁMICO DE CAMPOS
+  // RENDERIZADOR DINÁMICO DE CAMPOS (CREACIÓN)
   // ==========================================
   Widget _buildDynamicField(Map<String, dynamic> field) {
     final String key = field['api_name'] ?? field['label'];
     final bool isRequired = field['required'] == true;
-    final String type = field['field_type'];
+    final String type = field['field_type'] ?? 'text';
 
-    // 1. SELECT (Dropdown)
+    // 1. CAMPOS COMPLEJOS (Bloqueados para creación móvil)
+    // Subformularios, archivos, imágenes, relaciones y mapas.
+    if ([
+      'subform',
+      'file',
+      'image',
+      'relation',
+      'map',
+      'formula',
+    ].contains(type)) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: TextFormField(
+          initialValue: 'Disponible en versión web',
+          readOnly: true,
+          decoration: InputDecoration(
+            labelText: field['label'] + (isRequired ? ' *' : ''),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            filled: true,
+            fillColor: Colors.grey.withOpacity(0.1),
+            suffixIcon: const Icon(Icons.computer, size: 16),
+          ),
+        ),
+      );
+    }
+
+    // 2. CHECKBOX / BOOLEANOS (Switch nativo)
+    if (type == 'checkbox' || type == 'boolean') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: SwitchListTile(
+            title: Text(
+              field['label'] + (isRequired ? ' *' : ''),
+              style: const TextStyle(fontSize: 14),
+            ),
+            value: _formData[key] == true || _formData[key] == 'true',
+            onChanged: (val) => setState(() => _formData[key] = val),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 3. SELECT (Dropdown Menu)
     if (type == 'select') {
       List<String> options = [];
       if (field['options'] is List) {
@@ -171,6 +221,12 @@ class _CaseCreateScreenState extends State<CaseCreateScreen> {
             .toList();
       }
 
+      // Evitamos errores si el valor inicial no está en la lista de opciones
+      String? currentValue = _formData[key]?.toString();
+      if (currentValue == '' || !options.contains(currentValue)) {
+        currentValue = null;
+      }
+
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: DropdownButtonFormField<String>(
@@ -178,7 +234,7 @@ class _CaseCreateScreenState extends State<CaseCreateScreen> {
             labelText: field['label'] + (isRequired ? ' *' : ''),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          value: _formData[key] == '' ? null : _formData[key],
+          value: currentValue,
           items: options
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
               .toList(),
@@ -190,57 +246,35 @@ class _CaseCreateScreenState extends State<CaseCreateScreen> {
       );
     }
 
-    // 2. CHECKBOX (Switch)
-    if (type == 'checkbox') {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: SwitchListTile(
-          title: Text(field['label'] + (isRequired ? ' *' : '')),
-          value: _formData[key] == true,
-          onChanged: (val) => setState(() => _formData[key] = val),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.grey.shade300),
-          ),
-        ),
-      );
-    }
-
-    // 3. TEXTAREA (Caja grande)
-    if (type == 'textarea') {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: TextFormField(
-          maxLines: 3,
-          decoration: InputDecoration(
-            labelText: field['label'] + (isRequired ? ' *' : ''),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          onChanged: (val) => _formData[key] = val,
-          validator: isRequired
-              ? (v) => v!.isEmpty ? 'Campo requerido' : null
-              : null,
-        ),
-      );
-    }
-
-    // 4. CAMPOS DE TEXTO / NÚMERO / EMAIL COMUNES
+    // 4. CAMPOS DE TEXTO COMUNES (text, textarea, number, email, date)
+    int maxLines = type == 'textarea' ? 3 : 1;
     TextInputType keyboardType = TextInputType.text;
+
     if (type == 'number') keyboardType = TextInputType.number;
     if (type == 'email') keyboardType = TextInputType.emailAddress;
     if (type == 'url') keyboardType = TextInputType.url;
+    if (type == 'date') keyboardType = TextInputType.datetime;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
+        maxLines: maxLines,
         keyboardType: keyboardType,
+        initialValue: _formData[key]?.toString() ?? '',
         decoration: InputDecoration(
           labelText: field['label'] + (isRequired ? ' *' : ''),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        onChanged: (val) => _formData[key] = val,
+        onChanged: (val) {
+          if (type == 'number') {
+            // Intentamos guardar como número para evitar errores en el backend
+            _formData[key] = num.tryParse(val) ?? val;
+          } else {
+            _formData[key] = val;
+          }
+        },
         validator: isRequired
-            ? (v) => v!.isEmpty ? 'Campo requerido' : null
+            ? (v) => v == null || v.isEmpty ? 'Campo requerido' : null
             : null,
       ),
     );

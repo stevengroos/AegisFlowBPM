@@ -206,7 +206,14 @@ def get_profiles(db: Session = Depends(get_db), current_user: models.User = Depe
 @router.post("/profiles", response_model=ProfileResponse)
 def create_profile(profile_in: ProfileBase, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(deps.get_current_user)):
     check_settings_permission(db, current_user, "manage_roles")
-    new_profile = models.Profile(**profile_in.dict(), company_id=current_user.company_id)
+    
+    new_profile = models.Profile(
+        name=profile_in.name,
+        permissions=profile_in.permissions,
+        is_external=profile_in.is_external, # 🔥 ESTA LÍNEA ES LA CLAVE
+        company_id=current_user.company_id
+    )
+    
     db.add(new_profile)
     db.commit()
     db.refresh(new_profile)
@@ -221,6 +228,7 @@ def update_profile(profile_id: int, profile_in: ProfileBase, request: Request, d
     old_data = {"name": profile.name, "permissions": dict(profile.permissions)}
     profile.name = profile_in.name
     profile.permissions = profile_in.permissions
+    profile.is_external = profile_in.is_external
     db.commit()
     db.refresh(profile)
     log_global_event(db=db, user_id=current_user.id, company_id=current_user.company_id, entity_type="PROFILE", action="UPDATE", entity_id=profile.id, details=f"Editó el perfil '{profile.name}'", old_value=old_data, new_value={"name": profile.name, "permissions": dict(profile.permissions)}, request=request)
@@ -287,7 +295,8 @@ def invite_user(
         hashed_password=hashed_pwd, 
         company_id=current_user.company_id, 
         role_id=user_in.role_id, 
-        profile_id=user_in.profile_id
+        profile_id=user_in.profile_id,
+        is_external=user_in.is_external
     )
     db.add(new_user)
     db.commit()
@@ -513,3 +522,48 @@ def update_ai_settings(
     )
     
     return {"message": "Configuración de IA actualizada exitosamente"}
+
+class UserApproveRequest(BaseModel):
+    profile_id: int
+    role_id: Optional[int] = None
+
+@router.put("/users/{user_id}/approve")
+def approve_external_user(
+    user_id: int, 
+    req: UserApproveRequest, 
+    request: Request,
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Aprueba a un usuario externo que se registró por la App.
+    Lo pasa a estado Activo y le asigna su Perfil definitivo.
+    """
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="No tienes permisos para aprobar usuarios.")
+
+    target_user = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.company_id == current_user.company_id
+    ).first()
+
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    if target_user.is_active:
+        raise HTTPException(status_code=400, detail="Este usuario ya está activo.")
+
+    target_user.is_active = True
+    target_user.profile_id = req.profile_id
+    if req.role_id:
+        target_user.role_id = req.role_id
+
+    db.commit()
+
+    log_global_event(
+        db=db, user_id=current_user.id, company_id=current_user.company_id, 
+        entity_type="USER_MANAGEMENT", action="USER_APPROVED", entity_id=target_user.id, 
+        details=f"Usuario {target_user.email} aprobado y activado.", request=request
+    )
+
+    return {"message": "Usuario aprobado exitosamente."}

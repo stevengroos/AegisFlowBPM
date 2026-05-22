@@ -1,54 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
-import { LayoutGrid, Trash2, Edit2, X, RotateCcw, Eye, EyeOff, FileText, ArrowLeft, Database, CopyPlus, Link as LinkIcon, Star, Plus, GripVertical, Save, Loader2, Link2, Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, AlertTriangle, UploadCloud, DownloadCloud, ArchiveRestore, CheckCircle, Sparkles, PenTool } from 'lucide-react';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, useDraggable } from '@dnd-kit/core';
+import { LayoutGrid, Trash2, Edit2, X, RotateCcw, EyeOff, ArrowLeft, Plus, GripVertical, Save, Loader2, ArchiveRestore, CheckCircle, Sparkles, PenTool, UploadCloud, DownloadCloud, AlertTriangle, Star, Type, FileBox } from 'lucide-react';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 import { useNotification } from '../context/NotificationContext';
 
-const PALETTE_ITEMS = [
-  { type: 'text', icon: <Type size={16}/>, label: 'Texto Corto' },
-  { type: 'textarea', icon: <AlignLeft size={16}/>, label: 'Texto Largo' },
-  { type: 'number', icon: <Hash size={16}/>, label: 'Número' },
-  { type: 'date', icon: <Calendar size={16}/>, label: 'Fecha' },
-  { type: 'select', icon: <List size={16}/>, label: 'Desplegable' },
-  { type: 'checkbox', icon: <CheckSquare size={16}/>, label: 'Casilla (Sí/No)' },
-  { type: 'url', icon: <Link2 size={16}/>, label: 'Enlace Web' },
-  { type: 'relation', icon: <LinkIcon size={16}/>, label: 'Relacional (Lookup)' },
-  { type: 'file', icon: <FileBox size={16}/>, label: 'Archivo Adjunto' },
-  { type: 'image', icon: <Image size={16}/>, label: 'Imagen' },
-  { type: 'subform', icon: <TableProperties size={16}/>, label: 'Subformulario (Tabla)' }
-];
+// 🔥 IMPORTAMOS NUESTROS NUEVOS COMPONENTES INTELIGENTES 🔥
+import { Palette, getFieldTypeIcon, PALETTE_ITEMS } from './field_builder_parts/Palette';
+import FieldPropertiesModal from './field_builder_parts/FieldPropertiesModal';
 
-const PaletteItem = ({ item, onClick }) => {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `palette-${item.type}`,
-    data: { type: item.type, label: item.label, icon: item.icon }
-  });
+// ============================================================================
+// 🔥 1. COMPONENTE VISUAL PURO (Para usarlo en la lista y en la levitación)
+// ============================================================================
+const FieldCardVisual = ({ field, onEdit, onDelete, isOverlay, dragListeners, dragAttributes }) => {
   return (
-    <button ref={setNodeRef} {...listeners} {...attributes} onClick={onClick} className={`w-full flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-700 dark:hover:text-blue-400 transition-all text-left group ${isDragging ? 'opacity-50' : ''}`}>
-      <span className="text-gray-400 group-hover:text-blue-500 transition-colors">{item.icon}</span>{item.label}
-    </button>
-  );
-};
-
-const SortableFieldCard = ({ field, onEdit, onDelete }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `field-${field.id}` });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
-  const getFieldTypeIcon = (type) => { const found = PALETTE_ITEMS.find(p => p.type === type); return found ? found.icon : <Type size={14} />; };
-
-  return (
-    <div ref={setNodeRef} style={style} className={`bg-white dark:bg-gray-800 border rounded-xl shadow-sm group relative overflow-hidden flex flex-col ${field.is_primary ? 'border-amber-300 dark:border-amber-600 ring-1 ring-amber-100 dark:ring-amber-900/30' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+    <div className={`bg-white dark:bg-gray-800 border rounded-xl flex flex-col h-full transition-all duration-200 overflow-hidden
+      ${field.is_primary ? 'border-amber-300 dark:border-amber-600 ring-1 ring-amber-100 dark:ring-amber-900/30' : 'border-gray-200 dark:border-gray-700'}
+      ${isOverlay ? 'shadow-2xl scale-[1.02] rotate-1 ring-2 ring-blue-500 cursor-grabbing' : 'shadow-sm hover:border-gray-300 dark:hover:border-gray-500'}
+    `}>
       <div className={`px-2 py-1.5 border-b flex justify-between items-center ${field.is_primary ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50' : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-800'}`}>
-        <div {...attributes} {...listeners} className="p-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"><GripVertical size={14} /></div>
+        <div {...dragAttributes} {...dragListeners} className={`p-1 text-gray-400 hover:text-gray-600 outline-none ${isOverlay ? 'cursor-grabbing' : 'cursor-grab'}`}>
+           <GripVertical size={14} />
+        </div>
         <div className="flex gap-1">
-          <button onClick={() => onEdit(field)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors"><Edit2 size={12} /></button>
-          <button onClick={() => onDelete(field.id)} className="p-1 text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+          <button onClick={() => onEdit && onEdit(field)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors outline-none"><Edit2 size={12} /></button>
+          <button onClick={() => onDelete && onDelete(field.id)} className="p-1 text-gray-400 hover:text-red-500 transition-colors outline-none"><Trash2 size={12} /></button>
         </div>
       </div>
-      <div className="p-3 cursor-pointer" onClick={() => onEdit(field)}>
+      <div className="p-3 cursor-pointer flex-1" onClick={() => onEdit && onEdit(field)}>
         <label className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5 truncate cursor-pointer">
           {field.is_primary && <Star size={12} className="text-amber-500 shrink-0" fill="currentColor" />}
           <span className="text-gray-400 shrink-0">{getFieldTypeIcon(field.field_type)}</span>
@@ -62,29 +44,63 @@ const SortableFieldCard = ({ field, onEdit, onDelete }) => {
   );
 };
 
+// ============================================================================
+// 🔥 2. TARJETA ORDENABLE (Genera el Fantasma Punteado al arrastrar)
+// ============================================================================
+const SortableFieldCard = ({ field, onEdit, onDelete }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+     id: `field-${field.id}`, 
+     data: { type: 'field', field } 
+  });
+  
+  const style = { transform: CSS.Transform.toString(transform), transition };
+
+  // 🔥 EFECTO GHOST
+  if (isDragging) {
+    return <div ref={setNodeRef} style={style} className="border-2 border-dashed border-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded-xl h-[85px] w-full z-0 transition-all duration-200"></div>;
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="h-full z-10">
+       <FieldCardVisual field={field} onEdit={onEdit} onDelete={onDelete} dragListeners={listeners} dragAttributes={attributes} />
+    </div>
+  );
+};
+
+// ============================================================================
+// 🔥 3. SECCIÓN ORDENABLE (Se ilumina al pasar por encima)
+// ============================================================================
 const SortableSection = ({ section, fields, onEditField, onDeleteField, onEditSection, onDeleteSection }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `section-${section.id}` });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ 
+     id: `section-${section.id}`,
+     data: { type: 'section', section }
+  });
+  
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 };
   const sectionFields = fields.filter(f => f.section_id === section.id).sort((a, b) => a.order - b.order);
   const gridColsClass = section.columns === 1 ? 'grid-cols-1' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
 
   return (
-    <div ref={setNodeRef} style={style} className="bg-gray-50/50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden mb-6">
-      <div className="bg-white dark:bg-gray-900 px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center group">
+    <div ref={setNodeRef} style={style} className={`transition-all duration-300 border rounded-2xl overflow-hidden mb-6 
+      ${isOver ? 'bg-blue-50/30 dark:bg-blue-900/10 border-blue-400 ring-4 ring-blue-500/10 shadow-lg scale-[1.01]' : 'bg-gray-50/50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800'}`}>
+      
+      <div className={`px-4 py-3 border-b flex justify-between items-center group transition-colors
+        ${isOver ? 'bg-blue-100/50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'}`}>
         <div className="flex items-center gap-3">
-          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"><GripVertical size={16} /></div>
-          <h3 className="font-bold text-gray-900 dark:text-white">{section.title}</h3>
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 outline-none"><GripVertical size={16} /></div>
+          <h3 className={`font-bold ${isOver ? 'text-blue-700 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}>{section.title}</h3>
         </div>
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onEditSection(section)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={14} /></button>
-          <button onClick={() => onDeleteSection(section.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+          <button onClick={() => onEditSection(section)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded outline-none"><Edit2 size={14} /></button>
+          <button onClick={() => onDeleteSection(section.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded outline-none"><Trash2 size={14} /></button>
         </div>
       </div>
-      <div className={`p-4 min-h-[120px] ${sectionFields.length === 0 ? 'flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-gray-800 m-4 rounded-xl bg-white/50 dark:bg-gray-900/50' : ''}`}>
+
+      <div className={`p-4 min-h-[120px] transition-colors ${sectionFields.length === 0 && !isOver ? 'flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-gray-800 m-4 rounded-xl bg-white/50 dark:bg-gray-900/50' : ''}`}>
         <SortableContext items={sectionFields.map(f => `field-${f.id}`)} strategy={verticalListSortingStrategy}>
           <div className={`grid gap-4 w-full ${gridColsClass}`}>
             {sectionFields.map(f => <SortableFieldCard key={f.id} field={f} onEdit={onEditField} onDelete={onDeleteField} />)}
-            {sectionFields.length === 0 && <span className="text-xs text-gray-400 font-bold uppercase tracking-widest text-center">Arrastra campos aquí</span>}
+            {sectionFields.length === 0 && !isOver && <span className="text-xs text-gray-400 font-bold uppercase tracking-widest text-center">Arrastra campos aquí</span>}
           </div>
         </SortableContext>
       </div>
@@ -92,7 +108,6 @@ const SortableSection = ({ section, fields, onEditField, onDeleteField, onEditSe
   );
 };
 
-// 🔥 AÑADIDA LA PROP setHasUnsavedChanges 🔥
 const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHasUnsavedChanges }) => {
   const { notify, confirm } = useNotification(); 
 
@@ -116,202 +131,50 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [showArchivedModal, setShowArchivedModal] = useState(false); 
   const [importSummary, setImportSummary] = useState(null); 
-  // 🔥 ESTADOS DEL ASISTENTE IA 🔥
+
+  // ESTADOS DEL ASISTENTE IA
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiMode, setAiMode] = useState('text'); // 'text' o 'file'
   const [aiFile, setAiFile] = useState(null);
   const aiFileInputRef = useRef(null);
-  // 🔥 ESTADOS DE SIGNATURIT 🔥
+
+  // ESTADOS DE SIGNATURIT
   const [isSignaturitModalOpen, setIsSignaturitModalOpen] = useState(false);
   const [signaturitTemplates, setSignaturitTemplates] = useState([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [importingTemplateId, setImportingTemplateId] = useState(null);
 
-  const handleOpenSignaturit = async () => {
-    setIsSignaturitModalOpen(true);
-    setIsLoadingTemplates(true);
-    try {
-      // 🔥 OJO: Usa la prop moduleId que le pasamos desde FieldBuilder
-      const res = await api.get(`/api/v1/modules/${moduleId}/integrations/signaturit/templates`);
-      setSignaturitTemplates(res.data || []);
-    } catch (error) {
-      notify.error(error.response?.data?.detail || "No se pudieron cargar las plantillas. ¿Configuraste la integración?");
-      setIsSignaturitModalOpen(false);
-    } finally {
-      setIsLoadingTemplates(false);
-    }
-  };
-
-  const handleImportSignaturitTemplate = async (templateId, templateName) => {
-    setImportingTemplateId(templateId);
-    try {
-       // 1. Pedimos los detalles (widgets) de la plantilla
-       const res = await api.get(`/api/v1/modules/${moduleId}/integrations/signaturit/templates/${templateId}`);
-       const templateDetails = res.data;
-       
-       // Dependiendo de si la respuesta vino de v3 o v4, los widgets están en distinto nivel
-       let widgets = [];
-       if (templateDetails.widgets) {
-           widgets = templateDetails.widgets; // Formato V4
-       } else if (templateDetails.documents && templateDetails.documents.length > 0) {
-           widgets = templateDetails.documents[0].widgets || []; // Formato V3 Detail
-       }
-
-       const editableWidgets = widgets.filter(w => w.editable && w.type !== 'signature');
-       
-       if (editableWidgets.length === 0) {
-          return notify.warning("Esta plantilla no tiene campos editables configurados para extraer.");
-       }
-
-       // 2. Creamos la sección y los campos
-       const newSectionId = `temp-sec-${Date.now()}`;
-       const newSection = {
-           id: newSectionId,
-           title: `Contrato: ${templateName}`,
-           order: localSections.length,
-           columns: 2
-       };
-
-       const newFields = editableWidgets.map((w, idx) => {
-           let fType = 'text';
-           if (w.type === 'date') fType = 'date';
-           if (w.type === 'check' || w.type === 'radio') fType = 'checkbox';
-
-           return {
-               id: `temp-sig-field-${Date.now()}-${idx}`,
-               label: w.name || w.key || 'Campo Signaturit',
-               api_name: w.key, 
-               field_type: fType,
-               section_id: newSectionId,
-               order: localFields.length + idx,
-               required: w.required || false,
-               is_primary: false,
-               show_in_create: true,
-               options: '',
-               subform_config: []
-           };
-       });
-
-       setLocalSections([...localSections, newSection]);
-       setLocalFields([...localFields, ...newFields]);
-       
-       notify.success(`¡Se extrajeron ${newFields.length} campos de la plantilla!`);
-       setIsSignaturitModalOpen(false);
-       markAsChanged();
-
-    } catch (error) {
-       notify.error("Error al extraer los campos de la plantilla.");
-    } finally {
-       setImportingTemplateId(null);
-    }
-  };
-
-  const handleGenerateWithAI = async (e) => {
-    e.preventDefault();
-    if (aiMode === 'text' && !aiPrompt.trim()) return notify.warning("Describe cómo quieres que sea tu formulario.");
-    if (aiMode === 'file' && !aiFile) return notify.warning("Por favor, selecciona un documento o imagen.");
-    
-    setIsGenerating(true);
-    try {
-      let res;
-      
-      // Dependiendo del modo, llamamos a un endpoint u otro
-      if (aiMode === 'file') {
-         const formData = new FormData();
-         formData.append('file', aiFile);
-         res = await api.post('/api/v1/ai/generate-form/file', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-         });
-      } else {
-         res = await api.post(`/api/v1/ai/generate-form`, {
-            form_id: selectedForm.id,
-            prompt: aiPrompt
-         });
-      }
-      
-      const aiData = res.data;
-      
-      // 1. Mapeamos las nuevas secciones
-      const aiSections = (aiData.sections || []).map((sec, idx) => ({
-         id: `temp-ai-sec-${Date.now()}-${idx}`,
-         title: sec.title,
-         columns: sec.columns || 2,
-         order: localSections.length + idx
-      }));
-      
-      // 2. Mapeamos los campos
-      const aiFields = (aiData.fields || []).map((fld, idx) => {
-         const targetSec = aiSections.find(s => s.title === fld.section_title) || aiSections[0] || localSections[0];
-         return {
-            id: `temp-ai-field-${Date.now()}-${idx}`,
-            label: fld.label,
-            api_name: fld.api_name || `ai_${Date.now()}_${idx}`,
-            field_type: fld.field_type,
-            required: fld.required || false,
-            options: fld.options || '',
-            section_id: targetSec?.id,
-            order: localFields.length + idx,
-            show_in_create: true,
-            is_primary: false,
-            subform_config: fld.subform_config || []
-         };
-      });
-      
-      // 3. Pintamos la magia
-      setLocalSections(prev => [...prev, ...aiSections]);
-      setLocalFields(prev => [...prev, ...aiFields]);
-      
-      notify.success("¡Formulario extraído y generado mágicamente!");
-      setIsAiModalOpen(false);
-      setAiPrompt('');
-      setAiFile(null);
-      markAsChanged();
-    } catch (error) {
-      notify.error(error.response?.data?.detail || "Error al conectar con el Asistente IA.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-  
   const [modulesList, setModulesList] = useState([]);
   const fileInputRef = useRef(null);
 
-  // Helper para centralizar el cambio de estado de guardado
-  const markAsChanged = () => {
-    setHasChanges(true);
-    if (setHasUnsavedChanges) setHasUnsavedChanges(true); // 🔥 Avisar al padre
-  };
-
-  const markAsSaved = () => {
-    setHasChanges(false);
-    if (setHasUnsavedChanges) setHasUnsavedChanges(false); // 🔥 Avisar al padre
-  };
+  const markAsChanged = () => { setHasChanges(true); if (setHasUnsavedChanges) setHasUnsavedChanges(true); };
+  const markAsSaved = () => { setHasChanges(false); if (setHasUnsavedChanges) setHasUnsavedChanges(false); };
 
   useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (hasChanges) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
+    const handleBeforeUnload = (e) => { if (hasChanges) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges]);
 
+  const [rolesList, setRolesList] = useState([]);
+  const [profilesList, setProfilesList] = useState([]);
+
   const loadData = async (signal) => {
     try {
-      const [secRes, fldResAll, modRes] = await Promise.all([
+      const [secRes, fldResAll, modRes, rolesRes, profilesRes] = await Promise.all([
         api.get(`/api/v1/fields/sections?form_id=${selectedForm.id}`, { signal }),
         api.get(`/api/v1/fields/?form_id=${selectedForm.id}&include_inactive=true`, { signal }), 
-        api.get('/api/v1/modules/', { signal })
+        api.get('/api/v1/modules/', { signal }),
+        api.get('/api/v1/security/roles', { signal }),   
+        api.get('/api/v1/security/profiles', { signal }) 
       ]);
       
       let loadedSections = secRes.data;
       if (loadedSections.length === 0) {
          loadedSections = [{ id: 'temp-sec-1', title: 'Información General', order: 0, columns: 2 }];
-         markAsChanged(); // 🔥
+         markAsChanged(); 
       }
       setLocalSections(loadedSections);
       
@@ -320,7 +183,9 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
       setLocalFields(activeF);
       setInactiveFields(inactiveF);
       
-      setModulesList(modRes.data);
+      setModulesList(modRes.data || []);
+      setRolesList(rolesRes.data || []);     
+      setProfilesList(profilesRes.data || []);
       setDeletedSectionIds([]);
       setDeletedFieldIds([]);
     } catch (error) { 
@@ -361,7 +226,7 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
       const oldIndex = localSections.findIndex(s => `section-${s.id}` === activeId);
       const newIndex = localSections.findIndex(s => `section-${s.id}` === overId);
       setLocalSections(arrayMove(localSections, oldIndex, newIndex).map((s, idx) => ({ ...s, order: idx })));
-      markAsChanged(); // 🔥
+      markAsChanged(); 
       return;
     }
 
@@ -386,7 +251,7 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
       }
       
       setLocalFields(newFields.map((f, idx) => ({ ...f, order: idx })));
-      markAsChanged(); // 🔥
+      markAsChanged(); 
     }
   };
 
@@ -398,7 +263,83 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
     setLocalFields([...localFields, newF]);
     setEditingField({ ...newF, target_module_id: newF.target_module_id || newF.options?.target_module_id || '', options: newF.field_type === 'select' && Array.isArray(newF.options) ? newF.options.join(', ') : (newF.options || '') });
     setIsFieldModalOpen(true);
-    markAsChanged(); // 🔥
+    markAsChanged(); 
+  };
+
+  const handleSaveFieldEdit = (e) => {
+    e.preventDefault();
+    setLocalFields(prev => prev.map(f => f.id === editingField.id ? editingField : f));
+    setIsFieldModalOpen(false); 
+    markAsChanged(); 
+  };
+
+  const handleDeleteFieldLocal = async (id) => {
+    const isConfirmed = await confirm({ title: 'Quitar Campo', message: '¿Estás seguro de quitar este campo del lienzo?', confirmText: 'Sí, quitar', variant: 'danger' });
+    if(!isConfirmed) return;
+    setDeletedFieldIds([...deletedFieldIds, id]);
+    setLocalFields(prev => prev.filter(f => f.id !== id));
+    markAsChanged(); 
+  };
+
+  const handleSaveSectionEdit = (e) => {
+    e.preventDefault();
+    if (!editingSection.id) setLocalSections([...localSections, { ...editingSection, id: `temp-sec-${Date.now()}`, order: localSections.length }]);
+    else setLocalSections(prev => prev.map(s => s.id === editingSection.id ? editingSection : s));
+    setIsSectionModalOpen(false); 
+    markAsChanged(); 
+  };
+
+  const handleDeleteSectionLocal = async (id) => {
+    const isConfirmed = await confirm({ title: 'Borrar Sección', message: '⚠️ ¿Borrar esta sección? Todos los campos que contenga se enviarán a la Papelera.', confirmText: 'Sí, borrar sección', variant: 'danger' });
+    if(!isConfirmed) return;
+    setDeletedSectionIds([...deletedSectionIds, id]);
+    setLocalSections(prev => prev.filter(s => s.id !== id));
+    const fieldsInside = localFields.filter(f => f.section_id === id);
+    setDeletedFieldIds([...deletedFieldIds, ...fieldsInside.map(f => f.id)]);
+    setLocalFields(prev => prev.filter(f => f.section_id !== id));
+    markAsChanged(); 
+  };
+
+  const handleSaveAll = async (closeAfter = false) => {
+    setIsSaving(true);
+    try {
+      const payload = {
+        form_id: selectedForm.id, sections: localSections,
+        fields: localFields.map(f => {
+           let finalOpts = f.options;
+           if (f.field_type === 'relation') {
+               if (f.target_module_id) finalOpts = { target_module_id: parseInt(f.target_module_id) };
+               else if (f.options?.target_module_id) finalOpts = f.options; 
+           } 
+           // 🔥 NUEVO BLOQUE 🔥
+           else if (f.field_type === 'user_relation') {
+               finalOpts = typeof f.options === 'object' ? f.options : {};
+           } 
+           // 🔥 FIN DEL NUEVO BLOQUE 🔥
+           else if (f.field_type === 'select' && typeof f.options === 'string') {
+               finalOpts = f.options.split(',').map(opt => opt.trim()).filter(opt => opt !== '');
+           }
+           return { ...f, options: finalOpts };
+        }),
+        deleted_section_ids: deletedSectionIds.filter(id => typeof id === 'number'),
+        deleted_field_ids: deletedFieldIds.filter(id => typeof id === 'number')
+      };
+      await api.post('/api/v1/fields/batch_save', payload);
+      notify.success("Diseño del formulario guardado con éxito.");
+      await loadData();
+      fetchFields();
+      markAsSaved(); 
+      if (closeAfter) onCloseCanvas();
+    } catch (error) { 
+      notify.error("Error al guardar el diseño. Inténtalo nuevamente."); 
+    } finally { setIsSaving(false); }
+  };
+
+  const handleCloseAttempt = () => { if (hasChanges) setShowUnsavedModal(true); else onCloseCanvas(); };
+
+  const handleRestoreField = async (id) => {
+    try { await api.post(`/api/v1/fields/${id}/restore`); notify.success("Campo restaurado y activo nuevamente."); await loadData(); fetchFields(); } 
+    catch (error) { notify.error("Error al intentar restaurar el campo."); }
   };
 
   const handleExportLayout = () => {
@@ -409,13 +350,18 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
          if (f.field_type === 'relation') {
              if (f.target_module_id) finalOpts = { target_module_id: parseInt(f.target_module_id) };
              else if (f.options?.target_module_id) finalOpts = f.options; 
-         } else if (f.field_type === 'select' && typeof f.options === 'string') {
+         } 
+         // 🔥 NUEVO BLOQUE PARA USER_RELATION 🔥
+         else if (f.field_type === 'user_relation') {
+             finalOpts = typeof f.options === 'object' ? f.options : {};
+         } 
+         // 🔥 FIN DEL NUEVO BLOQUE 🔥
+         else if (f.field_type === 'select' && typeof f.options === 'string') {
              finalOpts = f.options.split(',').map(opt => opt.trim()).filter(opt => opt !== '');
          }
          return { temp_section_id: f.section_id?.toString(), label: f.label, api_name: f.api_name || `export_${Date.now()}_${f.order}`, field_type: f.field_type, required: f.required, options: finalOpts, show_in_create: f.show_in_create !== false, is_primary: f.is_primary, subform_config: f.subform_config, order: f.order };
       })
     };
-    
     const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -429,137 +375,88 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
   const handleImportFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
     if (hasChanges) {
-      const proceed = await confirm({
-        title: 'Cambios sin guardar',
-        message: 'Tienes cambios sin guardar. Si importas una plantilla ahora, tus cambios actuales se perderán. ¿Deseas continuar?',
-        confirmText: 'Sí, importar y descartar',
-        variant: 'danger'
-      });
+      const proceed = await confirm({ title: 'Cambios sin guardar', message: 'Tienes cambios sin guardar. Si importas una plantilla ahora, tus cambios actuales se perderán. ¿Deseas continuar?', confirmText: 'Sí, importar y descartar', variant: 'danger' });
       if (!proceed) { e.target.value = null; return; }
     }
-    
     setIsImporting(true);
     try {
       const text = await file.text();
       const payload = JSON.parse(text);
       const res = await api.post(`/api/v1/fields/import_layout/${selectedForm.id}`, payload);
       setImportSummary(res.data.summary);
-      await loadData();
-      fetchFields();
-      markAsSaved(); // 🔥
-    } catch (err) { 
-      notify.error("Error al importar. Verifica que sea un archivo JSON válido de plantilla."); 
-    } finally { 
-      setIsImporting(false); 
-      e.target.value = null; 
-    }
+      await loadData(); fetchFields(); markAsSaved(); 
+    } catch (err) { notify.error("Error al importar. Verifica que sea un archivo JSON válido de plantilla."); } 
+    finally { setIsImporting(false); e.target.value = null; }
   };
 
-  const handleRestoreField = async (id) => {
-    try { 
-      await api.post(`/api/v1/fields/${id}/restore`); 
-      notify.success("Campo restaurado y activo nuevamente.");
-      await loadData(); 
-      fetchFields(); 
-    } catch (error) { 
-      notify.error("Error al intentar restaurar el campo."); 
-    }
-  };
-
-  const handleSaveAll = async (closeAfter = false) => {
-    setIsSaving(true);
+  const handleOpenSignaturit = async () => {
+    setIsSignaturitModalOpen(true);
+    setIsLoadingTemplates(true);
     try {
-      const payload = {
-        form_id: selectedForm.id, sections: localSections,
-        fields: localFields.map(f => {
-           let finalOpts = f.options;
-           if (f.field_type === 'relation') {
-               if (f.target_module_id) finalOpts = { target_module_id: parseInt(f.target_module_id) };
-               else if (f.options?.target_module_id) finalOpts = f.options; 
-           } else if (f.field_type === 'select' && typeof f.options === 'string') {
-               finalOpts = f.options.split(',').map(opt => opt.trim()).filter(opt => opt !== '');
-           }
-           return { ...f, options: finalOpts };
-        }),
-        deleted_section_ids: deletedSectionIds.filter(id => typeof id === 'number'),
-        deleted_field_ids: deletedFieldIds.filter(id => typeof id === 'number')
-      };
-      await api.post('/api/v1/fields/batch_save', payload);
-      notify.success("Diseño del formulario guardado con éxito.");
-      await loadData();
-      fetchFields();
-      markAsSaved(); // 🔥 Resetear escudo
-      if (closeAfter) onCloseCanvas();
-    } catch (error) { 
-      notify.error("Error al guardar el diseño. Inténtalo nuevamente."); 
-    } finally { 
-      setIsSaving(false); 
-    }
+      const res = await api.get(`/api/v1/modules/${moduleId}/integrations/signaturit/templates`);
+      setSignaturitTemplates(res.data || []);
+    } catch (error) { notify.error(error.response?.data?.detail || "No se pudieron cargar las plantillas. ¿Configuraste la integración?"); setIsSignaturitModalOpen(false); } 
+    finally { setIsLoadingTemplates(false); }
   };
 
-  const handleCloseAttempt = () => {
-    if (hasChanges) setShowUnsavedModal(true); else onCloseCanvas();
+  const handleImportSignaturitTemplate = async (templateId, templateName) => {
+    setImportingTemplateId(templateId);
+    try {
+       const res = await api.get(`/api/v1/modules/${moduleId}/integrations/signaturit/templates/${templateId}`);
+       const templateDetails = res.data;
+       let widgets = [];
+       if (templateDetails.widgets) { widgets = templateDetails.widgets; } 
+       else if (templateDetails.documents && templateDetails.documents.length > 0) { widgets = templateDetails.documents[0].widgets || []; }
+       const editableWidgets = widgets.filter(w => w.editable && w.type !== 'signature');
+       if (editableWidgets.length === 0) return notify.warning("Esta plantilla no tiene campos editables configurados para extraer.");
+
+       const newSectionId = `temp-sec-${Date.now()}`;
+       const newSection = { id: newSectionId, title: `Contrato: ${templateName}`, order: localSections.length, columns: 2 };
+       const newFields = editableWidgets.map((w, idx) => {
+           let fType = 'text';
+           if (w.type === 'date') fType = 'date';
+           if (w.type === 'check' || w.type === 'radio') fType = 'checkbox';
+           return { id: `temp-sig-field-${Date.now()}-${idx}`, label: w.name || w.key || 'Campo Signaturit', api_name: w.key, field_type: fType, section_id: newSectionId, order: localFields.length + idx, required: w.required || false, is_primary: false, show_in_create: true, options: '', subform_config: [] };
+       });
+
+       setLocalSections([...localSections, newSection]);
+       setLocalFields([...localFields, ...newFields]);
+       notify.success(`¡Se extrajeron ${newFields.length} campos de la plantilla!`);
+       setIsSignaturitModalOpen(false); markAsChanged();
+    } catch (error) { notify.error("Error al extraer los campos de la plantilla."); } 
+    finally { setImportingTemplateId(null); }
   };
 
-  const handleSaveFieldEdit = (e) => {
+  const handleGenerateWithAI = async (e) => {
     e.preventDefault();
-    setLocalFields(prev => prev.map(f => f.id === editingField.id ? editingField : f));
-    setIsFieldModalOpen(false); 
-    markAsChanged(); // 🔥
-  };
-
-  const handleDeleteFieldLocal = async (id) => {
-    const isConfirmed = await confirm({
-      title: 'Quitar Campo',
-      message: '¿Estás seguro de quitar este campo del lienzo? Se moverá a la sección de "Papelera" (Campos Archivados) al guardar el diseño.',
-      confirmText: 'Sí, quitar',
-      variant: 'danger'
-    });
-    if(!isConfirmed) return;
+    if (aiMode === 'text' && !aiPrompt.trim()) return notify.warning("Describe cómo quieres que sea tu formulario.");
+    if (aiMode === 'file' && !aiFile) return notify.warning("Por favor, selecciona un documento o imagen.");
     
-    setDeletedFieldIds([...deletedFieldIds, id]);
-    setLocalFields(prev => prev.filter(f => f.id !== id));
-    setIsFieldModalOpen(false); 
-    markAsChanged(); // 🔥
-  };
-
-  const handleSaveSectionEdit = (e) => {
-    e.preventDefault();
-    if (!editingSection.id) setLocalSections([...localSections, { ...editingSection, id: `temp-sec-${Date.now()}`, order: localSections.length }]);
-    else setLocalSections(prev => prev.map(s => s.id === editingSection.id ? editingSection : s));
-    setIsSectionModalOpen(false); 
-    markAsChanged(); // 🔥
-  };
-
-  const handleDeleteSectionLocal = async (id) => {
-    const isConfirmed = await confirm({
-      title: 'Borrar Sección',
-      message: '⚠️ ¿Borrar esta sección? Todos los campos que contenga se enviarán a la Papelera.',
-      confirmText: 'Sí, borrar sección',
-      variant: 'danger'
-    });
-    if(!isConfirmed) return;
-    
-    setDeletedSectionIds([...deletedSectionIds, id]);
-    setLocalSections(prev => prev.filter(s => s.id !== id));
-    const fieldsInside = localFields.filter(f => f.section_id === id);
-    setDeletedFieldIds([...deletedFieldIds, ...fieldsInside.map(f => f.id)]);
-    setLocalFields(prev => prev.filter(f => f.section_id !== id));
-    markAsChanged(); // 🔥
-  };
-
-  const handleAddSubformColumn = () => setEditingField({ ...editingField, subform_config: [...(editingField.subform_config || []), { id: `col-${Date.now()}`, label: '', type: 'text', required: false, options: '', target_module_id: '' }] });
-  const updateSubformCol = (index, key, value) => {
-    const updated = [...(editingField.subform_config || [])];
-    updated[index][key] = value;
-    setEditingField({ ...editingField, subform_config: updated });
-  };
-  const removeSubformCol = (index) => {
-    const updated = [...(editingField.subform_config || [])];
-    updated.splice(index, 1);
-    setEditingField({ ...editingField, subform_config: updated });
+    setIsGenerating(true);
+    try {
+      let res;
+      if (aiMode === 'file') {
+         const formData = new FormData();
+         formData.append('file', aiFile);
+         res = await api.post('/api/v1/ai/generate-form/file', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      } else {
+         res = await api.post(`/api/v1/ai/generate-form`, { form_id: selectedForm.id, prompt: aiPrompt });
+      }
+      
+      const aiData = res.data;
+      const aiSections = (aiData.sections || []).map((sec, idx) => ({ id: `temp-ai-sec-${Date.now()}-${idx}`, title: sec.title, columns: sec.columns || 2, order: localSections.length + idx }));
+      const aiFields = (aiData.fields || []).map((fld, idx) => {
+         const targetSec = aiSections.find(s => s.title === fld.section_title) || aiSections[0] || localSections[0];
+         return { id: `temp-ai-field-${Date.now()}-${idx}`, label: fld.label, api_name: fld.api_name || `ai_${Date.now()}_${idx}`, field_type: fld.field_type, required: fld.required || false, options: fld.options || '', section_id: targetSec?.id, order: localFields.length + idx, show_in_create: true, is_primary: false, subform_config: fld.subform_config || [] };
+      });
+      
+      setLocalSections(prev => [...prev, ...aiSections]);
+      setLocalFields(prev => [...prev, ...aiFields]);
+      notify.success("¡Formulario extraído y generado mágicamente!");
+      setIsAiModalOpen(false); setAiPrompt(''); setAiFile(null); markAsChanged();
+    } catch (error) { notify.error(error.response?.data?.detail || "Error al conectar con el Asistente IA."); } 
+    finally { setIsGenerating(false); }
   };
 
   const activePaletteItem = activeDragItem?.id?.toString().startsWith('palette-') ? PALETTE_ITEMS.find(p => `palette-${p.type}` === activeDragItem.id) : null;
@@ -579,27 +476,15 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
         
         <div className="flex items-center gap-3">
           <div className="flex border-r border-gray-200 dark:border-gray-700 pr-3 mr-1 gap-2">
-             <button onClick={handleExportLayout} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Exportar Plantilla JSON">
-                <DownloadCloud size={18} />
-             </button>
+             <button onClick={handleExportLayout} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Exportar Plantilla JSON"><DownloadCloud size={18} /></button>
              <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors disabled:opacity-50" title="Importar Plantilla JSON">
                 {isImporting ? <Loader2 size={18} className="animate-spin text-emerald-500"/> : <UploadCloud size={18} />}
              </button>
              <input type="file" accept=".json" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
           </div>
-          {/* 🔥 BOTÓN IMPORTAR DE SIGNATURIT 🔥 */}
-          <button onClick={handleOpenSignaturit} className="px-4 py-2 text-sm font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2">
-            <PenTool size={16}/> 
-            <span className="hidden sm:inline">Traer de Signaturit</span>
-          </button>
-          {/* 🔥 BOTÓN ASISTENTE IA 🔥 */}
-          <button onClick={() => setIsAiModalOpen(true)} className="px-4 py-2 text-sm font-bold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800/50 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2">
-            <Sparkles size={16} className={isGenerating ? "animate-spin" : "animate-pulse"}/> 
-            <span className="hidden sm:inline">Generar con IA</span>
-          </button>
-          <button onClick={() => { setEditingSection({ title: '', columns: 1 }); setIsSectionModalOpen(true); }} className="px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl transition-colors flex items-center gap-2">
-            <Plus size={16}/> Nueva Sección
-          </button>
+          <button onClick={handleOpenSignaturit} className="px-4 py-2 text-sm font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2"><PenTool size={16}/> <span className="hidden sm:inline">Traer de Signaturit</span></button>
+          <button onClick={() => setIsAiModalOpen(true)} className="px-4 py-2 text-sm font-bold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800/50 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2"><Sparkles size={16} className={isGenerating ? "animate-spin" : "animate-pulse"}/> <span className="hidden sm:inline">Generar con IA</span></button>
+          <button onClick={() => { setEditingSection({ title: '', columns: 1 }); setIsSectionModalOpen(true); }} className="px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl transition-colors flex items-center gap-2"><Plus size={16}/> Nueva Sección</button>
           
           <button onClick={() => handleSaveAll(false)} disabled={isSaving || !hasChanges} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-md transition-all active:scale-95 ${hasChanges ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed shadow-none'}`}>
             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Guardar Diseño
@@ -607,18 +492,23 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
         </div>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext 
+          sensors={sensors} 
+          collisionDetection={closestCenter} 
+          onDragStart={handleDragStart} 
+          onDragMove={() => window.dispatchEvent(new Event('mousemove'))} // 🔥 FIX INACTIVIDAD 🔥
+          onDragEnd={handleDragEnd}
+      >
         <div className="flex flex-1 overflow-hidden relative z-0">
           
-          {/* PALETA DE CAMPOS (IZQUIERDA) */}
+          {/* 🔥 PALETA IMPORTADA DESDE EL NUEVO COMPONENTE 🔥 */}
           <div className="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-10">
             <div className="p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tipos de Campo</h3>
                <p className="text-[10px] text-gray-500 mt-1">Arrastra hacia el lienzo o haz clic</p>
             </div>
-            <div className="p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
-              {PALETTE_ITEMS.map(item => <PaletteItem key={item.type} item={item} onClick={() => addFieldFromPalette(item.type)} />)}
-            </div>
+            
+            <Palette onAddField={addFieldFromPalette} />
             
             <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 shrink-0">
                <button onClick={() => setShowArchivedModal(true)} className="w-full flex justify-between items-center px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-500 transition-colors shadow-sm">
@@ -639,15 +529,86 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
           </div>
         </div>
 
-        <DragOverlay>
-          {activePaletteItem ? <div className="flex items-center gap-3 p-3 bg-blue-500 text-white rounded-xl shadow-2xl font-bold opacity-90 scale-105">{activePaletteItem.icon} {activePaletteItem.label}</div> : activeDragItem ? <div className="bg-blue-100/50 dark:bg-blue-900/30 w-full h-16 rounded-xl border-2 border-dashed border-blue-500"></div> : null}
+        {/* 🔥 EL OVERLAY DE LEVITACIÓN Y FANTASMA 🔥 */}
+        <DragOverlay dropAnimation={null}>
+          {activePaletteItem ? (
+            <div className="flex items-center gap-3 p-3 bg-blue-600 text-white rounded-xl shadow-2xl font-bold opacity-90 scale-105 rotate-2 cursor-grabbing">
+               {activePaletteItem.icon} {activePaletteItem.label}
+            </div>
+          ) : activeDragItem?.data?.current?.type === 'field' ? (
+             <FieldCardVisual field={activeDragItem.data.current.field} isOverlay={true} dragListeners={{}} dragAttributes={{}} />
+          ) : activeDragItem?.data?.current?.type === 'section' ? (
+             <div className="bg-blue-50/80 dark:bg-blue-900/50 border-2 border-blue-500 rounded-2xl w-full h-24 shadow-2xl opacity-90 scale-105 rotate-1"></div>
+          ) : null}
         </DragOverlay>
       </DndContext>
 
+      {/* 🔥 MODAL DE PROPIEDADES IMPORTADO DESDE EL NUEVO COMPONENTE 🔥 */}
+      <FieldPropertiesModal 
+        isOpen={isFieldModalOpen} 
+        onClose={() => setIsFieldModalOpen(false)} 
+        editingField={editingField} 
+        setEditingField={setEditingField} 
+        onSave={handleSaveFieldEdit} 
+        modulesList={modulesList}
+        rolesList={rolesList}       // 🔥 NUEVO
+        profilesList={profilesList} // 🔥 NUEVO
+        localFields={localFields}
+      />
+
       {/* ========================================== */}
-      {/* MODALES */}
+      {/* OTROS MODALES DE LA UI */}
       {/* ========================================== */}
       
+      {/* MODAL CONFIGURAR SECCIÓN */}
+      {isSectionModalOpen && editingSection && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col border border-gray-200 dark:border-gray-800">
+             <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+               <h3 className="font-bold text-gray-900 dark:text-white">Configurar Sección</h3>
+               <button onClick={() => setIsSectionModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+            </div>
+            <form id="section-edit-form" onSubmit={handleSaveSectionEdit} className="p-6 space-y-5">
+               <div>
+                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Título de la Sección</label>
+                 <input type="text" required value={editingSection.title} onChange={(e) => setEditingSection({...editingSection, title: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" />
+               </div>
+               <div>
+                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Distribución de Columnas</label>
+                 <select required value={editingSection.columns} onChange={(e) => setEditingSection({...editingSection, columns: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all">
+                   <option value={1}>1 Columna (Ancho completo)</option>
+                   <option value={2}>2 Columnas (Estándar)</option>
+                   <option value={3}>3 Columnas (Compacto)</option>
+                 </select>
+               </div>
+            </form>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
+               <button type="button" onClick={() => setIsSectionModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
+               <button type="submit" form="section-edit-form" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors active:scale-95">Guardar Sección</button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+
+      {/* MODAL SALIR SIN GUARDAR */}
+      {showUnsavedModal && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col border border-gray-200 dark:border-gray-800">
+            <div className="p-6 border-b border-gray-100 dark:border-gray-800 text-center">
+               <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={32} /></div>
+               <h3 className="font-bold text-gray-900 dark:text-white text-lg">¿Salir sin guardar?</h3>
+               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Tienes cambios en el diseño del formulario que no han sido guardados.</p>
+            </div>
+            <div className="p-6 bg-gray-50 dark:bg-gray-800/50 flex flex-col gap-3">
+               <button onClick={() => { setShowUnsavedModal(false); handleSaveAll(true); }} className="w-full px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95 text-center flex items-center justify-center gap-2"><Save size={16}/> Guardar todo y salir</button>
+               <button onClick={() => { setShowUnsavedModal(false); markAsSaved(); onCloseCanvas(); }} className="w-full px-5 py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95 text-center">Salir sin guardar</button>
+               <button onClick={() => setShowUnsavedModal(false)} className="w-full px-5 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-bold rounded-xl shadow-sm transition-all hover:bg-gray-50 dark:hover:bg-gray-800 text-center mt-2">Cancelar y seguir editando</button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+
+      {/* MODAL RESUMEN IMPORTACIÓN */}
       {importSummary && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
@@ -667,6 +628,7 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
          </div>, document.body
       )}
 
+      {/* MODAL PAPELERA (CAMPOS ARCHIVADOS) */}
       {showArchivedModal && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-800">
@@ -698,137 +660,6 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
          </div>, document.body
       )}
 
-      {/* 🔥 MODAL DESDE CANVAS AL DAR CLIC EN "ATRÁS" 🔥 */}
-      {showUnsavedModal && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col border border-gray-200 dark:border-gray-800">
-            <div className="p-6 border-b border-gray-100 dark:border-gray-800 text-center">
-               <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={32} /></div>
-               <h3 className="font-bold text-gray-900 dark:text-white text-lg">¿Salir sin guardar?</h3>
-               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Tienes cambios en el diseño del formulario que no han sido guardados.</p>
-            </div>
-            <div className="p-6 bg-gray-50 dark:bg-gray-800/50 flex flex-col gap-3">
-               <button onClick={() => { setShowUnsavedModal(false); handleSaveAll(true); }} className="w-full px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95 text-center flex items-center justify-center gap-2"><Save size={16}/> Guardar todo y salir</button>
-               <button onClick={() => { setShowUnsavedModal(false); markAsSaved(); onCloseCanvas(); }} className="w-full px-5 py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-95 text-center">Salir sin guardar</button>
-               <button onClick={() => setShowUnsavedModal(false)} className="w-full px-5 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-bold rounded-xl shadow-sm transition-all hover:bg-gray-50 dark:hover:bg-gray-800 text-center mt-2">Cancelar y seguir editando</button>
-            </div>
-          </div>
-        </div>, document.body
-      )}
-
-      {isFieldModalOpen && editingField && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg max-h-[90vh] shadow-2xl rounded-2xl animate-in zoom-in-95 duration-200 flex flex-col overflow-hidden border border-gray-200 dark:border-gray-800">
-            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
-               <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><Edit2 size={18} className="text-blue-500"/> Propiedades del Campo</h3>
-               <button onClick={() => setIsFieldModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-            </div>
-            
-            <form id="field-edit-form" onSubmit={handleSaveFieldEdit} className="p-6 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
-               <div>
-                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Etiqueta (Label)</label>
-                 <input type="text" required value={editingField.label} onChange={(e) => setEditingField({...editingField, label: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" />
-               </div>
-               
-               {editingField.field_type === 'select' && (
-                 <div>
-                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Opciones (por coma)</label>
-                   <textarea rows={3} value={editingField.options} onChange={(e) => setEditingField({...editingField, options: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" placeholder="Ej: Opción 1, Opción 2" />
-                 </div>
-               )}
-
-               {editingField.field_type === 'relation' && (
-                 <div>
-                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Módulo Destino</label>
-                   <select required value={editingField.target_module_id || ''} onChange={(e) => setEditingField({...editingField, target_module_id: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all">
-                     <option value="">Seleccione...</option>
-                     {modulesList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                   </select>
-                 </div>
-               )}
-               
-               {editingField.field_type === 'subform' && (
-                 <div className="space-y-3 pt-2">
-                    <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
-                       <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Columnas de la Tabla</label>
-                       <button type="button" onClick={handleAddSubformColumn} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 flex items-center gap-1 transition-colors"><Plus size={14}/> Agregar</button>
-                    </div>
-                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
-                       {(editingField.subform_config || []).map((col, idx) => (
-                          <div key={col.id} className="flex flex-col gap-2 bg-white dark:bg-gray-950 p-3 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-                             <div className="flex gap-2 items-center">
-                               <input type="text" placeholder="Nombre Columna" value={col.label} onChange={e => updateSubformCol(idx, 'label', e.target.value)} className="flex-1 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required/>
-                               <select value={col.type} onChange={e => updateSubformCol(idx, 'type', e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
-                                  {PALETTE_ITEMS.filter(p => p.type !== 'subform').map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
-                               </select>
-                               <button type="button" onClick={() => removeSubformCol(idx)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
-                             </div>
-                             {col.type === 'select' && <input type="text" placeholder="Opciones (Ej: Opción 1, Opción 2)" value={col.options || ''} onChange={e => updateSubformCol(idx, 'options', e.target.value)} className="w-full px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required />}
-                             {col.type === 'relation' && (
-                               <select required value={col.target_module_id || ''} onChange={e => updateSubformCol(idx, 'target_module_id', e.target.value)} className="w-full px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
-                                  <option value="">Seleccionar Módulo Destino...</option>
-                                  {modulesList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                               </select>
-                             )}
-                          </div>
-                       ))}
-                       {(!editingField.subform_config || editingField.subform_config.length === 0) && <div className="text-sm text-gray-400 italic text-center py-6 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-900/50">No hay columnas agregadas. Haz clic en "Agregar" para empezar.</div>}
-                    </div>
-                 </div>
-               )}
-
-               <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors" onClick={() => setEditingField({...editingField, is_primary: !editingField.is_primary})}>
-                    <input type="checkbox" checked={editingField.is_primary || false} readOnly className="w-4 h-4 rounded text-amber-500 cursor-pointer" />
-                    <div className="flex flex-col"><label className="text-sm font-bold text-amber-800 dark:text-amber-500 flex items-center gap-1.5 cursor-pointer"><Star size={16}/> Título Principal del Registro</label><span className="text-xs text-amber-600 dark:text-amber-600/70">Este campo representará al registro en las búsquedas.</span></div>
-                  </div>
-                  <div className="flex items-center gap-3 px-2 cursor-pointer group" onClick={() => setEditingField({...editingField, required: !editingField.required})}>
-                    <input type="checkbox" checked={editingField.required || false} readOnly className="w-4 h-4 rounded text-blue-600 cursor-pointer group-hover:ring-2 ring-blue-500/50" />
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Marcar este campo como Obligatorio</label>
-                  </div>
-                  <div className="flex items-center gap-3 px-2 cursor-pointer group" onClick={() => setEditingField({...editingField, show_in_create: !editingField.show_in_create})}>
-                    <input type="checkbox" checked={editingField.show_in_create !== false} readOnly className="w-4 h-4 rounded text-blue-600 cursor-pointer group-hover:ring-2 ring-blue-500/50" />
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Mostrar en el formulario de "Nuevo Registro"</label>
-                  </div>
-               </div>
-            </form>
-            
-            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 shrink-0 flex justify-end gap-3">
-               <button type="button" onClick={() => setIsFieldModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
-               <button type="submit" form="field-edit-form" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors active:scale-95">Aplicar Cambios</button>
-            </div>
-          </div>
-        </div>, document.body
-      )}
-
-      {isSectionModalOpen && editingSection && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col border border-gray-200 dark:border-gray-800">
-             <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
-               <h3 className="font-bold text-gray-900 dark:text-white">Configurar Sección</h3>
-               <button onClick={() => setIsSectionModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-            </div>
-            <form id="section-edit-form" onSubmit={handleSaveSectionEdit} className="p-6 space-y-5">
-               <div>
-                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Título de la Sección</label>
-                 <input type="text" required value={editingSection.title} onChange={(e) => setEditingSection({...editingSection, title: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" />
-               </div>
-               <div>
-                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Distribución de Columnas</label>
-                 <select required value={editingSection.columns} onChange={(e) => setEditingSection({...editingSection, columns: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all">
-                   <option value={1}>1 Columna (Ancho completo)</option>
-                   <option value={2}>2 Columnas (Estándar)</option>
-                   <option value={3}>3 Columnas (Compacto)</option>
-                 </select>
-               </div>
-            </form>
-            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
-               <button type="button" onClick={() => setIsSectionModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
-               <button type="submit" form="section-edit-form" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors active:scale-95">Guardar Sección</button>
-            </div>
-          </div>
-        </div>, document.body
-      )}
       {/* 🔥 MODAL DEL ASISTENTE DE IA 🔥 */}
       {isAiModalOpen && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[555] p-4 animate-in fade-in duration-200">
@@ -927,6 +758,7 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
           </div>
         </div>, document.body
       )}
+
       {/* 🔥 MODAL DE PLANTILLAS SIGNATURIT 🔥 */}
       {isSignaturitModalOpen && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[600] p-4 animate-in fade-in duration-200">

@@ -22,12 +22,14 @@ class RoleResponse(RoleBase):
 class ProfileBase(BaseModel):
     name: str
     permissions: Dict[str, Any]
+    is_external: bool = False
 
 class ProfileResponse(ProfileBase):
     id: int
     company_id: int
     class Config:
         from_attributes = True
+        
 
 # ==========================================
 # USUARIOS (Accesos e Invitaciones)
@@ -47,6 +49,7 @@ class UserInvite(BaseModel):
     profile_id: Optional[int] = None
     
     send_invite: bool = True 
+    is_external: bool = False
     
     # Quitamos la validación de complejidad de aquí. 
     # Solo aseguramos tamaño para evitar ataques DoS en memoria.

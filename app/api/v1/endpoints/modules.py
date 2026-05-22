@@ -574,3 +574,32 @@ def setup_signaturit_webhook(
         
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=400, detail=f"Fallo de red conectando con Signaturit: {str(e)}")
+    
+@router.put("/{module_id}/mobile_config")
+def update_mobile_config(
+    module_id: int,
+    config: Dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Actualiza la configuración de publicación B2C (Headless) del módulo.
+    """
+    # Verificamos que sea administrador (ajusta esto si usas security_utils)
+    if not current_user.is_superadmin:
+        profile = db.query(models.Profile).filter(models.Profile.id == current_user.profile_id).first()
+        if not profile or not profile.permissions.get("settings", {}).get("manage_modules"):
+            raise HTTPException(status_code=403, detail="No tienes permisos para modificar módulos.")
+
+    module = db.query(models.Module).filter(
+        models.Module.id == module_id,
+        models.Module.company_id == current_user.company_id
+    ).first()
+    
+    if not module:
+        raise HTTPException(status_code=404, detail="Módulo no encontrado")
+
+    module.mobile_config = config
+    db.commit()
+    
+    return {"message": "Configuración móvil guardada exitosamente", "mobile_config": module.mobile_config}

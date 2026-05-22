@@ -3,14 +3,17 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Any
 from pydantic import BaseModel 
 from datetime import datetime, timedelta, timezone 
-from sqlalchemy.sql import func 
+from sqlalchemy.sql import func
 import traceback 
 import requests 
 import pandas as pd
 import io
 import json
+import re
 import asyncio
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import make_transient
+from sqlalchemy import or_
 
 
 from app.core.emails import send_security_alert_async
@@ -42,6 +45,37 @@ async def safe_send_email_background(company_id: int, email_to: str, subject: st
     finally:
         db_session.close()
 
+# =======================================================
+# 🔥 FASE 2: MOTOR MATEMÁTICO SEGURO (FÓRMULAS) 🔥
+# =======================================================
+def calculate_formulas(db: Session, form_id: int, data_dict: dict) -> dict:
+    """Busca campos tipo 'formula' y calcula su valor real en el servidor."""
+    formula_fields = db.query(models.FormField).filter(
+        models.FormField.form_id == form_id,
+        models.FormField.field_type == "formula"
+    ).all()
+
+    for field in formula_fields:
+        formula = field.options # Ej: "([precio] * [volumen]) * 0.05"
+        if not formula: continue
+        try:
+            expression = str(formula)
+            variables = re.findall(r'\[(.*?)\]', expression)
+            for var in variables:
+                val = data_dict.get(var, 0)
+                if val == "" or val is None: val = 0
+                # Limpiamos todo lo que no sea número para evitar inyecciones
+                clean_val = re.sub(r'[^\d.-]', '', str(val)) or 0
+                expression = expression.replace(f"[{var}]", str(clean_val))
+            
+            # eval seguro sin acceso a funciones del sistema
+            result = eval(expression, {"__builtins__": {}})
+            data_dict[field.api_name or field.label] = round(float(result), 4)
+        except Exception as e:
+            print(f"Error evaluando fórmula {formula}: {e}")
+            data_dict[field.api_name or field.label] = 0
+
+    return data_dict
 
 # =======================================================
 # 🔥 PENTEST FIX: GUARDAESPALDAS PARA LOW-CODE (SSRF PROTECTION) 🔥
@@ -275,6 +309,73 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                     old_v=None,
                     new_v={"created_case_id": new_case.id, "target_module_id": target_mod_id, "rule_name": rule.name}
                 )
+        
+        # =======================================================
+        # 🔥 EL MOTOR DE MATCHING (CRUCE DE DATOS INTELIGENTE) 🔥
+        # =======================================================
+        elif rule.action_type == "DATA_MATCHING":
+            config = rule.action_config or {}
+            target_module_id = config.get("target_module_id")
+            # Criterios de cruce. Ej: [{"source_field": "tipo_grano", "target_field": "producto", "operator": "=="}]
+            match_criteria = config.get("match_criteria", []) 
+            
+            if target_module_id and match_criteria:
+                # 1. Buscamos todos los registros activos del módulo objetivo (Ej: Módulo de Intereses de Compra)
+                target_cases = db.query(models.Case).filter(
+                    models.Case.company_id == case.company_id,
+                    models.Case.module_id == target_module_id,
+                    models.Case.deleted_at == None
+                ).all()
+
+                matches_found = []
+                
+                # 2. Escaneamos uno por uno para ver si hacen "Match" perfecto
+                for t_case in target_cases:
+                    t_data = t_case.data or {}
+                    is_match = True
+                    
+                    for crit in match_criteria:
+                        s_val = str(updated_data.get(crit.get("source_field"), "")).lower().strip()
+                        t_val = str(t_data.get(crit.get("target_field"), "")).lower().strip()
+                        op = crit.get("operator", "==")
+
+                        if op == "==" and s_val != t_val: 
+                            is_match = False; break
+                        elif op == ">" and float(s_val or 0) <= float(t_val or 0): 
+                            is_match = False; break
+                        elif op == "<" and float(s_val or 0) >= float(t_val or 0): 
+                            is_match = False; break
+                            
+                    if is_match:
+                        matches_found.append(t_case)
+
+                # 3. ¡Si hay Match, disparamos las alertas a ambos usuarios!
+                if matches_found:
+                    for match in matches_found:
+                        # Avisamos al dueño del registro encontrado
+                        if match.created_by:
+                            notification = models.Notification(
+                                company_id=case.company_id,
+                                user_id=match.created_by,
+                                case_id=match.id,
+                                module_id=match.module_id,
+                                title="¡Match Encontrado! 🤝",
+                                message=f"Una nueva oferta coincide con lo que buscas. Revisa el registro #{case.id}."
+                            )
+                            db.add(notification)
+                            
+                        # Avisamos al creador de la oferta actual
+                        notification_self = models.Notification(
+                            company_id=case.company_id,
+                            user_id=user_id,
+                            case_id=case.id,
+                            module_id=case.module_id,
+                            title="¡Match Encontrado! 🤝",
+                            message=f"Tu publicación coincide con el interés de compra #{match.id}."
+                        )
+                        db.add(notification_self)
+                        
+                    # OPCIONAL: Aquí se podría auto-generar un "Borrador de Contrato" uniendo a ambos.
                 
         elif rule.action_type in ["WEBHOOK_OUT", "SEND_SLACK"]:
             # 🔥 FASE 3: INTEGRACIONES EXTERNAS (Ejecución silenciosa) 🔥
@@ -437,17 +538,27 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
 def create_case(
     case_in: CaseCreate,
     request: Request,
-    background_tasks: BackgroundTasks, # 🔥 INYECTADO
+    background_tasks: BackgroundTasks, 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    security_utils.check_module_permission(db, current_user, case_in.module_id, "create")
+    # =========================================================
+    # 🔥 PENTEST FIX: SOPORTE B2B Y B2C (Create vs Publish) 🔥
+    # =========================================================
+    if not current_user.is_superadmin:
+        profile = db.query(models.Profile).filter(models.Profile.id == current_user.profile_id).first()
+        mod_perms = profile.permissions.get("modules", {}).get(str(case_in.module_id), {}) if profile and profile.permissions else {}
+        
+        # Permitimos el pase SI tiene permiso de "create" (Staff) O permiso de "publish" (App Móvil)
+        if not mod_perms.get("create") and not mod_perms.get("publish"):
+            raise HTTPException(status_code=403, detail="No tienes permiso para publicar o crear registros en este catálogo.")
 
     # Validar que el Formulario pertenezca a la empresa
     form = db.query(models.Form).filter(
         models.Form.id == case_in.form_id, 
         models.Form.company_id == current_user.company_id
     ).first()
+    
     if not form:
         raise HTTPException(status_code=403, detail="El formulario no es válido o no pertenece a tu empresa.")
 
@@ -476,6 +587,18 @@ def create_case(
         ).first()
 
     status_id = initial_status.id if initial_status else None
+    
+    field_rules = security_utils.get_field_level_security(db, current_user, case_in.module_id)
+    safe_new_data = {}
+    
+    for key, val in case_in.data.items():
+        rule = field_rules.get(key, "editable")
+        if rule in ["hidden", "readonly"]:
+            continue # 🛡️ No pueden inyectar datos en campos bloqueados al crear
+        safe_new_data[key] = val
+        
+    safe_new_data = calculate_formulas(db, case_in.form_id, safe_new_data)
+    case_in.data = safe_new_data
 
     new_case = models.Case(
         company_id=current_user.company_id,
@@ -505,17 +628,20 @@ def create_case(
         note.case_id = new_case.id
     db.commit()
     
+    # 🔥 CREAMOS UNA COPIA LIMPIA SIN LA IMAGEN BASE64 PARA LA AUDITORÍA 🔥
+    audit_data = {k: v for k, v in new_case.data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
+
     log_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
         case_id=new_case.id, action="CREATE_CASE", old_v=None,
-        new_v={"data": new_case.data, "status_id": new_case.status_id, "module_id": new_case.module_id}
+        new_v={"data": audit_data, "status_id": new_case.status_id, "module_id": new_case.module_id}
     )
     
     log_global_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
         entity_type="CASE", action="CREATE", entity_id=new_case.id,
         details=f"Creó el registro #{new_case.id} en el módulo ID {case_in.module_id}",
-        new_value=new_case.data, 
+        new_value=audit_data, 
         request=request
     )
     
@@ -547,7 +673,26 @@ def get_cases(
             (models.Case.assigned_to.in_(visible_user_ids))
         )
 
-    return query.order_by(models.Case.id.desc()).all()
+    # Ejecutamos la consulta
+    cases = query.order_by(models.Case.id.desc()).all()
+
+    # =========================================================
+    # 🔥 FASE 1: APLICAR FIELD-LEVEL SECURITY (LECTURA MASIVA) 🔥
+    # =========================================================
+    rules_cache = {}
+    
+    for c in cases:
+        # Cacheamos las reglas por módulo para no saturar la BD en el bucle
+        if c.module_id not in rules_cache:
+            rules_cache[c.module_id] = security_utils.get_field_level_security(db, current_user, c.module_id)
+        
+        field_rules = rules_cache[c.module_id]
+        if field_rules:
+            safe_data = {k: v for k, v in (c.data or {}).items() if field_rules.get(k) != "hidden"}
+            make_transient(c)
+            c.data = safe_data
+
+    return cases
 
 @router.get("/recycle-bin", response_model=List[case_schema.CaseResponse])
 def get_recycle_bin(
@@ -624,6 +769,18 @@ def get_case(
         visible_user_ids = security_utils.get_visible_users(db, current_user, mod_perms)
         if case.created_by not in visible_user_ids and case.assigned_to not in visible_user_ids:
             raise HTTPException(403, "No tienes jerarquía para ver este registro.")
+
+    # =========================================================
+    # 🔥 FASE 1: APLICAR FIELD-LEVEL SECURITY (LECTURA) 🔥
+    # =========================================================
+    field_rules = security_utils.get_field_level_security(db, current_user, case.module_id)
+    if field_rules:
+        # Filtramos los datos, eliminando los que están marcados como "hidden"
+        safe_data = {k: v for k, v in case.data.items() if field_rules.get(k) != "hidden"}
+        
+        # Desconectamos el objeto de la base de datos para no alterar la BD real
+        make_transient(case)
+        case.data = safe_data
 
     return case
 
@@ -744,8 +901,18 @@ def update_case(
                         if case_in.data[trigger_f] != case.data[trigger_f]:
                             case_in.data[trigger_f] = case.data[trigger_f] 
 
+    field_rules = security_utils.get_field_level_security(db, current_user, case.module_id)
+    
     updated_data = dict(case.data)
-    updated_data.update(case_in.data)
+    
+    # Solo procesamos los campos que vienen en el payload y que NO están bloqueados
+    for key, val in case_in.data.items():
+        rule = field_rules.get(key, "editable")
+        if rule in ["hidden", "readonly"]:
+            continue  # 🛡️ Ignoramos olímpicamente el intento de hackeo/edición
+        
+        updated_data[key] = val
+    updated_data = calculate_formulas(db, case.form_id, updated_data)
     case.data = updated_data
     
     if case_in.assigned_to is not None or hasattr(case_in, 'assigned_to'):
@@ -775,11 +942,15 @@ def update_case(
                     case.entered_status_at = func.now()
                 break
 
+    # 🔥 LIMPIAMOS LAS IMÁGENES ANTES DE GUARDAR EN EL HISTORIAL 🔥
+    audit_old_data = {k: v for k, v in old_data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
+    audit_new_data = {k: v for k, v in case.data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
+
     log_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
         case_id=case.id, action="UPDATE_DATA",
-        old_v={"data": old_data, "status_id": old_status_id},
-        new_v={"data": case.data, "status_id": case.status_id}
+        old_v={"data": audit_old_data, "status_id": old_status_id},
+        new_v={"data": audit_new_data, "status_id": case.status_id}
     )
     db.commit()
     db.refresh(case)
@@ -788,7 +959,7 @@ def update_case(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
         entity_type="CASE", action="UPDATE", entity_id=case.id,
         details=f"Editó datos del registro #{case.id}",
-        old_value=old_data, new_value=case.data, request=request
+        old_value=audit_old_data, new_value=audit_new_data, request=request
     )
     
     return case
@@ -1823,3 +1994,132 @@ def download_signed_document(
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(400, f"Fallo de red: {str(e)}")
+    
+@router.get("/{case_id}/linked")
+def get_linked_cases(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Búsqueda Inversa Blindada: Busca todos los registros que 
+    tengan un campo 'relation' apuntando a este registro.
+    """
+    target_case = db.query(models.Case).filter(
+        models.Case.id == case_id,
+        models.Case.company_id == current_user.company_id
+    ).first()
+    
+    if not target_case:
+        raise HTTPException(404, "Caso no encontrado")
+
+    # 1. Buscamos campos de relación que SÍ pertenezcan a un formulario
+    relation_fields = db.query(models.FormField).filter(
+        models.FormField.company_id == current_user.company_id,
+        models.FormField.field_type == 'relation',
+        models.FormField.form_id != None
+    ).all()
+
+    linked_results = {}
+
+    for field in relation_fields:
+        opts = field.options
+        if not opts:
+            continue
+            
+        # Si las opciones se guardaron como String por error, las parseamos
+        if isinstance(opts, str):
+            try:
+                opts = json.loads(opts)
+            except:
+                continue
+                
+        # Si definitivamente no es un diccionario, saltamos este campo
+        if not isinstance(opts, dict):
+            continue
+            
+        # Si el campo apunta a nuestro módulo...
+        if str(opts.get("target_module_id")) == str(target_case.module_id):
+            
+            # Buscamos el formulario de forma segura
+            form = db.query(models.Form).filter(models.Form.id == field.form_id).first()
+            if not form or not form.module_id:
+                continue
+                
+            source_module_id = form.module_id
+            field_key = field.api_name or field.label
+
+            # Buscamos los casos del módulo origen
+            source_cases = db.query(models.Case).filter(
+                models.Case.module_id == source_module_id,
+                models.Case.deleted_at == None
+            ).all()
+
+            # Buscamos coincidencias (si el campo relacional tiene nuestro ID)
+            matches = [c for c in source_cases if str(c.data.get(field_key)) == str(case_id)]
+
+            if matches:
+                module = db.query(models.Module).filter(models.Module.id == source_module_id).first()
+                mod_name = module.name if module else f"Módulo {source_module_id}"
+
+                if mod_name not in linked_results:
+                    linked_results[mod_name] = []
+
+                for c in matches:
+                    # Evitar duplicados si hay dos campos que apuntan a lo mismo en el mismo módulo
+                    if not any(existing['id'] == c.id for existing in linked_results[mod_name]):
+                        linked_results[mod_name].append({
+                            "id": c.id,
+                            "status_id": c.status_id,
+                            "created_at": c.created_at,
+                            "data": c.data
+                        })
+
+    return linked_results
+
+# =======================================================
+# 🔥 NUEVO: BUSCADOR DE USUARIOS PARA CAMPOS 'USER_RELATION' 🔥
+# =======================================================
+@router.get("/users/search")
+def search_users_for_relation(
+    q: str = "",
+    role_id: Optional[int] = None,
+    profile_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Endpoint dedicado para que los campos tipo 'user_relation' de React 
+    puedan buscar usuarios en tiempo real. 
+    Soporta filtrado opcional por Rol o Perfil si el campo fue configurado así.
+    """
+    query = db.query(models.User).filter(
+        models.User.company_id == current_user.company_id,
+        models.User.is_active == True
+    )
+
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(
+            or_(
+                models.User.first_name.ilike(search_term),
+                models.User.last_name.ilike(search_term),
+                models.User.email.ilike(search_term)
+            )
+        )
+
+    if role_id:
+        query = query.filter(models.User.role_id == role_id)
+        
+    if profile_id:
+        query = query.filter(models.User.profile_id == profile_id)
+
+    users = query.limit(20).all()
+
+    # Formateamos la respuesta para que React-Select o Autocomplete la entiendan fácil
+    return [{
+        "id": u.id,
+        "name": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
+        "email": u.email,
+        "is_external": getattr(u, 'is_external', False)
+    } for u in users]

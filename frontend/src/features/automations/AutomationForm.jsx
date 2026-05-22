@@ -314,6 +314,9 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                   <label className="block text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-2">Acción a Ejecutar</label>
                   <select value={rule.action_type} onChange={e => updateRule({ action_type: e.target.value, target_field: '', action_value: '', action_config: { mapping: {} } })} className="w-full mb-5 pb-2 bg-transparent text-sm font-bold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-800 outline-none cursor-pointer">
                      <optgroup label="Súper Acciones"><option value="CHANGE_OWNER">Cambiar Propietario</option><option value="COPY_FIELD">Copiar Valor de Campo</option><option value="CREATE_RECORD">Crear Registro en otro Módulo</option></optgroup>
+                     <optgroup label="Motor Inteligente">
+                         <option value="DATA_MATCHING">Matching de Oferta/Demanda (Cruce de Datos)</option>
+                     </optgroup>
                      <optgroup label="Integraciones (iPaaS)"><option value="WEBHOOK_OUT">Llamar Webhook (API Externa)</option><option value="SEND_SLACK">Enviar mensaje a Slack/Teams</option></optgroup>
                      <optgroup label="Datos y Lógica"><option value="UPDATE_FIELD">Sobrescribir Valor Fijo</option><option value="CUSTOM_FUNCTION">Script Low-Code (Python)</option><option value="SEND_NOTIFICATION">Disparar Alerta (Multicast)</option></optgroup>
                      <optgroup label="Interfaz (UI)"><option value="SET_REQUIRED">Hacer Obligatorio</option><option value="SET_OPTIONAL">Quitar Obligatoriedad</option><option value="SET_READONLY">Bloquear (Solo Lectura)</option><option value="SET_EDITABLE">Desbloquear</option><option value="SET_HIDDEN">Ocultar Campo o Sección</option><option value="SET_VISIBLE">Mostrar Campo o Sección</option></optgroup>
@@ -477,6 +480,113 @@ const AutomationForm = ({ moduleId, initialRule, fields, companyUsers, allModule
                                           </div>
                                        </div>
                                     ))}
+                                 </div>
+                              </div>
+                           )}
+                        </div>
+                     )}
+
+                     {/* 🔥 FASE 2: MOTOR DE MATCHING (GRAPP) 🔥 */}
+                     {rule.action_type === 'DATA_MATCHING' && (
+                        <div className="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 rounded-xl p-5 mt-4 space-y-4">
+                           <div className="flex items-center gap-2 mb-2">
+                               <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>
+                               </div>
+                               <div>
+                                  <h4 className="font-bold text-indigo-800 dark:text-indigo-300">Motor de Inteligencia de Mercado</h4>
+                                  <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70">Buscará coincidencias exactas en otro módulo y alertará a ambas partes.</p>
+                               </div>
+                           </div>
+
+                           <div>
+                              <label className="block text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Database size={14}/> ¿En qué módulo buscará coincidencias?</label>
+                              <Select 
+                                 options={allModules.filter(m => m.id !== parseInt(moduleId)).map(m => ({ value: m.id, label: m.name }))}
+                                 value={rule.action_config?.target_module_id ? { value: rule.action_config.target_module_id, label: allModules.find(m => m.id === parseInt(rule.action_config.target_module_id))?.name } : null}
+                                 onChange={(opt) => updateRule({ action_config: { target_module_id: opt.value, match_criteria: [] } })}
+                                 placeholder="Selecciona el Módulo Destino..." styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                              />
+                           </div>
+
+                           {rule.action_config?.target_module_id && (
+                              <div className="space-y-3 pt-3 border-t border-indigo-100 dark:border-indigo-800/30 animate-in fade-in">
+                                 <div className="flex justify-between items-center">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Reglas de Coincidencia (Match)</label>
+                                    <button 
+                                       type="button" 
+                                       onClick={() => {
+                                          const currentCriteria = rule.action_config?.match_criteria || [];
+                                          updateRule({ action_config: { ...rule.action_config, match_criteria: [...currentCriteria, { source_field: '', target_field: '', operator: '==' }] } });
+                                       }}
+                                       className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 transition-colors flex items-center gap-1"
+                                    >
+                                       <Plus size={10}/> Añadir Condición
+                                    </button>
+                                 </div>
+
+                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                    {(rule.action_config?.match_criteria || []).map((crit, idx) => (
+                                       <div key={idx} className="flex flex-col gap-1.5 bg-white dark:bg-gray-950 p-3 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
+                                          <div className="flex items-center gap-2">
+                                             <select 
+                                                required
+                                                value={crit.source_field} 
+                                                onChange={e => {
+                                                   const newCriteria = [...rule.action_config.match_criteria];
+                                                   newCriteria[idx].source_field = e.target.value;
+                                                   updateRule({ action_config: { ...rule.action_config, match_criteria: newCriteria } });
+                                                }}
+                                                className="flex-1 px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded outline-none text-gray-700 dark:text-gray-200"
+                                             >
+                                                <option value="">Campo actual...</option>
+                                                {fields.map(f => <option key={f.id} value={f.api_name || f.label}>{f.display_label}</option>)}
+                                             </select>
+                                             
+                                             <select 
+                                                value={crit.operator} 
+                                                onChange={e => {
+                                                   const newCriteria = [...rule.action_config.match_criteria];
+                                                   newCriteria[idx].operator = e.target.value;
+                                                   updateRule({ action_config: { ...rule.action_config, match_criteria: newCriteria } });
+                                                }}
+                                                className="w-16 px-1 py-1.5 text-xs bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 rounded outline-none text-center font-mono font-bold"
+                                             >
+                                                <option value="==">==</option>
+                                                <option value=">">&gt;</option>
+                                                <option value="<">&lt;</option>
+                                             </select>
+
+                                             <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                   const newCriteria = [...rule.action_config.match_criteria];
+                                                   newCriteria.splice(idx, 1);
+                                                   updateRule({ action_config: { ...rule.action_config, match_criteria: newCriteria } });
+                                                }} 
+                                                className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                                             >
+                                                <X size={14}/>
+                                             </button>
+                                          </div>
+                                          
+                                          <input 
+                                             type="text" 
+                                             required
+                                             placeholder="API Name del campo en módulo destino (Ej: grano_buscado)"
+                                             value={crit.target_field} 
+                                             onChange={e => {
+                                                const newCriteria = [...rule.action_config.match_criteria];
+                                                newCriteria[idx].target_field = e.target.value;
+                                                updateRule({ action_config: { ...rule.action_config, match_criteria: newCriteria } });
+                                             }}
+                                             className="w-full px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded outline-none font-mono text-gray-700 dark:text-gray-200 focus:border-indigo-500"
+                                          />
+                                       </div>
+                                    ))}
+                                    {(!rule.action_config?.match_criteria || rule.action_config.match_criteria.length === 0) && (
+                                       <p className="text-[10px] text-gray-400 italic text-center py-3 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">No hay reglas definidas. Añade una para empezar el cruce.</p>
+                                    )}
                                  </div>
                               </div>
                            )}

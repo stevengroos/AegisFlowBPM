@@ -50,6 +50,8 @@ class UserListResponse(BaseModel):
     is_active: bool = True 
     is_mfa_enabled: bool = False
     language: str = "es"
+    is_external: bool = False
+    profile_data: Optional[dict] = {}
     class Config:
         from_attributes = True
 
@@ -597,8 +599,62 @@ def get_company_users(db: Session = Depends(get_db), current_user: models.User =
             u.is_mfa_enabled = False
         if getattr(u, 'language', None) is None:
             u.language = "es" # Si no tiene idioma, le asignamos español por defecto
+        if getattr(u, 'is_external', None) is None:
+            u.is_external = False
             
     return users
+
+'''
+class UserApproveRequest(BaseModel):
+    profile_id: int
+    role_id: Optional[int] = None
+
+@router.put("/users/{user_id}/approve")
+def approve_external_user(
+    user_id: int, 
+    req: UserApproveRequest, 
+    request: Request,
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Aprueba a un usuario externo que se registró por la App.
+    Lo pasa a estado Activo y le asigna su Perfil definitivo.
+    """
+    # 1. Validar que quien aprueba sea un SuperAdmin o tenga permisos
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=403, detail="No tienes permisos para aprobar usuarios.")
+
+    # 2. Buscar al usuario
+    target_user = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.company_id == current_user.company_id
+    ).first()
+
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    if target_user.is_active:
+        raise HTTPException(status_code=400, detail="Este usuario ya está activo.")
+
+    # 3. Actualizar datos
+    target_user.is_active = True
+    target_user.profile_id = req.profile_id
+    if req.role_id:
+        target_user.role_id = req.role_id
+
+    db.commit()
+
+    # 4. Auditoría
+    log_global_event(
+        db=db, user_id=current_user.id, company_id=current_user.company_id, 
+        entity_type="USER_MANAGEMENT", action="USER_APPROVED", entity_id=target_user.id, 
+        details=f"Usuario {target_user.email} aprobado y activado.", request=request
+    )
+
+    # TODO Fase 2: Aquí podrías disparar un correo electrónico avisando al usuario que fue aprobado.
+
+    return {"message": "Usuario aprobado exitosamente."}'''
 
 @router.put("/users/me")
 def update_user_me(user_in: UserUpdateMe, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(deps.get_current_user)):

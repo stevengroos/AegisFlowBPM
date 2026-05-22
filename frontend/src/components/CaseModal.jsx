@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid } from 'lucide-react';
+import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator  } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 // 🔥 1. IMPORTAMOS NUESTRAS NOTIFICACIONES 🔥
 import { useNotification } from '../context/NotificationContext';
@@ -310,6 +310,29 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
             </select>
           ) : field.field_type === 'relation' ? (
             <SearchableSelect placeholder="Enlazar con un registro..." value={formData[fieldKey] || ''} onChange={(val) => setFormData({...formData, [fieldKey]: val})} disabled={false} options={relationData[field.options?.target_module_id] || []} />
+          
+          
+          ) : field.field_type === 'user_relation' ? (
+            <SearchableSelect 
+               placeholder="Seleccionar usuario..." 
+               value={formData[fieldKey] || ''} 
+               onChange={(val) => setFormData({...formData, [fieldKey]: val})} 
+               disabled={false} 
+               options={(() => {
+                  let filtered = companyUsers;
+                  const rId = field.options?.role_id;
+                  const pId = field.options?.profile_id;
+                  // Si el administrador configuró filtros, los aplicamos:
+                  if (rId) filtered = filtered.filter(u => String(u.role_id) === String(rId));
+                  if (pId) filtered = filtered.filter(u => String(u.profile_id) === String(pId));
+                  // Retornamos el formato que entiende SearchableSelect
+                  return filtered.map(u => ({ 
+                      value: u.id, 
+                      label: u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.email 
+                  }));
+               })()} 
+            />
+          
           ) : field.field_type === 'textarea' ? (
             <textarea required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} />
           ) : field.field_type === 'checkbox' ? (
@@ -317,6 +340,28 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
               <input type="checkbox" checked={formData[fieldKey] || false} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.checked})} className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-blue-600 focus:ring-blue-500 cursor-pointer" />
               <span className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => setFormData({...formData, [fieldKey]: !formData[fieldKey]})}>Marcar como verdadero</span>
             </div>
+          
+          
+          ) : field.field_type === 'map' ? (
+            <div className="flex gap-2">
+               <input type="text" required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={inputClasses} placeholder="Latitud, Longitud" />
+               <button type="button" onClick={() => {
+                   if (navigator.geolocation) {
+                       navigator.geolocation.getCurrentPosition((pos) => {
+                           setFormData({...formData, [fieldKey]: `${pos.coords.latitude}, ${pos.coords.longitude}`});
+                       }, () => notify.error("Permiso de ubicación denegado."));
+                   } else { notify.error("Geolocalización no soportada"); }
+               }} className="p-2.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl transition-colors border border-red-100 shadow-sm shrink-0" title="Obtener mi ubicación actual">
+                  <MapPin size={20}/>
+               </button>
+            </div>
+          ) : field.field_type === 'formula' ? (
+            <div className="relative">
+               <Calculator className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={16} />
+               <input type="text" disabled value={calculateVisualFormula(field.options, formData)} className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} placeholder="Calculado automáticamente" />
+            </div>
+          
+
           ) : field.field_type === 'file' || field.field_type === 'image' ? (
             <FileUploadField 
                type={field.field_type} 
@@ -340,6 +385,22 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
           )}
         </div>
       );
+  };
+
+  const calculateVisualFormula = (formulaStr, currentData) => {
+      if (!formulaStr) return '';
+      try {
+          let expr = formulaStr;
+          const vars = expr.match(/\[(.*?)\]/g) || [];
+          vars.forEach(v => {
+              const key = v.replace('[', '').replace(']', '');
+              const val = currentData[key] || 0;
+              expr = expr.replace(v, val);
+          });
+          // eslint-disable-next-line no-eval
+          const result = eval(expr);
+          return isNaN(result) ? '...' : Number(result).toFixed(2);
+      } catch (e) { return '...'; }
   };
 
   return (

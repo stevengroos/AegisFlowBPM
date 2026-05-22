@@ -1,4 +1,5 @@
 import os
+import starlette.formparsers # 🔥 NUEVO IMPORT CRUCIAL PARA EL LÍMITE 🔥
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -9,7 +10,7 @@ from contextlib import asynccontextmanager
 from app.db.base_class import Base
 from app.db.session import engine, get_db
 from app.models import models 
-from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards, webhooks, ai, chat, templates, workflow
+from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards, webhooks, ai, chat, templates, workflow, mobile_api
 from app.api import deps
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles 
@@ -20,6 +21,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.core.config import settings
 # 🔥 IMPORTAMOS LA CONFIGURACIÓN CENTRALIZADA 🔥
 from app.core.config import settings
+
+# =======================================================
+# 🔥 MAGIA: DESTRUIMOS EL LÍMITE DE 1MB Y LO SUBIMOS A 50MB 🔥
+# Esto evitará el error "El contenido del formulario es demasiado grande"
+# =======================================================
+starlette.formparsers.MAX_FORM_FIELD_SIZE = 50_000_000
+starlette.formparsers.MAX_FORM_FIELDS = 1000
 
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
@@ -54,7 +62,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # 🔥 PENTEST FIX: Usamos la lista de orígenes validada desde config.py 🔥
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.get_cors_origins, 
+    #allow_origins=settings.get_cors_origins, 
+    allow_origins=["*"], #para desarrollo, luego restringir a los dominios específicos de la app móvil y frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,13 +90,13 @@ app.include_router(ai.router, prefix="/api/v1/ai", tags=["Artificial Intelligenc
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["Templates"])
 app.include_router(workflow.router, prefix="/api/v1/workflow", tags=["Workflow"])
+app.include_router(mobile_api.router, prefix="/api/v1/mobile", tags=["Mobile APP"])
 
 Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 def read_root():
     return {"message": "Tablas creadas y DB conectada"}
-
 
 # =======================================================
 # 🔥 PENTEST FIX: ESQUEMA SEGURO PARA EL PERFIL ACTUAL 🔥
@@ -99,13 +108,15 @@ class UserMeResponse(BaseModel):
     last_name: Optional[str] = None
     company_id: int
     is_superadmin: bool
+    is_active: bool
     role_name: str
     profile_name: str
     permissions: Dict[str, Any]
     is_mfa_enabled: bool = False
     is_system_company: bool = False
     language: str = "es"
-
+    profile_data: Optional[Dict[str, Any]] = {}
+    
     class Config:
         from_attributes = True
 
@@ -125,6 +136,7 @@ def read_user_me(
         "last_name": current_user.last_name, 
         "company_id": current_user.company_id,
         "is_superadmin": current_user.is_superadmin,
+        "is_active": current_user.is_active,
         "role_name": role.name if role else "Sin rol asignado", 
         "profile_name": profile.name if profile else "Sin perfil asignado", 
         "permissions": profile.permissions if profile else {},
@@ -134,5 +146,6 @@ def read_user_me(
         "is_system_company": company.is_system_company == True if company else False,
         
         # 🔥 DEVOLVEMOS EL IDIOMA GUARDADO EN LA BD 🔥
-        "language": getattr(current_user, 'language', 'es') or "es"
+        "language": getattr(current_user, 'language', 'es') or "es",
+        "profile_data": current_user.profile_data or {}
     }
