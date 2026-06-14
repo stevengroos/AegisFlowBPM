@@ -1,0 +1,3 @@
+fastapi
+uvicorn
+# ... (deja el resto de las que ya tenías) ...
