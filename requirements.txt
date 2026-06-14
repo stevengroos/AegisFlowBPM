@@ -1,3 +1,5 @@
 fastapi
 uvicorn
+starlette
+python-multipart
 # ... (deja el resto de las que ya tenías) ...
