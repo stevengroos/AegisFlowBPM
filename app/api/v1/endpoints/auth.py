@@ -69,12 +69,15 @@ class UserPasswordUpdate(BaseModel):
 # =========================================================
 # Obtenemos las credenciales. Si no existen (ej. en desarrollo), 
 # se inicializa con dummy para no romper el backend al arrancar.
-starlette_config = Config(environ={
-    "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID", "dummy_id"),
-    "GOOGLE_CLIENT_SECRET": os.environ.get("GOOGLE_CLIENT_SECRET", "dummy_secret"),
-    "MICROSOFT_CLIENT_ID": os.environ.get("MICROSOFT_CLIENT_ID", "dummy_id"),
-    "MICROSOFT_CLIENT_SECRET": os.environ.get("MICROSOFT_CLIENT_SECRET", "dummy_secret")
-})
+#starlette_config = Config(environ={
+#    "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID", "dummy_id"),
+#    "GOOGLE_CLIENT_SECRET": os.environ.get("GOOGLE_CLIENT_SECRET", "dummy_secret"),
+#    "MICROSOFT_CLIENT_ID": os.environ.get("MICROSOFT_CLIENT_ID", "dummy_id"),
+#    "MICROSOFT_CLIENT_SECRET": os.environ.get("MICROSOFT_CLIENT_SECRET", "dummy_secret")
+#})
+
+# 🔥 FIX: Leemos directamente desde el archivo .env para evitar variables vacías
+starlette_config = Config(".env")
 
 oauth = OAuth(starlette_config)
 oauth.register(
@@ -82,6 +85,7 @@ oauth.register(
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={
         'scope': 'openid email profile',
+        'prompt': 'select_account',
         'verify': False  # FIX PENTEST: Ignorar el proxy corporativo/VPN local
     }
 )
@@ -500,12 +504,21 @@ async def sso_callback(provider: str, request: Request, db: Session = Depends(ge
     # =======================================================
     if requires_mfa_step:
         # LO MANDAMOS AL FRONTEND PERO NO AL DASHBOARD. 
-        # Lo enviamos a la pantalla de validación de MFA con un token provisional en la URL.
-        log_global_event(db, user.id, user.company_id, "AUTH", "SSO_PARTIAL_LOGIN", user.id, f"SSO {provider} superado. Retenido por regla de MFA Nativo Forzado.", request)
+        log_global_event(
+            db=db, user_id=user.id, company_id=user.company_id, 
+            entity_type="AUTH", action="SSO_PARTIAL_LOGIN", entity_id=user.id, 
+            details=f"SSO {provider} superado. Retenido por regla de MFA Nativo Forzado.", 
+            request=request
+        )
         return RedirectResponse(url=f"{frontend_url}/login?sso_mfa_required=true&email={email}&temp_token={token_data['access_token']}")
 
     # LOGIN 100% EXITOSO Y DIRECTO
-    log_global_event(db, user.id, user.company_id, "AUTH", "LOGIN_SUCCESS", user.id, f"Inicio de sesión exitoso vía SSO ({provider})", request)
+    log_global_event(
+        db=db, user_id=user.id, company_id=user.company_id, 
+        entity_type="AUTH", action="LOGIN_SUCCESS", entity_id=user.id, 
+        details=f"Inicio de sesión exitoso vía SSO ({provider})", 
+        request=request
+    )
     
     new_session = models.ActiveSession(
         company_id=user.company_id, user_id=user.id, token_jti=token_data["jti"],
