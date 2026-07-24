@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, GitMerge, RotateCcw, Shapes, Zap, Copy, History, DownloadCloud, UploadCloud, X, Loader2, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, GitMerge, RotateCcw, Shapes, Zap, Copy, History, DownloadCloud, UploadCloud, X, Loader2, ShieldAlert, Save } from 'lucide-react';
 
 const BlueprintHeader = ({
   selectedBlueprint,
@@ -26,7 +26,9 @@ const BlueprintHeader = ({
   setIsActionsListOpen,
   setIsValidationsListOpen,
   transitionActions,
-  transitionValidations
+  transitionValidations,
+  onSaveAllChanges, // 🔥 NUEVO: Función para guardar masivamente en memoria
+  hasUnsavedChanges // 🔥 NUEVO: Estado que indica si hay cambios pendientes
 }) => {
 
   return (
@@ -68,16 +70,32 @@ const BlueprintHeader = ({
             </button>
           </div>
         ) : (
-          <div className="flex border-r border-gray-200 dark:border-gray-700 pr-3 mr-1 gap-2">
+          <div className="flex items-center gap-2">
+             
+             {/* 🔥 BOTÓN PRINCIPAL DE GUARDAR CAMBIOS (MEMORIA / BATCH SAVE) 🔥 */}
+             <button 
+                onClick={onSaveAllChanges} 
+                disabled={!hasUnsavedChanges}
+                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-all ${
+                   hasUnsavedChanges 
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse active:scale-95 cursor-pointer' 
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 opacity-60 cursor-not-allowed'
+                }`}
+                title={hasUnsavedChanges ? "Tienes cambios pendientes por guardar" : "Todo guardado"}
+             >
+                <Save size={16} /> <span>{hasUnsavedChanges ? 'Guardar Cambios *' : 'Guardado'}</span>
+             </button>
+
+             <div className="h-5 w-[1px] bg-gray-200 dark:bg-gray-700 mx-1"></div>
+
              {selectedElement?.type === 'status' && !viewingOldVersion && (
-               <button onClick={() => setIsShapeModalOpen(true)} className="p-2 text-purple-600 hover:text-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold mr-2 border border-purple-200 dark:border-purple-800/50 shadow-sm" title="Cambiar Forma Visual">
+               <button onClick={() => setIsShapeModalOpen(true)} className="p-2 text-purple-600 hover:text-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold mr-1 border border-purple-200 dark:border-purple-800/50 shadow-sm" title="Cambiar Forma Visual">
                   <Shapes size={16} /> <span className="hidden sm:inline">Forma</span>
                </button>
              )}
 
-             {/* 🔥 NUEVOS BOTONES DE ACCIONES Y VALIDACIONES (Solo visibles en transiciones) 🔥 */}
              {selectedElement?.type === 'transition' && !viewingOldVersion && (
-                <div className="flex items-center gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-3">
+                <div className="flex items-center gap-2 mr-1 border-r border-gray-200 dark:border-gray-700 pr-3">
                    <button onClick={() => setIsActionsListOpen(true)} className="px-3 py-2 text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold border border-blue-200 dark:border-blue-800/50 shadow-sm">
                       <Zap size={16} className="fill-blue-500" /> 
                       <span className="hidden sm:inline">Acciones ({transitionActions?.length || 0})</span>
@@ -88,9 +106,9 @@ const BlueprintHeader = ({
                    </button>
                 </div>
              )}
-             {/* 🔥 NUEVO BOTÓN QUE ABRE EL MODAL DE IA 🔥 */}
+
              <button 
-                onClick={() => setIsShapeModalOpen('ai_modal')} // Usamos un truco pasando un string para abrir el modal en el padre
+                onClick={() => setIsShapeModalOpen('ai_modal')}
                 className="p-2 text-purple-600 hover:text-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold border border-purple-200 dark:border-purple-800/50 shadow-sm" 
                 title="Generar flujo con IA"
              >
@@ -101,13 +119,11 @@ const BlueprintHeader = ({
                 <Copy size={18} /> <span className="hidden sm:inline">Versionar</span>
              </button>
              
-             {/* Envolvemos el botón de historial en un relative para el menú flotante */}
              <div className="relative">
                 <button onClick={fetchVersions} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Historial de Versiones">
                    <History size={18} />
                 </button>
                 
-                {/* 🔥 PANEL FLOTANTE DE HISTORIAL DE VERSIONES 🔥 */}
                 {showVersions && (
                   <div className="absolute top-full right-0 mt-2 z-[60] w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 flex flex-col max-h-[60vh]">
                      <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">

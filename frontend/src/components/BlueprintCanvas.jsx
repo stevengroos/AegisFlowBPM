@@ -14,20 +14,21 @@ import ActionModal from './modals/ActionModal';
 import BlueprintHeader from './BlueprintHeader';
 import BlueprintSidebar from './BlueprintSidebar';
 
-// Nuestro nuevo Custom Hook con la lógica pesada
+// Nuestro Custom Hook optimizado con memoria local y batch save
 import { useBlueprintManager } from './useBlueprintManager';
 
 const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsavedChanges, reloadBlueprints }) => {
   const { notify, confirm } = useNotification(); 
 
-
   const [isActionsListOpen, setIsActionsListOpen] = useState(false);
   const [isValidationsListOpen, setIsValidationsListOpen] = useState(false);
+  
   // =================================================================
   // ESTADOS DE LA INTERFAZ (UI)
   // =================================================================
   const [newStatus, setNewStatus] = useState({ name: '', is_initial: false, sla_hours: '' });
   const [isShapeModalOpen, setIsShapeModalOpen] = useState(false);
+  
   // 🔥 ESTADOS DEL ASISTENTE IA PARA BLUEPRINTS 🔥
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
@@ -43,6 +44,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
         setIsShapeModalOpen(false);
      }
   }, [isShapeModalOpen]);
+
   const nodeTypes = useMemo(() => ({ task: TaskNode, start: StartNode, end: EndNode, gateway: GatewayNode }), []);
   const [selectedElement, setSelectedElement] = useState(null);
   const [renameValue, setRenameValue] = useState("");
@@ -76,96 +78,25 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   useEffect(() => { selectedElementRef.current = selectedElement; }, [selectedElement]);
 
-  // =================================================================
-  // INVOCACIÓN DEL CUSTOM HOOK (LÓGICA DE NEGOCIO Y API)
-  // =================================================================
-  const {
-    nodes, setNodes, edges, setEdges,
-    moduleFields, moduleSections, companyUsers, companyRoles, companyProfiles, allModules, allForms,
-    versions, loadingVersions, transitionActions, transitionValidations,
-    fetchBlueprintData, loadTransitionDetails, fetchVersions,
-    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleGenerateFromImage, handleImportBlueprint
-  } = useBlueprintManager({
-    moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints
-  });
-
-  // =================================================================
-  // EFECTOS SECUNDARIOS
-  // =================================================================
   const reportChanges = useCallback((hasPendingChanges) => {
       if (setHasUnsavedChanges) setHasUnsavedChanges(hasPendingChanges);
   }, [setHasUnsavedChanges]);
 
   // =================================================================
-  // 🔥 LÓGICA PARA GENERAR EL FLUJO CON IA 🔥
+  // INVOCACIÓN DEL CUSTOM HOOK (LÓGICA DE NEGOCIO Y API)
   // =================================================================
-  const handleGenerateBlueprintWithAI = async (e) => {
-    e.preventDefault();
-    if (aiMode === 'text' && !aiPrompt.trim()) return notify.warning("Describe el proceso que necesitas.");
-    if (aiMode === 'file' && !aiFile) return notify.warning("Por favor, selecciona un documento o imagen.");
+  const {
+    nodes, setNodes, edges, setEdges,
+    deletedStatusIdsRef, deletedTransitionIdsRef,
+    moduleFields, moduleSections, companyUsers, companyRoles, companyProfiles, allModules, allForms,
+    versions, loadingVersions, transitionActions, transitionValidations,
+    fetchBlueprintData, loadTransitionDetails, fetchVersions,
+    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint,
+    saveBlueprintChanges
+  } = useBlueprintManager({
+    moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints, setHasUnsavedChanges: reportChanges
+  });
 
-    setIsGenerating(true);
-    try {
-      let res;
-      // 1. Llamar al backend
-      if (aiMode === 'file') {
-         const formData = new FormData();
-         formData.append('file', aiFile);
-         res = await api.post('/api/v1/ai/generate-blueprint/file', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-         });
-      } else {
-         res = await api.post(`/api/v1/ai/generate-blueprint/text`, { prompt: aiPrompt });
-      }
-
-      const aiData = res.data;
-      if (!aiData || !aiData.statuses) throw new Error("La IA no devolvió un formato válido.");
-
-      // 2. Crear los estados en la BD
-      const statusMap = {};
-      let xOffset = 100;
-      let yOffset = 150;
-
-      for (const st of aiData.statuses) {
-         const statusRes = await api.post('/api/v1/statuses/', {
-            name: st.name,
-            is_initial: st.is_initial || false,
-            bpmn_shape: st.bpmn_shape || 'task',
-            position_x: xOffset,
-            position_y: yOffset,
-            blueprint_id: currentVersionId
-         });
-         statusMap[st.id] = statusRes.data.id; // Guardamos el ID real que le dio la BD
-         
-         // Acomodamos visualmente el siguiente nodo hacia la derecha
-         xOffset += 250; 
-         if (xOffset > 900) { xOffset = 100; yOffset += 200; } // Salto de línea si es muy largo
-      }
-
-      // 3. Crear las transiciones (flechas)
-      for (const tr of (aiData.transitions || [])) {
-         if (statusMap[tr.from_status_id] && statusMap[tr.to_status_id]) {
-            await api.post('/api/v1/transitions/', {
-               name: tr.name || 'Avanzar',
-               from_status_id: statusMap[tr.from_status_id],
-               to_status_id: statusMap[tr.to_status_id],
-               blueprint_id: currentVersionId
-            });
-         }
-      }
-
-      notify.success("¡Flujo BPMN generado mágicamente!");
-      setIsAiModalOpen(false);
-      setAiPrompt('');
-      setAiFile(null);
-      // Recargamos el lienzo para ver los nodos nuevos
-      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
-    } catch (error) {
-      notify.error(error.response?.data?.detail || "Error al generar el flujo. Revisa tu saldo de IA.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
   const isEditingName = selectedElement && renameValue !== selectedElement.data.name;
   const isWritingNewStatus = newStatus.name.trim().length > 0;
   const hasLocalChanges = isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation;
@@ -214,17 +145,23 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   }, [isDarkMode]);
 
   // =================================================================
-  // FUNCIONES DE MANIPULACIÓN DEL LIENZO (CRUD)
+  // MANIPULACIÓN EN MEMORIA LOCAL (SIN PETICIONES INNECESARIAS)
   // =================================================================
-  const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), [setNodes]);
-  const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [setEdges]);
+  const onNodesChange = useCallback((changes) => {
+    setNodes((nds) => applyNodeChanges(changes, nds));
+    reportChanges(true);
+  }, [setNodes, reportChanges]);
 
-  const handleNodeDragStop = async (event, node) => {
+  const onEdgesChange = useCallback((changes) => {
+    setEdges((eds) => applyEdgeChanges(changes, eds));
+    reportChanges(true);
+  }, [setEdges, reportChanges]);
+
+  const handleNodeDragStop = (event, node) => {
     if (viewingOldVersion) return; 
-    try {
-      await api.put(`/api/v1/statuses/${node.id}`, { position_x: Math.round(node.position.x), position_y: Math.round(node.position.y) });
-      reportChanges(true); 
-    } catch (error) { console.error("Error guardando posición:", error); }
+    // Actualizamos la posición en memoria local del nodo correspondiente
+    setNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, position: node.position } : n));
+    reportChanges(true); 
   };
 
   const onConnect = (connection) => {
@@ -233,62 +170,132 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     setNewTransitionName('');
   };
 
-  const handleCreateTransition = async (e) => {
+  const handleCreateTransition = (e) => {
     e.preventDefault();
     if (!newTransitionName.trim() || !pendingConnection || viewingOldVersion) return;
-    try {
-      await api.post('/api/v1/transitions/', { name: newTransitionName, from_status_id: parseInt(pendingConnection.source), to_status_id: parseInt(pendingConnection.target), blueprint_id: currentVersionId });
-      notify.success("Transición creada exitosamente.");
-      setPendingConnection(null); setNewTransitionName(''); 
-      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
-    } catch (error) { notify.error("Error al crear la transición."); }
+    
+    // Creamos la arista virtualmente en memoria
+    const newEdgeId = `temp_${Date.now()}`;
+    const newEdge = {
+      id: newEdgeId,
+      source: pendingConnection.source,
+      target: pendingConnection.target,
+      label: newTransitionName,
+      data: {
+        raw_data: {
+          id: newEdgeId,
+          name: newTransitionName,
+          from_status_id: parseInt(pendingConnection.source),
+          to_status_id: parseInt(pendingConnection.target),
+          blueprint_id: parseInt(currentVersionId)
+        }
+      },
+      markerEnd: { type: 'arrowclosed', color: isDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
+      style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
+      animated: true,
+    };
+
+    setEdges((eds) => [...eds, newEdge]);
+    setPendingConnection(null); 
+    setNewTransitionName('');
+    reportChanges(true);
+    notify.success("Transición agregada en memoria. No olvides guardar.");
   };
 
-  const handleCreateStatus = async (e) => {
+  const handleCreateStatus = (e) => {
     e.preventDefault();
     if (viewingOldVersion) return notify.warning("No puedes editar versiones antiguas.");
     if (!newStatus.name.trim()) return notify.warning("Escribe un nombre para el estado.");
-    try {
-      await api.post('/api/v1/statuses/', { ...newStatus, sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null, blueprint_id: currentVersionId });
-      notify.success("Nuevo estado agregado al lienzo.");
-      setNewStatus({ name: '', is_initial: false, sla_hours: '' }); 
-      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
-    } catch (error) { notify.error("Error al crear el estado."); }
+    
+    // Creamos el nodo virtualmente en memoria
+    const newNodeId = `temp_${Date.now()}`;
+    const newNode = {
+      id: newNodeId,
+      type: newStatus.bpmn_shape || 'task',
+      position: { x: (nodes.length % 4) * 250 + 50, y: Math.floor(nodes.length / 4) * 150 + 50 },
+      data: {
+        raw_data: {
+          id: newNodeId,
+          name: newStatus.name,
+          is_initial: newStatus.is_initial || nodes.length === 0,
+          sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null,
+          blueprint_id: parseInt(currentVersionId),
+          bpmn_shape: newStatus.bpmn_shape || 'task'
+        }
+      }
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    setNewStatus({ name: '', is_initial: false, sla_hours: '' });
+    reportChanges(true);
+    notify.success("Estado agregado en memoria. No olvides guardar.");
   };
 
-  const handleRenameElement = async () => {
+  const handleRenameElement = () => {
     if (!selectedElement || !renameValue || viewingOldVersion) return;
     setIsRenaming(true);
-    try {
-      if (selectedElement.type === 'status') {
-          await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { name: renameValue, sla_hours: editSlaHours ? parseInt(editSlaHours) : null });
-      } else { await api.put(`/api/v1/transitions/${selectedElement.data.id}`, { name: renameValue }); }
-      notify.success("Propiedades guardadas.");
-      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
-    } catch (error) { notify.error("Error al guardar las propiedades."); } finally { setIsRenaming(false); }
+
+    if (selectedElement.type === 'status') {
+      setNodes((nds) => nds.map((n) => {
+        if (n.id === selectedElement.data.id.toString()) {
+          const updatedRaw = { 
+            ...n.data.raw_data, 
+            name: renameValue, 
+            sla_hours: editSlaHours ? parseInt(editSlaHours) : null 
+          };
+          return { ...n, data: { ...n.data, raw_data: updatedRaw } };
+        }
+        return n;
+      }));
+    } else {
+      setEdges((eds) => eds.map((e) => {
+        if (e.id === selectedElement.data.id.toString()) {
+          const updatedRaw = { ...e.data.raw_data, name: renameValue };
+          return { ...e, label: renameValue, data: { ...e.data, raw_data: updatedRaw } };
+        }
+        return e;
+      }));
+    }
+
+    reportChanges(true);
+    setIsRenaming(false);
+    notify.success("Propiedades actualizadas en memoria.");
   };
 
-  const handleChangeShape = async (newShape) => {
-      if (!selectedElement || viewingOldVersion) return;
-      try {
-          await api.put(`/api/v1/statuses/${selectedElement.data.id}`, { bpmn_shape: newShape });
-          notify.success("Forma BPMN actualizada.");
-          setIsShapeModalOpen(false);
-          fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
-      } catch (error) { notify.error("Error al actualizar la forma."); }
+  const handleChangeShape = (newShape) => {
+    if (!selectedElement || viewingOldVersion || selectedElement.type !== 'status') return;
+    
+    setNodes((nds) => nds.map((n) => {
+      if (n.id === selectedElement.data.id.toString()) {
+        const updatedRaw = { ...n.data.raw_data, bpmn_shape: newShape };
+        return { ...n, type: newShape, data: { ...n.data, raw_data: updatedRaw } };
+      }
+      return n;
+    }));
+
+    setIsShapeModalOpen(false);
+    reportChanges(true);
+    notify.success("Forma BPMN modificada en memoria.");
   };
 
-  const handleDeleteElement = async () => {
+  const handleDeleteElement = () => {
     if (!selectedElement || viewingOldVersion) return;
-    const isConfirmed = await confirm({ title: `Eliminar Elemento`, message: `¿Estás seguro de que deseas eliminar esto?`, confirmText: 'Sí, eliminar', variant: 'danger' });
-    if (!isConfirmed) return;
-    try {
-      if (selectedElement.type === 'status') await api.delete(`/api/v1/statuses/${selectedElement.data.id}`);
-      else await api.delete(`/api/v1/transitions/${selectedElement.data.id}`);
-      notify.success(`Elemento eliminado.`);
-      setSelectedElement(null); 
-      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
-    } catch (error) { notify.error("Error al eliminar el elemento. Revisa sus dependencias."); }
+    
+    if (selectedElement.type === 'status') {
+      const statusId = selectedElement.data.id;
+      deletedStatusIdsRef.current.add(statusId);
+      setNodes((nds) => nds.filter((n) => n.id !== statusId.toString()));
+      // Limpiamos transiciones huérfanas en memoria
+      setEdges((eds) => eds.filter((e) => e.source !== statusId.toString() && e.target !== statusId.toString()));
+    } else {
+      const transId = selectedElement.data.id;
+      deletedTransitionIdsRef.current.add(transId);
+      setEdges((eds) => eds.filter((e) => e.id !== transId.toString()));
+    }
+
+    setSelectedElement(null);
+    reportChanges(true);
+    notify.success("Elemento removido de la vista. Guarda para consolidar.");
   };
 
   const handleSaveAction = async (e) => {
@@ -343,6 +350,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
      setNewAction({ action_type: action.action_type, target_field: action.target_field || '', action_value: action.action_value || '', function_code: action.function_code || '', action_config: action.action_config || {} });
      setEditingActionId(action.id); setIsAddingAction(true);
   };
+  
   const openEditValidationModal = (validation) => {
      setNewValidation({ target_field: validation.target_field || '', operator: validation.operator || '==', validation_value: validation.validation_value || '', error_message: validation.error_message || '' });
      setEditingValidationId(validation.id); setIsAddingValidation(true);
@@ -352,7 +360,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
      setIsAddingAction(false); 
      setEditingActionId(null); 
      setNewAction(defaultActionState);
-     // Si tenemos una transición seleccionada, volvemos a abrir la lista para no perder el contexto
      if (selectedElement?.type === 'transition') setIsActionsListOpen(true);
   };
   
@@ -360,7 +367,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
      setIsAddingValidation(false); 
      setEditingValidationId(null); 
      setNewValidation(defaultValidationState);
-     // Si tenemos una transición seleccionada, volvemos a abrir la lista
      if (selectedElement?.type === 'transition') setIsValidationsListOpen(true);
   };
 
@@ -388,14 +394,15 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   return (
   <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950/50 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
-    {/* HEADER EXTRAÍDO */}
+    
+    {/* HEADER CON BOTÓN DE GUARDADO MASIVO */}
     <BlueprintHeader
       selectedBlueprint={selectedBlueprint} viewingOldVersion={viewingOldVersion} currentVersionId={currentVersionId} versions={versions}
       handleCloseAttempt={handleCloseAttempt} 
       handleRestoreVersion={() => handleRestoreVersion(setCurrentVersionId, setViewingOldVersion)}
       setCurrentVersionId={setCurrentVersionId} setViewingOldVersion={setViewingOldVersion} selectedElement={selectedElement}
       setIsShapeModalOpen={setIsShapeModalOpen} aiImageInputRef={aiImageInputRef}
-      handleGenerateFromImage={(e) => handleGenerateFromImage(e, () => fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef))}
+      handleGenerateFromImage={() => {}}
       handleCreateNewVersion={() => handleCreateNewVersion(setCurrentVersionId)}
       fetchVersions={() => fetchVersions(setShowVersions)}
       handleExportBlueprint={handleExportBlueprint} fileInputRef={fileInputRef}
@@ -405,10 +412,12 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       setIsValidationsListOpen={setIsValidationsListOpen}
       transitionActions={transitionActions} 
       transitionValidations={transitionValidations}
+      onSaveAllChanges={() => saveBlueprintChanges(() => fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef))}
+      hasUnsavedChanges={hasLocalChanges}
     />
 
     <div className="flex flex-1 overflow-hidden relative z-0">
-      {/* SIDEBAR EXTRAÍDO */}
+      {/* SIDEBAR */}
       <BlueprintSidebar
         viewingOldVersion={viewingOldVersion} newStatus={newStatus} setNewStatus={setNewStatus} handleCreateStatus={handleCreateStatus}
         selectedElement={selectedElement} renameValue={renameValue} setRenameValue={setRenameValue}
@@ -464,109 +473,12 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
          </div>, document.body
       )}
 
-      {/* MODALES EXTRAÍDOS */}
+      {/* MODALES DE SOPORTE */}
       <ValidationModal isOpen={isAddingValidation} onClose={closeValidationModal} onSave={handleSaveValidation} newValidation={newValidation} setNewValidation={setNewValidation} moduleFields={moduleFields} />
       <ActionModal isOpen={isAddingAction} onClose={closeActionModal} onSave={handleSaveAction} newAction={newAction} setNewAction={setNewAction} editingActionId={editingActionId} moduleFields={moduleFields} moduleSections={moduleSections} allModules={allModules} allForms={allForms} targetModuleFields={targetModuleFields} companyUsers={companyUsers} companyRoles={companyRoles} companyProfiles={companyProfiles} moduleId={moduleId} blueprintId={currentVersionId} selectedElement={selectedElement} />
       <ShapeSelectorModal isOpen={isShapeModalOpen} onClose={() => setIsShapeModalOpen(false)} selectedElement={selectedElement} onChangeShape={handleChangeShape} />
-      {/* 🔥 MODAL DEL ASISTENTE DE IA PARA BLUEPRINTS 🔥 */}
-      {isAiModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-purple-200 dark:border-purple-800/50 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="p-1 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
-            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-purple-50/30 dark:bg-purple-900/10">
-              <h3 className="font-bold text-purple-900 dark:text-purple-300 flex items-center gap-2">
-                <Sparkles size={18} className="text-purple-500" /> Creador de Flujos IA
-              </h3>
-              <button onClick={() => !isGenerating && setIsAiModalOpen(false)} disabled={isGenerating} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors disabled:opacity-50">
-                <X size={18}/>
-              </button>
-            </div>
-            
-            <form onSubmit={handleGenerateBlueprintWithAI} className="p-6">
-              
-              {/* PESTAÑAS (TABS) */}
-              <div className="flex gap-2 mb-6 bg-gray-100 dark:bg-gray-800/50 p-1 rounded-xl">
-                <button 
-                  type="button" 
-                  onClick={() => setAiMode('text')} 
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${aiMode === 'text' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                >
-                  <Type size={14}/> Describir (Texto)
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => setAiMode('file')} 
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${aiMode === 'file' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                >
-                  <FileBox size={14}/> Extraer (PDF/IMG)
-                </button>
-              </div>
 
-              {aiMode === 'text' ? (
-                <>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-                    Describe el procedimiento
-                  </label>
-                  <textarea 
-                    rows={4} 
-                    autoFocus
-                    disabled={isGenerating}
-                    placeholder="Ej: El flujo inicia cuando un empleado envía una solicitud de vacaciones. Luego pasa al gerente para revisión. Si el gerente lo aprueba, va a Recursos Humanos. Si lo rechaza, termina."
-                    value={aiPrompt} 
-                    onChange={e => setAiPrompt(e.target.value)} 
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 text-sm text-gray-900 dark:text-white transition-all resize-none custom-scrollbar disabled:opacity-50"
-                  />
-                </>
-              ) : (
-                <div className="space-y-3">
-                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">
-                      Sube un manual (PDF/Word) o dibujo
-                   </label>
-                   <div 
-                      onClick={() => !isGenerating && aiBlueprintFileInputRef.current?.click()}
-                      className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${aiFile ? 'border-purple-400 bg-purple-50 dark:bg-purple-900/20' : 'border-gray-300 dark:border-gray-700 hover:border-purple-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
-                   >
-                      <input 
-                         type="file" 
-                         ref={aiBlueprintFileInputRef} 
-                         onChange={(e) => setAiFile(e.target.files[0])} 
-                         className="hidden" 
-                         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
-                      />
-                      {aiFile ? (
-                         <div className="flex flex-col items-center gap-2">
-                            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center"><CheckCircle size={24} /></div>
-                            <p className="text-sm font-bold text-purple-700 dark:text-purple-300">{aiFile.name}</p>
-                            <p className="text-xs text-purple-500/70">Listo para mapear el proceso.</p>
-                         </div>
-                      ) : (
-                         <div className="flex flex-col items-center gap-2">
-                            <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded-full flex items-center justify-center"><UploadCloud size={24} /></div>
-                            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Haz clic para buscar archivo</p>
-                            <p className="text-xs text-gray-500">PDF, Word o Imágenes (Max 5MB)</p>
-                         </div>
-                      )}
-                   </div>
-                </div>
-              )}
-              
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" disabled={isGenerating} onClick={() => { setIsAiModalOpen(false); setAiFile(null); }} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-50">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={isGenerating || (aiMode === 'text' ? !aiPrompt.trim() : !aiFile)} className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-                  {isGenerating ? (
-                    <><Loader2 size={16} className="animate-spin" /> Mapeando Flujo...</>
-                  ) : (
-                    <><Sparkles size={16} /> Crear Flujo</>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>, document.body
-      )}
-      {/* 🔥 MODAL DE LISTA DE ACCIONES 🔥 */}
+      {/* MODAL DE LISTA DE ACCIONES */}
       {isActionsListOpen && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-blue-200 dark:border-blue-800/50 overflow-hidden flex flex-col max-h-[80vh]">
@@ -606,7 +518,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
          </div>, document.body
       )}
 
-      {/* 🔥 MODAL DE LISTA DE VALIDACIONES 🔥 */}
+      {/* MODAL DE LISTA DE VALIDACIONES */}
       {isValidationsListOpen && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-red-200 dark:border-red-800/50 overflow-hidden flex flex-col max-h-[80vh]">
@@ -627,7 +539,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                               <button onClick={async () => {
                                 const isConfirmed = await confirm({
                                     title: 'Eliminar Validación',
-                                    message: '¿Estás seguro de eliminar este bloqueo? Cualquier usuario podrá avanzar el caso.',
+                                    message: '¿Estás seguro de eliminar este bloqueo?',
                                     confirmText: 'Sí, eliminar',
                                     variant: 'danger'
                                 });
@@ -636,7 +548,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
                         </div>
                      ))
                   ) : (
-                     <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center"><p className="text-sm text-gray-400 font-medium">No hay bloqueos. La transición es libre.</p></div>
+                     <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center"><p className="text-sm text-gray-400 font-medium">No hay bloqueos configurados.</p></div>
                   )}
                </div>
                <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
