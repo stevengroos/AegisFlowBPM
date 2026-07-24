@@ -9,7 +9,7 @@ export const useBlueprintManager = ({
   notify, 
   confirm, 
   reloadBlueprints,
-  setHasUnsavedChanges // 🔥 Control de cambios pendientes
+  setHasUnsavedChanges
 }) => {
 
   const [nodes, setNodes] = useState([]);
@@ -19,7 +19,7 @@ export const useBlueprintManager = ({
   const [transitionActions, setTransitionActions] = useState([]);
   const [transitionValidations, setTransitionValidations] = useState([]);
 
-  // 🔥 Listas en memoria para rastrear elementos eliminados o nuevos pendientes de guardar
+  // Memorias para rastrear eliminaciones locales
   const deletedStatusIdsRef = useRef(new Set());
   const deletedTransitionIdsRef = useRef(new Set());
   
@@ -32,9 +32,6 @@ export const useBlueprintManager = ({
   const [allModules, setAllModules] = useState([]);
   const [allForms, setAllForms] = useState([]);
 
-  // =================================================================
-  // 1. CARGA DE CATÁLOGOS GLOBALES
-  // =================================================================
   useEffect(() => {
     const fetchCatalogs = async () => {
       try {
@@ -79,9 +76,6 @@ export const useBlueprintManager = ({
     if (moduleId) fetchCatalogs();
   }, [moduleId, notify]);
 
-  // =================================================================
-  // 2. CARGA DEL LIENZO (CON PROTECCIÓN DE NODOS TEMPORALES EN MEMORIA)
-  // =================================================================
   const fetchBlueprintData = useCallback(async (setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef) => {
     try {
       const [statusesRes, transRes] = await Promise.all([
@@ -91,12 +85,15 @@ export const useBlueprintManager = ({
 
       const currentDarkMode = document.documentElement.classList.contains('dark');
 
-      // Mantenemos los nodos temporales (en memoria) y filtramos los eliminados
       setNodes(currentNodes => {
          const tempNodes = currentNodes.filter(n => n.id.toString().startsWith('temp_'));
          
-         // 🔥 FIX: Ignoramos los nodos que el usuario marcó para borrar pero no ha guardado aún
-         const activeStatuses = statusesRes.data.filter(status => !deletedStatusIdsRef.current.has(status.id));
+         // 🔥 FIX CRÍTICO 1: Filtramos comprobando tanto en String como en Integer para evitar resurrecciones
+         const activeStatuses = statusesRes.data.filter(status => 
+            !deletedStatusIdsRef.current.has(status.id) && 
+            !deletedStatusIdsRef.current.has(status.id.toString()) &&
+            !deletedStatusIdsRef.current.has(Number(status.id))
+         );
          
          const dbNodes = activeStatuses.map((status, index) => {
            const existingNode = currentNodes.find(n => n.id === status.id.toString());
@@ -108,17 +105,24 @@ export const useBlueprintManager = ({
              data: { raw_data: status },
              position: { x: xPos, y: yPos },
              type: status.bpmn_shape || 'task',
+             style: {
+               backgroundColor: currentDarkMode ? '#1f2937' : 'white',
+               border: currentDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
+             }
            };
          });
          return [...dbNodes, ...tempNodes];
       });
 
-      // Mantenemos las aristas temporales (en memoria) y filtramos las eliminadas
       setEdges(currentEdges => {
          const tempEdges = currentEdges.filter(e => e.id.toString().startsWith('temp_'));
          
-         // 🔥 FIX: Ignoramos las transiciones que el usuario marcó para borrar
-         const activeTransitions = transRes.data.filter(t => !deletedTransitionIdsRef.current.has(t.id));
+         // 🔥 FIX CRÍTICO 2: Misma protección de tipos de datos para las transiciones
+         const activeTransitions = transRes.data.filter(t => 
+            !deletedTransitionIdsRef.current.has(t.id) && 
+            !deletedTransitionIdsRef.current.has(t.id.toString()) &&
+            !deletedTransitionIdsRef.current.has(Number(t.id))
+         );
 
          const dbEdges = activeTransitions.map(t => ({
            id: t.id.toString(), source: t.from_status_id.toString(), target: t.to_status_id.toString(), label: t.name, data: { raw_data: t }, 
@@ -136,14 +140,14 @@ export const useBlueprintManager = ({
       const currentSelected = selectedElementRef.current;
       if (currentSelected) {
          if (currentSelected.type === 'status') {
-             const updatedStatus = statusesRes.data.find(s => s.id === currentSelected.data.id);
+             const updatedStatus = statusesRes.data.find(s => s.id.toString() === currentSelected.data.id.toString());
              if (updatedStatus) {
                  setSelectedElement({ type: 'status', data: updatedStatus });
                  setRenameValue(updatedStatus.name);
                  setEditSlaHours(updatedStatus.sla_hours || "");
              } else { setSelectedElement(null); }
          } else {
-             const updatedTrans = transRes.data.find(t => t.id === currentSelected.data.id);
+             const updatedTrans = transRes.data.find(t => t.id.toString() === currentSelected.data.id.toString());
              if (updatedTrans) {
                  setSelectedElement({ type: 'transition', data: updatedTrans });
                  setRenameValue(updatedTrans.name);
@@ -155,9 +159,6 @@ export const useBlueprintManager = ({
     }
   }, [currentVersionId, notify, setHasUnsavedChanges]);
 
-  // =================================================================
-  // 3. GUARDADO MASIVO EN MEMORIA (BATCH SAVE)
-  // =================================================================
   const saveBlueprintChanges = async (fetchBlueprintDataCb) => {
     if (viewingOldVersion) return;
     try {
@@ -173,10 +174,9 @@ export const useBlueprintManager = ({
         }
       }
 
-      // Mapa para registrar los IDs reales que genera la BD para nodos nuevos (temp -> id_real)
       const tempIdToRealIdMap = {};
 
-      // 2. Procesar Nodos (Estados) - Creaciones y Actualizaciones
+      // 2. Procesar Nodos
       for (const node of nodes) {
         const statusData = node.data.raw_data;
         const payload = {
@@ -197,17 +197,16 @@ export const useBlueprintManager = ({
         }
       }
 
-      // 3. Procesar Conexiones (Transiciones) resolviendo IDs temporales si aplican
+      // 3. Procesar Conexiones
       for (const edge of edges) {
         const transData = edge.data.raw_data;
-        
         let sourceId = edge.source.toString();
         let targetId = edge.target.toString();
 
         if (sourceId.startsWith('temp_')) sourceId = tempIdToRealIdMap[sourceId];
         if (targetId.startsWith('temp_')) targetId = tempIdToRealIdMap[targetId];
 
-        if (!sourceId || !targetId) continue; // Si algún nodo padre falló, omitimos temporalmente
+        if (!sourceId || !targetId) continue; 
 
         const payload = {
           name: transData.name || 'Avanzar',
@@ -223,21 +222,22 @@ export const useBlueprintManager = ({
         }
       }
 
-      // 🔥 FIX: Limpiamos la memoria de borrados SOLO cuando el guardado fue exitoso
+      // 🔥 FIX CRÍTICO 3: Destruir la memoria temporal ANTES de recargar para evitar nodos duplicados en pantalla
+      setNodes(nds => nds.filter(n => !n.id.toString().startsWith('temp_')));
+      setEdges(eds => eds.filter(e => !e.id.toString().startsWith('temp_')));
       deletedStatusIdsRef.current.clear();
       deletedTransitionIdsRef.current.clear();
 
       notify.success("¡Diseño del flujo guardado con éxito!");
       if (setHasUnsavedChanges) setHasUnsavedChanges(false);
+      
       if (fetchBlueprintDataCb) fetchBlueprintDataCb();
+
     } catch (error) {
       notify.error(error.response?.data?.detail || "Error al guardar los cambios del flujo.");
     }
   };
 
-  // =================================================================
-  // 4. CARGA DE DETALLES (ACCIONES Y VALIDACIONES)
-  // =================================================================
   const loadTransitionDetails = async (transitionId) => {
     try {
       const [actRes, valRes] = await Promise.all([
@@ -246,61 +246,42 @@ export const useBlueprintManager = ({
       ]);
       setTransitionActions(actRes.data);
       setTransitionValidations(valRes.data);
-    } catch (error) { 
-        console.error("Error al cargar detalles de la transición:", error); 
-    }
+    } catch (error) { console.error("Error detalles transición:", error); }
   };
 
-  // =================================================================
-  // 5. HISTORIAL DE VERSIONES
-  // =================================================================
   const fetchVersions = async (setShowVersions) => {
     setLoadingVersions(true);
     try {
       const res = await api.get(`/api/v1/blueprints/${selectedBlueprint.id}/versions`);
       setVersions(res.data);
       setShowVersions(true);
-    } catch (error) {
-      notify.error("Error al cargar el historial de versiones.");
-    } finally {
-      setLoadingVersions(false);
-    }
+    } catch (error) { notify.error("Error historial versiones."); } 
+    finally { setLoadingVersions(false); }
   };
 
   const handleRestoreVersion = async (setCurrentVersionId, setViewingOldVersion) => {
-    const isConfirmed = await confirm({
-      title: 'Restaurar Versión',
-      message: '¿Estás seguro de que deseas volver a esta versión? Se creará una NUEVA versión exacta a esta y se activará.',
-      confirmText: 'Sí, restaurar',
-      variant: 'primary'
-    });
+    const isConfirmed = await confirm({ title: 'Restaurar Versión', message: '¿Crear una NUEVA versión exacta a esta y activarla?', confirmText: 'Sí, restaurar', variant: 'primary' });
     if (!isConfirmed) return;
     try {
       const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, { name: selectedBlueprint.name, is_active: true });
       notify.success("¡Versión restaurada con éxito!");
-      setViewingOldVersion(false);
-      setCurrentVersionId(res.data.id);
+      setViewingOldVersion(false); setCurrentVersionId(res.data.id);
       if(reloadBlueprints) reloadBlueprints();
-    } catch (error) { notify.error("Error al intentar restaurar la versión."); }
+    } catch (error) { notify.error("Error al restaurar."); }
   };
 
   const handleCreateNewVersion = async (setCurrentVersionId) => {
     const currentV = versions.find(v => v.id === currentVersionId)?.version || selectedBlueprint.version || 1;
-    const isConfirmed = await confirm({
-      title: 'Generar Nueva Versión', message: `Creará la Versión ${currentV + 1} para que sigas trabajando. ¿Deseas continuar?`, confirmText: `Sí, crear V${currentV + 1}`, variant: 'primary'
-    });
+    const isConfirmed = await confirm({ title: 'Generar Nueva Versión', message: `Creará la Versión ${currentV + 1}. ¿Deseas continuar?`, confirmText: `Sí, crear V${currentV + 1}`, variant: 'primary' });
     if (!isConfirmed) return;
     try {
       const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, { name: selectedBlueprint.name, is_active: true });
-      notify.success(`¡Versión ${res.data.version} generada con éxito!`);
+      notify.success(`¡Versión ${res.data.version} generada!`);
       setCurrentVersionId(res.data.id);
       if(reloadBlueprints) reloadBlueprints();
-    } catch (error) { notify.error("Error al generar la nueva versión."); }
+    } catch (error) { notify.error("Error al generar versión."); }
   };
 
-  // =================================================================
-  // 6. EXPORTACIÓN E IMPORTACIÓN
-  // =================================================================
   const handleExportBlueprint = async () => {
     try {
        const exportData = { blueprint: selectedBlueprint, statuses: nodes.map(n => n.data.raw_data), transitions: edges.map(e => e.data.raw_data) };
@@ -308,7 +289,7 @@ export const useBlueprintManager = ({
        const url = URL.createObjectURL(blob);
        const a = document.createElement('a'); a.href = url; a.download = `flujo_${selectedBlueprint.name.replace(/\s+/g, '_').toLowerCase()}_v${selectedBlueprint.version || 1}.json`; a.click(); URL.revokeObjectURL(url);
        notify.success("Exportación completada.");
-    } catch(err) { notify.error("Error al exportar el flujo."); }
+    } catch(err) { notify.error("Error al exportar."); }
   };
 
   const handleImportBlueprint = (event, fetchBlueprintDataCb) => {
@@ -319,19 +300,17 @@ export const useBlueprintManager = ({
     reader.onload = async (e) => {
       try {
         const importedData = JSON.parse(e.target.result);
-        
         const newNodes = importedData.statuses.map((status, index) => ({
           id: `temp_${Date.now()}_${index}`,
           data: { raw_data: status },
           position: { x: status.position_x || 50, y: status.position_y || 50 },
           type: status.bpmn_shape || 'task'
         }));
-
         setNodes(newNodes);
         setEdges([]);
         if (setHasUnsavedChanges) setHasUnsavedChanges(true);
-        notify.success("¡Flujo importado en memoria con éxito! Recuerda guardar los cambios.");
-      } catch (err) { notify.error("Error al importar el archivo JSON."); }
+        notify.success("¡Flujo importado en memoria! Guarda para confirmar.");
+      } catch (err) { notify.error("Error al importar JSON."); }
       event.target.value = '';
     };
     reader.readAsText(file);
@@ -341,10 +320,8 @@ export const useBlueprintManager = ({
     nodes, setNodes, edges, setEdges,
     deletedStatusIdsRef, deletedTransitionIdsRef,
     moduleFields, moduleSections, companyUsers, companyRoles, companyProfiles, allModules, allForms,
-    versions, loadingVersions,
-    transitionActions, transitionValidations,
+    versions, loadingVersions, transitionActions, transitionValidations,
     fetchBlueprintData, loadTransitionDetails, fetchVersions,
-    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint,
-    saveBlueprintChanges
+    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint, saveBlueprintChanges
   };
 };
