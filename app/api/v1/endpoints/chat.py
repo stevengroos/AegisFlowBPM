@@ -151,12 +151,21 @@ def get_chat_history(
         
     return response
 
+from app.db.session import SessionLocal # 🔥 Necesitamos importar la fábrica de sesiones directamente
+
 @router.websocket("/ws/support/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: int, db: Session = Depends(get_db)):
-    support_session = db.query(models.SupportSession).filter(models.SupportSession.id == session_id).first()
-    if not support_session:
-        await websocket.close(code=1008)
-        return
+async def websocket_endpoint(websocket: WebSocket, session_id: int):
+    # ❌ ELIMINAMOS: db: Session = Depends(get_db)
+    
+    # 1. Validación inicial rápida (Abrimos y cerramos al instante)
+    db = SessionLocal()
+    try:
+        support_session = db.query(models.SupportSession).filter(models.SupportSession.id == session_id).first()
+        if not support_session:
+            await websocket.close(code=1008)
+            return
+    finally:
+        db.close() # 🔥 Devolvemos la conexión a la piscina inmediatamente
 
     await manager.connect(websocket, session_id)
     
@@ -169,22 +178,78 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int, db: Session 
             text_content = message_data.get("message")
             is_internal = message_data.get("is_internal_note", False)
 
-            # 1. Guardar mensaje en DB
-            new_message = models.ChatMessage(
-                session_id=session_id,
-                sender_id=sender_id,
-                message=text_content,
-                is_internal_note=is_internal
-            )
-            db.add(new_message)
-            db.commit()
-            db.refresh(new_message)
+            # 2. Abrimos conexión SOLO cuando llega un mensaje real
+            db = SessionLocal()
+            try:
+                new_message = models.ChatMessage(
+                    session_id=session_id,
+                    sender_id=sender_id,
+                    message=text_content,
+                    is_internal_note=is_internal
+                )
+                db.add(new_message)
+                db.commit()
+                db.refresh(new_message)
 
-            # Buscamos quién envió para ponerle nombre en el chat
-            sender = db.query(models.User).filter(models.User.id == sender_id).first()
-            sender_name = f"{sender.first_name or ''} {sender.last_name or ''}".strip() if sender else "Sistema"
+                sender = db.query(models.User).filter(models.User.id == sender_id).first()
+                sender_name = f"{sender.first_name or ''} {sender.last_name or ''}".strip() if sender else "Sistema"
 
-            # 2. Empujar mensaje por WebSocket
+                # =========================================================
+                # 🔥 MAGIA OMNICANAL (Refrescamos la sesión por si cambió el agente)
+                # =========================================================
+                current_session = db.query(models.SupportSession).filter(models.SupportSession.id == session_id).first()
+                
+                if current_session and sender_id == current_session.client_user_id:
+                    agents_to_notify = []
+                    
+                    if current_session.agent_user_id:
+                        agent = db.query(models.User).filter(models.User.id == current_session.agent_user_id).first()
+                        if agent: 
+                            agents_to_notify.append(agent)
+                    else:
+                        system_company = db.query(models.Company).filter(models.Company.is_system_company == True).first()
+                        if system_company:
+                            agents_to_notify = db.query(models.User).filter(
+                                models.User.company_id == system_company.id,
+                                models.User.is_superadmin == True
+                            ).all()
+
+                    for agent in agents_to_notify:
+                        resumen_msg = f"{text_content[:40]}..." if len(text_content) > 40 else text_content
+                        notification = models.Notification(
+                            company_id=agent.company_id,
+                            user_id=agent.id,
+                            title=f"Soporte: {sender_name}",
+                            message=f"Caso #{session_id}: {resumen_msg}"
+                        )
+                        db.add(notification)
+
+                        html_email = f"""
+                        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                            <div style="background-color: #4f46e5; padding: 20px; text-align: center; color: white;">
+                                <h2 style="margin: 0;">💬 Nuevo Mensaje de Soporte</h2>
+                            </div>
+                            <div style="padding: 20px;">
+                                <p>Hola <b>{agent.first_name or 'Equipo'}</b>,</p>
+                                <p>El cliente <b>{sender_name}</b> ha enviado un nuevo mensaje en el caso <b>#{session_id}</b>:</p>
+                                <div style="margin: 20px 0; padding: 15px; background-color: #f3f4f6; border-left: 4px solid #4f46e5; border-radius: 4px; font-style: italic;">
+                                    {text_content}
+                                </div>
+                                <p style="margin-top: 30px; font-size: 12px; color: #6b7280; text-align: center;">Accede a la plataforma para responder.</p>
+                            </div>
+                        </div>
+                        """
+                        asyncio.create_task(
+                            send_support_notification_async(
+                                db, agent.company_id, agent.email, 
+                                f"Nuevo mensaje en caso #{session_id}", html_email
+                            )
+                        )
+                    db.commit()
+            finally:
+                db.close() # 🔥 ¡Crucial! Liberamos la conexión sin importar si hubo errores. El WebSocket sigue abierto.
+
+            # 3. Empujar mensaje por WebSocket (No necesita Base de Datos)
             await manager.broadcast_to_session({
                 "id": new_message.id,
                 "session_id": session_id,
@@ -194,65 +259,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int, db: Session 
                 "is_internal_note": is_internal,
                 "created_at": new_message.created_at.isoformat()
             }, session_id)
-
-            # =========================================================
-            # 🔥 MAGIA OMNICANAL: NOTIFICACIONES (CAMPANITA Y CORREO) 🔥
-            # =========================================================
-            # Solo notificamos si el que escribió fue el cliente (no queremos que el agente se notifique a sí mismo)
-            if sender_id == support_session.client_user_id:
-                agents_to_notify = []
-                
-                # A) Si el chat ya tiene agente asignado, solo le avisamos a él
-                if support_session.agent_user_id:
-                    agent = db.query(models.User).filter(models.User.id == support_session.agent_user_id).first()
-                    if agent: 
-                        agents_to_notify.append(agent)
-                # B) Si es un chat nuevo sin asignar, le avisamos a TODOS los SuperAdmins de HQ
-                else:
-                    system_company = db.query(models.Company).filter(models.Company.is_system_company == True).first()
-                    if system_company:
-                        agents_to_notify = db.query(models.User).filter(
-                            models.User.company_id == system_company.id,
-                            models.User.is_superadmin == True
-                        ).all()
-
-                for agent in agents_to_notify:
-                    # -- 1. CREAR NOTIFICACIÓN PARA LA CAMPANITA --
-                    resumen_msg = f"{text_content[:40]}..." if len(text_content) > 40 else text_content
-                    notification = models.Notification(
-                        company_id=agent.company_id,
-                        user_id=agent.id,
-                        title=f"Soporte: {sender_name}",
-                        message=f"Caso #{session_id}: {resumen_msg}"
-                    )
-                    db.add(notification)
-
-                    # -- 2. DISPARAR CORREO EN SEGUNDO PLANO --
-                    html_email = f"""
-                    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
-                        <div style="background-color: #4f46e5; padding: 20px; text-align: center; color: white;">
-                            <h2 style="margin: 0;">💬 Nuevo Mensaje de Soporte</h2>
-                        </div>
-                        <div style="padding: 20px;">
-                            <p>Hola <b>{agent.first_name or 'Equipo'}</b>,</p>
-                            <p>El cliente <b>{sender_name}</b> ha enviado un nuevo mensaje en el caso <b>#{session_id}</b>:</p>
-                            <div style="margin: 20px 0; padding: 15px; background-color: #f3f4f6; border-left: 4px solid #4f46e5; border-radius: 4px; font-style: italic;">
-                                {text_content}
-                            </div>
-                            <p style="margin-top: 30px; font-size: 12px; color: #6b7280; text-align: center;">Accede a la plataforma para responder.</p>
-                        </div>
-                    </div>
-                    """
-                    # Usamos asyncio.create_task para que no se congele el chat mientras se envía el correo
-                    asyncio.create_task(
-                        send_support_notification_async(
-                            db, agent.company_id, agent.email, 
-                            f"Nuevo mensaje en caso #{session_id}", html_email
-                        )
-                    )
-                
-                # Guardamos las notificaciones de la campanita en la BD
-                db.commit()
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
