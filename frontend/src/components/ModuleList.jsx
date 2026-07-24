@@ -152,9 +152,27 @@ const ModuleList = ({ onSelectModule }) => {
     return () => controller.abort();
   }, []);
 
+  // ====== LÓGICA UNIFICADA DE EDICIÓN (CORRECCIÓN DEL BUG) ======
+  const handleOpenEdit = (e, item, isCategoryFlag) => {
+    e.stopPropagation();
+    if (isCategoryFlag) {
+      setNewCategory({ name: item.name, icon: item.icon });
+      setEditingId(item.id);
+      setIsCategoryModalOpen(true);
+    } else {
+      setNewModule({ 
+        name: item.name, 
+        description: item.description || '', 
+        icon: item.icon, 
+        category_id: item.category_id || '' 
+      });
+      setEditingId(item.id);
+      setIsModuleModalOpen(true);
+    }
+  };
+
   // ====== LÓGICA DE CATEGORÍAS ======
   const handleOpenCreateCategory = () => { setNewCategory(defaultCategoryState); setEditingId(null); setIsCategoryModalOpen(true); };
-  const handleOpenEditCategory = (e, cat) => { e.stopPropagation(); setNewCategory({ name: cat.name, icon: cat.icon }); setEditingId(cat.id); setIsCategoryModalOpen(true); };
 
   const handleSaveCategory = async (e) => {
     e.preventDefault();
@@ -186,7 +204,6 @@ const ModuleList = ({ onSelectModule }) => {
 
   // ====== LÓGICA DE MÓDULOS ======
   const handleOpenCreateModule = () => { setNewModule(defaultModuleState); setEditingId(null); setIsModuleModalOpen(true); };
-  const handleOpenEditModule = (e, mod) => { e.stopPropagation(); setNewModule({ name: mod.name, description: mod.description, icon: mod.icon, category_id: mod.category_id || '' }); setEditingId(mod.id); setIsModuleModalOpen(true); };
 
   const handleSaveModule = async (e) => {
     e.preventDefault();
@@ -277,8 +294,7 @@ const ModuleList = ({ onSelectModule }) => {
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={e => setActiveDragId(e.active.id)} onDragEnd={e => handleDragEnd(e, true)} modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}>
                     <SortableContext items={categories.map(c => `cat-${c.id}`)} strategy={verticalListSortingStrategy}>
                       {categories.map(cat => (
-                        // 🔥 SOLUCIÓN: Pasamos onSelectModule aquí también 🔥
-                        <SortableItem key={`cat-${cat.id}`} item={cat} isCategory={true} onSelect={onSelectModule} onEdit={(e, item) => handleOpenEditCategory(e, item)} onDelete={(e, id) => handleDeleteCategory(e, id)} />
+                        <SortableItem key={`cat-${cat.id}`} item={cat} isCategory={true} onSelect={onSelectModule} onEdit={handleOpenEdit} onDelete={(e, id) => handleDeleteCategory(e, id)} />
                       ))}
                     </SortableContext>
                   </DndContext>
@@ -294,7 +310,7 @@ const ModuleList = ({ onSelectModule }) => {
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={e => setActiveDragId(e.active.id)} onDragEnd={e => handleDragEnd(e, false)} modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}>
                     <SortableContext items={modules.map(m => `mod-${m.id}`)} strategy={verticalListSortingStrategy}>
                       {modules.map(mod => (
-                        <SortableItem key={`mod-${mod.id}`} item={mod} isCategory={false} onSelect={onSelectModule} onEdit={(e, item) => handleOpenEditModule(e, item)} onDelete={(e, id) => handleDeleteModule(e, id)} />
+                        <SortableItem key={`mod-${mod.id}`} item={mod} isCategory={false} onSelect={onSelectModule} onEdit={handleOpenEdit} onDelete={(e, id) => handleDeleteModule(e, id)} />
                       ))}
                     </SortableContext>
                   </DndContext>
