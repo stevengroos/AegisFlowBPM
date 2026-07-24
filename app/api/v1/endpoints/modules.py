@@ -139,7 +139,6 @@ def delete_category(
 # ==========================================
 # 🔥 ENDPOINTS CLÁSICOS DE MÓDULOS 🔥
 # ==========================================
-
 @router.post("/", response_model=ModuleResponse)
 def create_module(
     module: ModuleCreate, 
@@ -149,18 +148,30 @@ def create_module(
 ):
     check_settings_permission(db, current_user, "manage_modules")
     
+    # 🔥 NUEVA VALIDACIÓN INTELIGENTE 🔥
+    # Buscamos si ya existe un módulo con el mismo nombre en el mismo destino
+    existing_query = db.query(models.Module).filter(
+        models.Module.company_id == current_user.company_id,
+        models.Module.name == module.name
+    )
+    
+    if module.category_id is not None:
+        existing_query = existing_query.filter(models.Module.category_id == module.category_id)
+    else:
+        existing_query = existing_query.filter(models.Module.category_id.is_(None))
+        
+    if existing_query.first():
+        destino_msg = "en esta misma carpeta" if module.category_id else "suelto en el menú principal"
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Ya existe un módulo con el nombre '{module.name}' {destino_msg}."
+        )
+    
     db_module = models.Module(**module.dict(), company_id=current_user.company_id) 
     db.add(db_module)
     
-    try:
-        db.commit()
-        db.refresh(db_module)
-    except IntegrityError:
-        db.rollback() 
-        raise HTTPException(
-            status_code=400, 
-            detail=f"El módulo '{module.name}' ya existe en tu empresa."
-        )
+    db.commit()
+    db.refresh(db_module)
     
     log_global_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
@@ -270,9 +281,31 @@ def update_module(
     if not db_module:
         raise HTTPException(status_code=404, detail="Módulo no encontrado")
     
+    update_data = module_data.dict(exclude_unset=True) 
+    
+    # 🔥 VALIDACIÓN AL EDITAR O MOVER 🔥
+    new_name = update_data.get("name", db_module.name)
+    new_category_id = update_data.get("category_id", db_module.category_id)
+    
+    existing_query = db.query(models.Module).filter(
+        models.Module.company_id == current_user.company_id,
+        models.Module.name == new_name,
+        models.Module.id != module_id # Excluimos al propio módulo que estamos editando
+    )
+    
+    if new_category_id is not None:
+        existing_query = existing_query.filter(models.Module.category_id == new_category_id)
+    else:
+        existing_query = existing_query.filter(models.Module.category_id.is_(None))
+        
+    if existing_query.first():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ya existe otro módulo con el nombre '{new_name}' en este destino."
+        )
+
     old_data = {"name": db_module.name, "description": db_module.description, "icon": db_module.icon}
     
-    update_data = module_data.dict(exclude_unset=True) 
     for key, value in update_data.items():
         setattr(db_module, key, value)
         
