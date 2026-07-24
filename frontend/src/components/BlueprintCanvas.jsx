@@ -13,8 +13,6 @@ import ValidationModal from './modals/ValidationModal';
 import ActionModal from './modals/ActionModal';
 import BlueprintHeader from './BlueprintHeader';
 import BlueprintSidebar from './BlueprintSidebar';
-
-// Nuestro Custom Hook optimizado con memoria local y batch save
 import { useBlueprintManager } from './useBlueprintManager';
 
 const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsavedChanges, reloadBlueprints }) => {
@@ -23,13 +21,9 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const [isActionsListOpen, setIsActionsListOpen] = useState(false);
   const [isValidationsListOpen, setIsValidationsListOpen] = useState(false);
   
-  // =================================================================
-  // ESTADOS DE LA INTERFAZ (UI)
-  // =================================================================
   const [newStatus, setNewStatus] = useState({ name: '', is_initial: false, sla_hours: '' });
   const [isShapeModalOpen, setIsShapeModalOpen] = useState(false);
   
-  // ESTADOS DEL ASISTENTE IA PARA BLUEPRINTS
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -81,9 +75,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       if (setHasUnsavedChanges) setHasUnsavedChanges(hasPendingChanges);
   }, [setHasUnsavedChanges]);
 
-  // =================================================================
-  // INVOCACIÓN DEL CUSTOM HOOK
-  // =================================================================
   const {
     nodes, setNodes, edges, setEdges,
     deletedStatusIdsRef, deletedTransitionIdsRef,
@@ -144,11 +135,8 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     setEdges((currentEdges) => currentEdges.map((edge) => ({
         ...edge, labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' }, labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9 }, markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? '#60a5fa' : '#2563eb' }, style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }
     })));
-  }, [isDarkMode]);
+  }, [isDarkMode, setNodes, setEdges]); // 🔥 FIX: Agregamos dependencias seguras
 
-  // =================================================================
-  // MANIPULACIÓN EN MEMORIA LOCAL
-  // =================================================================
   const onNodesChange = useCallback((changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
     reportChanges(true);
@@ -225,7 +213,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
           bpmn_shape: newStatus.bpmn_shape || 'task'
         }
       },
-      // 🔥 FIX: Inyectamos los estilos base para que el nodo sea visible de inmediato
+      // 🔥 FIX CRÍTICO 4: Inyectamos estilos al nacer para que nunca sea transparente
       style: {
         backgroundColor: isDarkMode ? '#1f2937' : 'white',
         border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
@@ -244,7 +232,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
     if (selectedElement.type === 'status') {
       setNodes((nds) => nds.map((n) => {
-        if (n.id === selectedElement.data.id.toString()) {
+        if (n.id.toString() === selectedElement.data.id.toString()) {
           const updatedRaw = { 
             ...n.data.raw_data, 
             name: renameValue, 
@@ -256,7 +244,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       }));
     } else {
       setEdges((eds) => eds.map((e) => {
-        if (e.id === selectedElement.data.id.toString()) {
+        if (e.id.toString() === selectedElement.data.id.toString()) {
           const updatedRaw = { ...e.data.raw_data, name: renameValue };
           return { ...e, label: renameValue, data: { ...e.data, raw_data: updatedRaw } };
         }
@@ -273,7 +261,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     if (!selectedElement || viewingOldVersion || selectedElement.type !== 'status') return;
     
     setNodes((nds) => nds.map((n) => {
-      if (n.id === selectedElement.data.id.toString()) {
+      if (n.id.toString() === selectedElement.data.id.toString()) {
         const updatedRaw = { ...n.data.raw_data, bpmn_shape: newShape };
         return { ...n, type: newShape, data: { ...n.data, raw_data: updatedRaw } };
       }
@@ -290,13 +278,20 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     
     if (selectedElement.type === 'status') {
       const statusId = selectedElement.data.id;
+      // 🔥 FIX 5: Protegemos el borrado inyectando en la memoria tanto el número como el string
       deletedStatusIdsRef.current.add(statusId);
-      setNodes((nds) => nds.filter((n) => n.id !== statusId.toString()));
-      setEdges((eds) => eds.filter((e) => e.source !== statusId.toString() && e.target !== statusId.toString()));
+      deletedStatusIdsRef.current.add(statusId.toString());
+      deletedStatusIdsRef.current.add(Number(statusId));
+      
+      setNodes((nds) => nds.filter((n) => n.id.toString() !== statusId.toString()));
+      setEdges((eds) => eds.filter((e) => e.source.toString() !== statusId.toString() && e.target.toString() !== statusId.toString()));
     } else {
       const transId = selectedElement.data.id;
       deletedTransitionIdsRef.current.add(transId);
-      setEdges((eds) => eds.filter((e) => e.id !== transId.toString()));
+      deletedTransitionIdsRef.current.add(transId.toString());
+      deletedTransitionIdsRef.current.add(Number(transId));
+      
+      setEdges((eds) => eds.filter((e) => e.id.toString() !== transId.toString()));
     }
 
     setSelectedElement(null);
@@ -476,12 +471,10 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
          </div>, document.body
       )}
 
-      {/* MODALES DE SOPORTE */}
       <ValidationModal isOpen={isAddingValidation} onClose={closeValidationModal} onSave={handleSaveValidation} newValidation={newValidation} setNewValidation={setNewValidation} moduleFields={moduleFields} />
       <ActionModal isOpen={isAddingAction} onClose={closeActionModal} onSave={handleSaveAction} newAction={newAction} setNewAction={setNewAction} editingActionId={editingActionId} moduleFields={moduleFields} moduleSections={moduleSections} allModules={allModules} allForms={allForms} targetModuleFields={targetModuleFields} companyUsers={companyUsers} companyRoles={companyRoles} companyProfiles={companyProfiles} moduleId={moduleId} blueprintId={currentVersionId} selectedElement={selectedElement} />
       <ShapeSelectorModal isOpen={isShapeModalOpen} onClose={() => setIsShapeModalOpen(false)} selectedElement={selectedElement} onChangeShape={handleChangeShape} />
 
-      {/* MODAL DE LISTA DE ACCIONES */}
       {isActionsListOpen && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-blue-200 dark:border-blue-800/50 overflow-hidden flex flex-col max-h-[80vh]">
@@ -521,7 +514,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
          </div>, document.body
       )}
 
-      {/* MODAL DE LISTA DE VALIDACIONES */}
       {isValidationsListOpen && createPortal(
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-red-200 dark:border-red-800/50 overflow-hidden flex flex-col max-h-[80vh]">
