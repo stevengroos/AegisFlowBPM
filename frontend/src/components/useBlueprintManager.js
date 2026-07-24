@@ -9,7 +9,7 @@ export const useBlueprintManager = ({
   notify, 
   confirm, 
   reloadBlueprints,
-  setHasUnsavedChanges // 🔥 NUEVO: Control de cambios pendientes
+  setHasUnsavedChanges // 🔥 Control de cambios pendientes
 }) => {
 
   const [nodes, setNodes] = useState([]);
@@ -19,7 +19,7 @@ export const useBlueprintManager = ({
   const [transitionActions, setTransitionActions] = useState([]);
   const [transitionValidations, setTransitionValidations] = useState([]);
 
-  // 🔥 NUEVO: Listas en memoria para rastrear elementos eliminados o nuevos pendientes de guardar
+  // 🔥 Listas en memoria para rastrear elementos eliminados o nuevos pendientes de guardar
   const deletedStatusIdsRef = useRef(new Set());
   const deletedTransitionIdsRef = useRef(new Set());
   
@@ -80,7 +80,7 @@ export const useBlueprintManager = ({
   }, [moduleId, notify]);
 
   // =================================================================
-  // 2. CARGA DEL LIENZO (NODOS Y FLECHAS)
+  // 2. CARGA DEL LIENZO (CON PROTECCIÓN DE NODOS TEMPORALES EN MEMORIA)
   // =================================================================
   const fetchBlueprintData = useCallback(async (setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef) => {
     try {
@@ -91,8 +91,10 @@ export const useBlueprintManager = ({
 
       const currentDarkMode = document.documentElement.classList.contains('dark');
 
+      // Mantenemos los nodos temporales (en memoria) que aún no se guardan en BD
       setNodes(currentNodes => {
-         return statusesRes.data.map((status, index) => {
+         const tempNodes = currentNodes.filter(n => n.id.toString().startsWith('temp_'));
+         const dbNodes = statusesRes.data.map((status, index) => {
            const existingNode = currentNodes.find(n => n.id === status.id.toString());
            const xPos = status.position_x !== null ? status.position_x : (existingNode ? existingNode.position.x : (index % 4) * 250 + 50);
            const yPos = status.position_y !== null ? status.position_y : (existingNode ? existingNode.position.y : Math.floor(index / 4) * 150 + 50);
@@ -104,18 +106,24 @@ export const useBlueprintManager = ({
              type: status.bpmn_shape || 'task',
            };
          });
+         return [...dbNodes, ...tempNodes];
       });
 
-      setEdges(transRes.data.map(t => ({
-        id: t.id.toString(), source: t.from_status_id.toString(), target: t.to_status_id.toString(), label: t.name, data: { raw_data: t }, 
-        labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
-        labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
-        labelBgPadding: [4, 4],
-        markerEnd: { type: 'arrowclosed', color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
-        style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }, animated: true,
-      })));
-      
-      // Limpiamos referencias de eliminados al recargar
+      // Mantenemos las aristas temporales (en memoria)
+      setEdges(currentEdges => {
+         const tempEdges = currentEdges.filter(e => e.id.toString().startsWith('temp_'));
+         const dbEdges = transRes.data.map(t => ({
+           id: t.id.toString(), source: t.from_status_id.toString(), target: t.to_status_id.toString(), label: t.name, data: { raw_data: t }, 
+           labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
+           labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
+           labelBgPadding: [4, 4],
+           markerEnd: { type: 'arrowclosed', color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
+           style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }, animated: true,
+         }));
+         return [...dbEdges, ...tempEdges];
+      });
+
+      // Limpiamos los registros de eliminación en memoria tras sincronizar
       deletedStatusIdsRef.current.clear();
       deletedTransitionIdsRef.current.clear();
       if (setHasUnsavedChanges) setHasUnsavedChanges(false);
@@ -160,7 +168,10 @@ export const useBlueprintManager = ({
         }
       }
 
-      // 2. Procesar Nodos (Estados) - Creaciones y Actualizaciones (incluyendo posiciones X, Y)
+      // Mapa para registrar los IDs reales que genera la BD para nodos nuevos (temp -> id_real)
+      const tempIdToRealIdMap = {};
+
+      // 2. Procesar Nodos (Estados) - Creaciones y Actualizaciones
       for (const node of nodes) {
         const statusData = node.data.raw_data;
         const payload = {
@@ -174,20 +185,30 @@ export const useBlueprintManager = ({
         };
 
         if (node.id.toString().startsWith('temp_')) {
-          await api.post('/api/v1/statuses/', payload);
+          const res = await api.post('/api/v1/statuses/', payload);
+          tempIdToRealIdMap[node.id] = res.data.id.toString();
         } else {
           await api.put(`/api/v1/statuses/${node.id}`, payload);
         }
       }
 
-      // 3. Procesar Conexiones (Transiciones)
+      // 3. Procesar Conexiones (Transiciones) resolviendo IDs temporales si aplican
       for (const edge of edges) {
         const transData = edge.data.raw_data;
+        
+        let sourceId = edge.source.toString();
+        let targetId = edge.target.toString();
+
+        if (sourceId.startsWith('temp_')) sourceId = tempIdToRealIdMap[sourceId];
+        if (targetId.startsWith('temp_')) targetId = tempIdToRealIdMap[targetId];
+
+        if (!sourceId || !targetId) continue; // Si algún nodo padre falló, omitimos temporalmente
+
         const payload = {
           name: transData.name || 'Avanzar',
           blueprint_id: parseInt(currentVersionId),
-          from_status_id: parseInt(edge.source),
-          to_status_id: parseInt(edge.target)
+          from_status_id: parseInt(sourceId),
+          to_status_id: parseInt(targetId)
         };
 
         if (edge.id.toString().startsWith('temp_')) {
@@ -290,7 +311,6 @@ export const useBlueprintManager = ({
       try {
         const importedData = JSON.parse(e.target.result);
         
-        // Mapeamos nodos locales a partir del JSON importado
         const newNodes = importedData.statuses.map((status, index) => ({
           id: `temp_${Date.now()}_${index}`,
           data: { raw_data: status },

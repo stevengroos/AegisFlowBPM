@@ -97,9 +97,13 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints, setHasUnsavedChanges: reportChanges
   });
 
+  // 🔥 DETECCIÓN ROBUSTA DE CAMBIOS LOCALES EN MEMORIA 🔥
+  const hasTempItems = nodes.some(n => n.id.toString().startsWith('temp_')) || edges.some(e => e.id.toString().startsWith('temp_'));
+  const hasPendingDeletions = deletedStatusIdsRef.current?.size > 0 || deletedTransitionIdsRef.current?.size > 0;
   const isEditingName = selectedElement && renameValue !== selectedElement.data.name;
   const isWritingNewStatus = newStatus.name.trim().length > 0;
-  const hasLocalChanges = isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation;
+  
+  const hasLocalChanges = hasTempItems || hasPendingDeletions || isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation;
 
   useEffect(() => { reportChanges(hasLocalChanges); }, [hasLocalChanges, reportChanges]);
 
@@ -159,7 +163,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   const handleNodeDragStop = (event, node) => {
     if (viewingOldVersion) return; 
-    // Actualizamos la posición en memoria local del nodo correspondiente
     setNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, position: node.position } : n));
     reportChanges(true); 
   };
@@ -174,7 +177,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     e.preventDefault();
     if (!newTransitionName.trim() || !pendingConnection || viewingOldVersion) return;
     
-    // Creamos la arista virtualmente en memoria
     const newEdgeId = `temp_${Date.now()}`;
     const newEdge = {
       id: newEdgeId,
@@ -207,7 +209,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     if (viewingOldVersion) return notify.warning("No puedes editar versiones antiguas.");
     if (!newStatus.name.trim()) return notify.warning("Escribe un nombre para el estado.");
     
-    // Creamos el nodo virtualmente en memoria
     const newNodeId = `temp_${Date.now()}`;
     const newNode = {
       id: newNodeId,
@@ -285,7 +286,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       const statusId = selectedElement.data.id;
       deletedStatusIdsRef.current.add(statusId);
       setNodes((nds) => nds.filter((n) => n.id !== statusId.toString()));
-      // Limpiamos transiciones huérfanas en memoria
       setEdges((eds) => eds.filter((e) => e.source !== statusId.toString() && e.target !== statusId.toString()));
     } else {
       const transId = selectedElement.data.id;
