@@ -85,6 +85,7 @@ const Settings = () => {
   }
 
   const isSuperAdmin = userData?.is_superadmin;
+  const isSystemCompany = userData?.is_system_company; // 🔥 Constante para validar HQ
   const canManageModules = isSuperAdmin || userData?.permissions?.settings?.manage_modules;
   const canManageSecurity = isSuperAdmin || userData?.permissions?.settings?.manage_security;
 
@@ -220,8 +221,8 @@ const Settings = () => {
                 <Smartphone size={18} /> App Móvil & B2C
               </button>
 
-              {/* 🔥 BOTÓN DE GESTIÓN DE EMPRESAS (EXCLUSIVO SÚPER ADMIN) 🔥 */}
-              {userData?.is_superadmin && (
+              {/* 🔥 CORREGIDO: Exclusivo Súper Admin de System (HQ) 🔥 */}
+              {isSuperAdmin && isSystemCompany && (
                 <button 
                   onClick={() => setActiveMenu('companies')}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${
@@ -278,10 +279,10 @@ const Settings = () => {
         {activeMenu === 'profiles' && canManageSecurity && <ProfilesManager />}
         {activeMenu === 'audit' && canManageSecurity && <GlobalAudit />}
         
-        {/* 🔥 RENDERIZADO DEL COMPONENTE DE EMPRESAS 🔥 */}
-        {activeMenu === 'companies' && userData?.is_superadmin && <CompaniesManager />}
+        {/* 🔥 CORREGIDO: Renderizado blindado de Empresas (Tenants) 🔥 */}
+        {activeMenu === 'companies' && isSuperAdmin && isSystemCompany && <CompaniesManager />}
         
-        {!canManageModules && !canManageSecurity && !userData?.is_superadmin && (
+        {!canManageModules && !canManageSecurity && !isSuperAdmin && (
             <div className="flex h-full flex-col items-center justify-center text-gray-500 dark:text-gray-400">
               <Shield size={48} className="mb-4 opacity-30" />
               <p className="font-bold text-lg text-gray-700 dark:text-gray-300">Acceso Restringido</p>
