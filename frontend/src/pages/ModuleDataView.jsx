@@ -94,8 +94,8 @@ const ModuleDataView = () => {
   };
 
   const copyToClipboard = (token) => {
-      // Generamos la URL completa basada en el dominio actual (o el servidor de producción)
-      const baseUrl = window.location.origin.includes('localhost') ? 'http://localhost:8000' : window.location.origin;
+      // 🔥 DINÁMICO: Usamos estrictamente la URL del backend, sin importar dónde esté alojado el frontend
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const url = `${baseUrl}/api/v1/webhooks/in/${token}`;
       navigator.clipboard.writeText(url);
       notify.success("URL copiada al portapapeles.");

@@ -110,6 +110,20 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
           <div className="px-3 pt-4 pb-2 text-[10px] font-bold uppercase text-gray-500 tracking-widest whitespace-nowrap">Módulos Operativos</div>
         )}
         
+        {/* 🔥 NUEVO BOTÓN: Empresas (Tenants) 🔥 */}
+        {userData?.is_superadmin && userData?.is_system_company && (
+          <NavLink 
+            to="/settings" 
+            onClick={() => sessionStorage.setItem('default_settings_menu', 'companies')} 
+            aria-label="Ir a Gestión de Empresas" 
+            className={({ isActive }) => `flex items-center p-3 rounded-xl transition-colors text-gray-400 hover:bg-gray-800/50`}
+          >
+            <Building2 size={20} className="shrink-0" aria-hidden="true" />
+            {isSidebarOpen && <span className="ml-3 font-medium whitespace-nowrap">Empresas (Tenants)</span>}
+          </NavLink>
+        )}
+
+
         {catsWithModules.map(cat => {
             const CatIcon = ICON_MAP[cat.icon] || Folder;
             const isExpanded = expandedCats[cat.id];

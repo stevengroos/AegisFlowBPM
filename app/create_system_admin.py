@@ -32,13 +32,13 @@ def init_system_company():
             print(f"✅ Empresa 'AegisFlow HQ' creada con éxito (ID: {system_company.id}).")
 
         # 2. Verificar o crear el Súper Administrador
-        admin_email = "admin@aegisflow.com"  # <-- CAMBIA ESTO POR TU CORREO SI QUIERES
+        admin_email = "admin@admin.com"  # <-- CAMBIA ESTO POR TU CORREO SI QUIERES
         admin_user = db.query(models.User).filter(models.User.email == admin_email).first()
         
         if admin_user:
             print(f"⚠️ El usuario {admin_email} ya existe en la base de datos.")
         else:
-            temp_password = "AdminSuperSeguro2026*" # <-- CAMBIA ESTO POR UNA CONTRASEÑA TUYA
+            temp_password = "12345678" # <-- CAMBIA ESTO POR UNA CONTRASEÑA TUYA
             hashed_pwd = get_password_hash(temp_password)
             
             admin_user = models.User(

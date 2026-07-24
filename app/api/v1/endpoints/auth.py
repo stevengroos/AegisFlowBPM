@@ -67,17 +67,12 @@ class UserPasswordUpdate(BaseModel):
 # =========================================================
 #  CONFIGURACIÓN OAUTH2 (CLIENTES SSO) 
 # =========================================================
-# Obtenemos las credenciales. Si no existen (ej. en desarrollo), 
-# se inicializa con dummy para no romper el backend al arrancar.
-#starlette_config = Config(environ={
-#    "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID", "dummy_id"),
-#    "GOOGLE_CLIENT_SECRET": os.environ.get("GOOGLE_CLIENT_SECRET", "dummy_secret"),
-#    "MICROSOFT_CLIENT_ID": os.environ.get("MICROSOFT_CLIENT_ID", "dummy_id"),
-#    "MICROSOFT_CLIENT_SECRET": os.environ.get("MICROSOFT_CLIENT_SECRET", "dummy_secret")
-#})
 
 # 🔥 FIX: Leemos directamente desde el archivo .env para evitar variables vacías
 starlette_config = Config(".env")
+
+# 🔥 NUEVO: Detectamos el entorno automáticamente. Si no dice "production", asumimos que es tu Localhost.
+is_production = os.getenv("ENVIRONMENT", "local") == "production"
 
 oauth = OAuth(starlette_config)
 oauth.register(
@@ -86,7 +81,7 @@ oauth.register(
     client_kwargs={
         'scope': 'openid email profile',
         'prompt': 'select_account',
-        'verify': False  # FIX PENTEST: Ignorar el proxy corporativo/VPN local
+        'verify': is_production  # 🔥 Dinámico: True en la Nube (Seguro), False en Localhost (Sin errores)
     }
 )
 
@@ -96,7 +91,7 @@ oauth.register(
     server_metadata_url='https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
     client_kwargs={
         'scope': 'openid email profile', 
-        'verify': False # Mantenemos el bypass del proxy corporativo para pruebas
+        'verify': is_production  # 🔥 Dinámico: True en la Nube (Seguro), False en Localhost (Sin errores)
     }
 )
 

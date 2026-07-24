@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
 import api from '../api/axios'; // Ajusta la ruta a tu instancia de Axios
 import { useAuth } from './AuthContext'; // Para saber quién está logueado
 
@@ -27,7 +27,11 @@ export const SupportChatProvider = ({ children }) => {
   const connectWebSocket = useCallback((sid) => {
     if (ws.current) ws.current.close(); 
 
-    const wsUrl = `ws://localhost:8000/api/v1/chat/ws/support/${sid}`;
+    // 🔥 FIX ARQUITECTÓNICO: URL dinámica para WebSockets (Local vs Producción) 🔥
+    // En producción (Render) usará wss:// (seguro), en local usará ws://
+    const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    const wsUrl = `${WS_BASE_URL}/api/v1/chat/ws/support/${sid}`;
+    
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => console.log("Túnel de chat abierto 🟢");
@@ -35,7 +39,7 @@ export const SupportChatProvider = ({ children }) => {
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       
-      // 🔥 NUEVO: Detectar si el backend envía la señal de que el chat se cerró
+      // Detectar si el backend envía la señal de que el chat se cerró
       if (data.type === "SYSTEM_EVENT" && data.event === "SESSION_RESOLVED") {
         setIsResolved(true);
         if (ws.current) ws.current.close(); // Cerramos el túnel del lado del cliente
@@ -49,7 +53,7 @@ export const SupportChatProvider = ({ children }) => {
 
   const startChat = async () => {
     try {
-      setIsResolved(false); // 🔥 NUEVO: Reiniciamos el estado por si abre un chat nuevo
+      setIsResolved(false); // Reiniciamos el estado por si abre un chat nuevo
       
       const response = await api.post('/api/v1/chat/session', {
         company_id: user.company_id,
@@ -81,7 +85,7 @@ export const SupportChatProvider = ({ children }) => {
   return (
     <SupportChatContext.Provider value={{ 
       isOpen, setIsOpen, messages, startChat, sendMessage, sessionId,
-      isResolved, setSessionId, setMessages // 🔥 NUEVO: Exportamos las nuevas herramientas
+      isResolved, setSessionId, setMessages
     }}>
       {children}
     </SupportChatContext.Provider>

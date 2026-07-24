@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000', // Tu servidor FastAPI
+  // 🔥 DINÁMICO: Lee la URL de la nube en Vercel, o usa localhost en tu PC
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000', 
 });
 
 // 🔥 INTERCEPTOR DE PETICIONES (Seguridad Anti-Caché y Token)

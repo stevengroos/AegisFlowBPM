@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173"
 
     # =========================================================
-    # 🔥 NUEVO: VARIABLES DE ENTORNO PARA SMTP GLOBAL 🔥
+    # 🔥 VARIABLES DE ENTORNO PARA SMTP GLOBAL 🔥
     # =========================================================
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "Seguridad AegisFlow"
+
+    # =========================================================
+    # 🔥 NUEVO: VARIABLES DE SUPABASE PARA STORAGE 🔥
+    # =========================================================
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
 
     @property
     def get_cors_origins(self) -> List[str]:

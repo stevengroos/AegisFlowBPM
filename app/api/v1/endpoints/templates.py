@@ -5,10 +5,11 @@ from app.db.session import get_db
 from app.models import models
 from app.api import deps
 from app.schemas import template as template_schema
-import os
 from datetime import datetime
-from fastapi.responses import FileResponse
-from app.core.pdf_engine import document_engine # 🔥 Importamos nuestro nuevo motor
+
+# 🔥 Importamos nuestro motor y el conector a Supabase 🔥
+from app.core.pdf_engine import document_engine
+from app.core.storage import upload_file_to_supabase
 
 router = APIRouter()
 
@@ -18,10 +19,6 @@ def create_template(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Crea una nueva plantilla y registra su Versión 1 automáticamente.
-    """
-    # 1. Validar que el módulo pertenezca a la empresa del usuario
     module = db.query(models.Module).filter(
         models.Module.id == template_in.module_id,
         models.Module.company_id == current_user.company_id
@@ -30,7 +27,6 @@ def create_template(
     if not module:
         raise HTTPException(status_code=404, detail="El módulo seleccionado no existe o no tienes acceso.")
 
-    # 2. Crear la cabecera de la plantilla
     db_template = models.DocumentTemplate(
         company_id=current_user.company_id,
         module_id=template_in.module_id,
@@ -39,9 +35,8 @@ def create_template(
         is_active=template_in.is_active
     )
     db.add(db_template)
-    db.flush() # Guarda temporalmente para generar el ID de la plantilla
+    db.flush() 
 
-    # 3. Guardar la Versión 1
     db_version = models.DocumentTemplateVersion(
         template_id=db_template.id,
         version_number=1,
@@ -62,9 +57,6 @@ def get_templates_by_module(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Lista todas las plantillas disponibles para un módulo específico.
-    """
     templates = db.query(models.DocumentTemplate).filter(
         models.DocumentTemplate.company_id == current_user.company_id,
         models.DocumentTemplate.module_id == module_id
@@ -79,9 +71,6 @@ def add_new_version(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Guarda una nueva versión de la plantilla (Evitando perder historial).
-    """
     template = db.query(models.DocumentTemplate).filter(
         models.DocumentTemplate.id == template_id,
         models.DocumentTemplate.company_id == current_user.company_id
@@ -90,7 +79,6 @@ def add_new_version(
     if not template:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada.")
 
-    # Calcular el siguiente número de versión
     last_version = db.query(models.DocumentTemplateVersion).filter(
         models.DocumentTemplateVersion.template_id == template_id
     ).order_by(models.DocumentTemplateVersion.version_number.desc()).first()
@@ -113,7 +101,7 @@ def add_new_version(
     return new_version
 
 # =========================================================
-# 🔥 ENDPOINT DE GENERACIÓN DE PDF Y AUDITORÍA 🔥
+# 🔥 ENDPOINT DE GENERACIÓN DE PDF DIRECTO A LA NUBE 🔥
 # =========================================================
 
 @router.post("/{template_id}/generate/{record_id}")
@@ -123,10 +111,6 @@ def generate_document_pdf(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Genera un PDF final inyectando los datos del Caso en la plantilla.
-    """
-    # 1. Validar la plantilla y acceso
     template = db.query(models.DocumentTemplate).filter(
         models.DocumentTemplate.id == template_id,
         models.DocumentTemplate.company_id == current_user.company_id,
@@ -136,7 +120,6 @@ def generate_document_pdf(
     if not template:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada o está inactiva.")
 
-    # 2. Traer la ÚLTIMA versión de esa plantilla
     latest_version = db.query(models.DocumentTemplateVersion).filter(
         models.DocumentTemplateVersion.template_id == template.id
     ).order_by(models.DocumentTemplateVersion.version_number.desc()).first()
@@ -144,7 +127,6 @@ def generate_document_pdf(
     if not latest_version:
         raise HTTPException(status_code=400, detail="La plantilla no tiene versiones.")
 
-    # 3. Obtener los datos del registro (Tu modelo 'Case')
     case_record = db.query(models.Case).filter(
         models.Case.id == record_id,
         models.Case.company_id == current_user.company_id
@@ -153,55 +135,52 @@ def generate_document_pdf(
     if not case_record:
         raise HTTPException(status_code=404, detail="Registro no encontrado.")
 
-    # 4. 🔥 MAPEO DE VARIABLES JINJA2 🔥
-    # Empezamos con las variables de sistema
     data_to_inject = {
         "caso_id": case_record.id,
         "fecha_creacion": case_record.created_at.strftime("%Y-%m-%d %H:%M") if case_record.created_at else "",
     }
 
-    # 🔥 LA MAGIA: Inyectamos TODOS los campos dinámicos de tu formulario
-    # Esto permite que si el usuario escribió {{ solicitante }}, Jinja2 lo encuentre en case_record.data
     if case_record.data:
         for key, value in case_record.data.items():
             data_to_inject[key] = value
 
-    # 5. Inyectar los datos en el HTML usando nuestro Motor WeasyPrint
+    # 1. Inyectar datos en el HTML
     rendered_html = document_engine.render_html(latest_version.content_html, data_to_inject)
 
-    # 6. Preparar directorio seguro en el servidor para guardar PDFs
-    os.makedirs("generated_pdfs", exist_ok=True)
+    # 2. Obtener el PDF en memoria (Bytes) y su Huella Digital
+    pdf_bytes, pdf_hash = document_engine.generate_pdf_bytes(rendered_html)
+
+    # 3. Subir los Bytes directamente a Supabase
     file_name = f"T{template.id}_V{latest_version.version_number}_R{case_record.id}_{int(datetime.now().timestamp())}.pdf"
-    file_path = os.path.join("generated_pdfs", file_name)
+    
+    file_url = upload_file_to_supabase(
+        bucket_name="generated_pdfs",
+        file_name=file_name,
+        file_bytes=pdf_bytes,
+        content_type="application/pdf"
+    )
 
-    # 7. Convertir a PDF estricto y sacar la Huella Digital
-    pdf_hash = document_engine.generate_pdf(rendered_html, file_path)
-
-    # 8. GUARDAR EN AUDITORÍA HISTÓRICA
+    # 4. Guardar la URL pública en la tabla de Auditoría
     generated_doc = models.GeneratedDocument(
         template_id=template.id,
         version_id=latest_version.id,
         record_id=case_record.id,
-        file_path=file_path,
+        file_path=file_url,  # 🔥 Ahora guardamos la URL de la nube, no la ruta local
         sha256_hash=pdf_hash
     )
     db.add(generated_doc)
     db.commit()
 
-    # 9. Retornar el archivo físico para descarga directa
+    # 5. Devolvemos la URL al Frontend para que el usuario pueda ver o descargar el PDF
     safe_download_name = f"{template.name.replace(' ', '_')}_{case_record.id}.pdf"
     
-    return FileResponse(
-        path=file_path, 
-        filename=safe_download_name, 
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{safe_download_name}"'} 
-    )
+    return {
+        "url": file_url,
+        "filename": safe_download_name,
+        "hash": pdf_hash,
+        "message": "Documento generado exitosamente en la nube."
+    }
     
-# =========================================================
-# 🔥 ENDPOINTS FALTANTES: ACTUALIZAR Y ELIMINAR 🔥
-# =========================================================
-
 @router.put("/{template_id}", response_model=template_schema.TemplateResponse)
 def update_template(
     template_id: int,
@@ -209,9 +188,6 @@ def update_template(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Actualiza el nombre, descripción o el estado (Activo/Inactivo) de una plantilla.
-    """
     template = db.query(models.DocumentTemplate).filter(
         models.DocumentTemplate.id == template_id,
         models.DocumentTemplate.company_id == current_user.company_id
@@ -220,7 +196,6 @@ def update_template(
     if not template:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada.")
         
-    # Extraemos solo los campos que el Frontend envió para no borrar los demás
     update_data = template_in.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(template, field, value)
@@ -229,16 +204,12 @@ def update_template(
     db.refresh(template)
     return template
 
-
 @router.delete("/{template_id}")
 def delete_template(
     template_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Elimina una plantilla y todas sus versiones de forma permanente.
-    """
     template = db.query(models.DocumentTemplate).filter(
         models.DocumentTemplate.id == template_id,
         models.DocumentTemplate.company_id == current_user.company_id

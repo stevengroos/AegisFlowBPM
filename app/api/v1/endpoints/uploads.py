@@ -4,16 +4,14 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from app.models import models
 from app.api import deps
 
-router = APIRouter()
+# 🔥 IMPORTAMOS EL CLIENTE Y LA FUNCIÓN DE ALMACENAMIENTO EN LA NUBE 🔥
+from app.core.storage import upload_file_to_supabase, supabase
 
-# Asegurarnos de que la carpeta "uploads" exista
-UPLOAD_DIR = "uploads"
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
+router = APIRouter()
 
 # 🔥 PENTEST FIX: Lista Blanca de extensiones permitidas 🔥
 ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "txt", "csv", "png", "jpg", "jpeg", "webp"}
-# 🔥 PENTEST FIX: Límite de tamaño (5 MB) para evitar colapso de disco (DoS) 🔥
+# 🔥 PENTEST FIX: Límite de tamaño (5 MB) para evitar colapso de memoria (DoS) 🔥
 MAX_FILE_SIZE = 5 * 1024 * 1024 
 
 @router.post("/")
@@ -41,17 +39,20 @@ async def upload_file(
 
         # Generar nombre único seguro
         unique_filename = f"{uuid.uuid4().hex}.{file_extension}"
-        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        content_type = file.content_type or "application/octet-stream"
 
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-
-        file_url = f"/uploads/{unique_filename}"
+        # 🔥 FASE NUBE: Subimos directamente a Supabase (RAM -> Cloud) 🔥
+        file_url = upload_file_to_supabase(
+            bucket_name="uploads",
+            file_name=unique_filename,
+            file_bytes=content,
+            content_type=content_type
+        )
         
         return {
             "filename": file.filename,
             "url": file_url,
-            "message": "Archivo subido con éxito"
+            "message": "Archivo subido con éxito a la nube"
         }
     except HTTPException:
         raise  # Re-lanzar errores controlados de HTTP
@@ -69,19 +70,16 @@ async def delete_file(
         if safe_filename != filename or ".." in filename or "/" in filename:
             raise HTTPException(status_code=400, detail="Nombre de archivo con caracteres inválidos o peligrosos.")
 
-        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        # 🔥 FASE NUBE: Eliminamos de Supabase en lugar del disco duro local 🔥
+        # Supabase recibe una lista de archivos a eliminar
+        res = supabase.storage.from_("uploads").remove([safe_filename])
         
-        # Doble validación: Garantizar que la ruta absoluta final esté dentro de UPLOAD_DIR
-        absolute_upload_dir = os.path.abspath(UPLOAD_DIR)
-        absolute_file_path = os.path.abspath(file_path)
-        if not absolute_file_path.startswith(absolute_upload_dir):
-            raise HTTPException(status_code=400, detail="Ruta de archivo bloqueada por seguridad.")
-
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            return {"message": "Archivo eliminado exitosamente"}
+        # Si la API de Supabase devuelve un array vacío, el archivo no se encontró
+        if not res:
+            raise HTTPException(status_code=404, detail="El archivo no existe en la nube")
             
-        raise HTTPException(status_code=404, detail="El archivo no existe")
+        return {"message": "Archivo eliminado exitosamente de la nube"}
+        
     except HTTPException:
         raise
     except Exception as e:

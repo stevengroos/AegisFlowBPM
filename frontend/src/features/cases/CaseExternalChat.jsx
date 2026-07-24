@@ -38,8 +38,11 @@ const CaseExternalChat = ({ caseId, currentUser }) => {
 
         // 2. Conectar WebSocket solo si no está conectado
         if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
-            // Usa 127.0.0.1 o localhost según como tengas tu api.js
-            const wsUrl = `ws://localhost:8000/api/v1/mobile/ws/chat/${caseId}?user_id=${currentUser.id}`;
+            
+            // 🔥 FIX ARQUITECTÓNICO: URL dinámica para WebSockets (Local vs Producción) 🔥
+            const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+            const wsUrl = `${WS_BASE_URL}/api/v1/mobile/ws/chat/${caseId}?user_id=${currentUser.id}`;
+            
             wsRef.current = new WebSocket(wsUrl);
 
             wsRef.current.onmessage = (event) => {

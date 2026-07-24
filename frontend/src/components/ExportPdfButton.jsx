@@ -39,43 +39,21 @@ const ExportPdfButton = ({ moduleId, recordId }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // 3. Generar y Descargar el PDF
+  
+  // 3. Generar y Descargar el PDF (Versión Supabase)
   const handleGenerate = async (templateId, templateName) => {
     setGenerating(true);
     setShowMenu(false);
     try {
-      // ⚠️ IMPORTANTE: responseType 'blob' es vital para descargar archivos binarios (PDFs)
+      // 🔥 NUEVO: Ya no usamos responseType: 'blob'. Ahora recibimos un JSON de la nube.
       const response = await api.post(
-        `/api/v1/templates/${templateId}/generate/${recordId}`,
-        {},
-        { responseType: 'blob' } 
+        `/api/v1/templates/${templateId}/generate/${recordId}`
       );
       
-      // Convertir la respuesta a un objeto Blob (Archivo)
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
+      // Abrimos la URL pública de Supabase en una nueva pestaña del navegador
+      window.open(response.data.url, '_blank');
       
-      // Crear un enlace invisible y forzar la descarga
-      const link = document.createElement('a');
-      link.href = url;
-      
-      // Intentar sacar el nombre del archivo de las cabeceras, o usar uno por defecto
-      const contentDisposition = response.headers['content-disposition'];
-      let fileName = `${templateName.replace(/ /g, '_')}_${recordId}.pdf`;
-      if (contentDisposition) {
-        const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
-        if (fileNameMatch && fileNameMatch.length === 2) {
-          fileName = fileNameMatch[1];
-        }
-      }
-      
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url); // Limpiar memoria
-      
-      notify.success("Documento generado con éxito");
+      notify.success(response.data.message || "Documento generado con éxito en la nube");
     } catch (error) {
       notify.error("Error al generar el documento");
       console.error(error);

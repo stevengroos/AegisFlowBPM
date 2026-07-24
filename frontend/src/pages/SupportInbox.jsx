@@ -85,7 +85,11 @@ const SupportInbox = () => {
     }
 
     if (ws.current) ws.current.close();
-    const wsUrl = `ws://localhost:8000/api/v1/chat/ws/support/${session.id}`;
+    
+    // 🔥 FIX ARQUITECTÓNICO: URL dinámica para WebSockets (Local vs Producción) 🔥
+    const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    const wsUrl = `${WS_BASE_URL}/api/v1/chat/ws/support/${session.id}`;
+    
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onmessage = (event) => {

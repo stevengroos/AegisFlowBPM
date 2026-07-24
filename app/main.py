@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from app.db.base_class import Base
 from app.db.session import engine, get_db
 from app.models import models 
-from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards, webhooks, ai, chat, templates, workflow, mobile_api
+from app.api.v1.endpoints import auth, cases, fields, statuses, transitions, blueprints, forms, modules, automations, uploads, notifications, security, global_audit, dashboards, webhooks, ai, chat, templates, workflow, mobile_api, companies
 from app.api import deps
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles 
@@ -91,7 +91,7 @@ app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["Templates"])
 app.include_router(workflow.router, prefix="/api/v1/workflow", tags=["Workflow"])
 app.include_router(mobile_api.router, prefix="/api/v1/mobile", tags=["Mobile APP"])
-
+app.include_router(companies.router, prefix="/api/v1/companies", tags=["Companies"])
 Base.metadata.create_all(bind=engine)
 
 @app.get("/")
