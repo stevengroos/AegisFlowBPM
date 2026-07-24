@@ -91,10 +91,14 @@ export const useBlueprintManager = ({
 
       const currentDarkMode = document.documentElement.classList.contains('dark');
 
-      // Mantenemos los nodos temporales (en memoria) que aún no se guardan en BD
+      // Mantenemos los nodos temporales (en memoria) y filtramos los eliminados
       setNodes(currentNodes => {
          const tempNodes = currentNodes.filter(n => n.id.toString().startsWith('temp_'));
-         const dbNodes = statusesRes.data.map((status, index) => {
+         
+         // 🔥 FIX: Ignoramos los nodos que el usuario marcó para borrar pero no ha guardado aún
+         const activeStatuses = statusesRes.data.filter(status => !deletedStatusIdsRef.current.has(status.id));
+         
+         const dbNodes = activeStatuses.map((status, index) => {
            const existingNode = currentNodes.find(n => n.id === status.id.toString());
            const xPos = status.position_x !== null ? status.position_x : (existingNode ? existingNode.position.x : (index % 4) * 250 + 50);
            const yPos = status.position_y !== null ? status.position_y : (existingNode ? existingNode.position.y : Math.floor(index / 4) * 150 + 50);
@@ -109,10 +113,14 @@ export const useBlueprintManager = ({
          return [...dbNodes, ...tempNodes];
       });
 
-      // Mantenemos las aristas temporales (en memoria)
+      // Mantenemos las aristas temporales (en memoria) y filtramos las eliminadas
       setEdges(currentEdges => {
          const tempEdges = currentEdges.filter(e => e.id.toString().startsWith('temp_'));
-         const dbEdges = transRes.data.map(t => ({
+         
+         // 🔥 FIX: Ignoramos las transiciones que el usuario marcó para borrar
+         const activeTransitions = transRes.data.filter(t => !deletedTransitionIdsRef.current.has(t.id));
+
+         const dbEdges = activeTransitions.map(t => ({
            id: t.id.toString(), source: t.from_status_id.toString(), target: t.to_status_id.toString(), label: t.name, data: { raw_data: t }, 
            labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
            labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
@@ -123,9 +131,6 @@ export const useBlueprintManager = ({
          return [...dbEdges, ...tempEdges];
       });
 
-      // Limpiamos los registros de eliminación en memoria tras sincronizar
-      deletedStatusIdsRef.current.clear();
-      deletedTransitionIdsRef.current.clear();
       if (setHasUnsavedChanges) setHasUnsavedChanges(false);
 
       const currentSelected = selectedElementRef.current;
@@ -217,6 +222,10 @@ export const useBlueprintManager = ({
           await api.put(`/api/v1/transitions/${edge.id}`, payload);
         }
       }
+
+      // 🔥 FIX: Limpiamos la memoria de borrados SOLO cuando el guardado fue exitoso
+      deletedStatusIdsRef.current.clear();
+      deletedTransitionIdsRef.current.clear();
 
       notify.success("¡Diseño del flujo guardado con éxito!");
       if (setHasUnsavedChanges) setHasUnsavedChanges(false);

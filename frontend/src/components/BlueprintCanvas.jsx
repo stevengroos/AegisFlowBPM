@@ -29,15 +29,14 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const [newStatus, setNewStatus] = useState({ name: '', is_initial: false, sla_hours: '' });
   const [isShapeModalOpen, setIsShapeModalOpen] = useState(false);
   
-  // 🔥 ESTADOS DEL ASISTENTE IA PARA BLUEPRINTS 🔥
+  // ESTADOS DEL ASISTENTE IA PARA BLUEPRINTS
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [aiMode, setAiMode] = useState('text'); // 'text' o 'file'
+  const [aiMode, setAiMode] = useState('text');
   const [aiFile, setAiFile] = useState(null);
   const aiBlueprintFileInputRef = useRef(null);
 
-  // Truco para conectar el botón del Header con este estado:
   useEffect(() => {
      if (isShapeModalOpen === 'ai_modal') {
         setIsAiModalOpen(true);
@@ -83,7 +82,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   }, [setHasUnsavedChanges]);
 
   // =================================================================
-  // INVOCACIÓN DEL CUSTOM HOOK (LÓGICA DE NEGOCIO Y API)
+  // INVOCACIÓN DEL CUSTOM HOOK
   // =================================================================
   const {
     nodes, setNodes, edges, setEdges,
@@ -97,7 +96,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints, setHasUnsavedChanges: reportChanges
   });
 
-  // 🔥 DETECCIÓN ROBUSTA DE CAMBIOS LOCALES EN MEMORIA 🔥
   const hasTempItems = nodes.some(n => n.id.toString().startsWith('temp_')) || edges.some(e => e.id.toString().startsWith('temp_'));
   const hasPendingDeletions = deletedStatusIdsRef.current?.size > 0 || deletedTransitionIdsRef.current?.size > 0;
   const isEditingName = selectedElement && renameValue !== selectedElement.data.name;
@@ -149,7 +147,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   }, [isDarkMode]);
 
   // =================================================================
-  // MANIPULACIÓN EN MEMORIA LOCAL (SIN PETICIONES INNECESARIAS)
+  // MANIPULACIÓN EN MEMORIA LOCAL
   // =================================================================
   const onNodesChange = useCallback((changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
@@ -195,6 +193,9 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       markerEnd: { type: 'arrowclosed', color: isDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
       style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
       animated: true,
+      labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
+      labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
+      labelBgPadding: [4, 4]
     };
 
     setEdges((eds) => [...eds, newEdge]);
@@ -223,6 +224,11 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
           blueprint_id: parseInt(currentVersionId),
           bpmn_shape: newStatus.bpmn_shape || 'task'
         }
+      },
+      // 🔥 FIX: Inyectamos los estilos base para que el nodo sea visible de inmediato
+      style: {
+        backgroundColor: isDarkMode ? '#1f2937' : 'white',
+        border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
       }
     };
 
@@ -395,7 +401,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   return (
   <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950/50 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
     
-    {/* HEADER CON BOTÓN DE GUARDADO MASIVO */}
     <BlueprintHeader
       selectedBlueprint={selectedBlueprint} viewingOldVersion={viewingOldVersion} currentVersionId={currentVersionId} versions={versions}
       handleCloseAttempt={handleCloseAttempt} 
@@ -417,7 +422,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     />
 
     <div className="flex flex-1 overflow-hidden relative z-0">
-      {/* SIDEBAR */}
       <BlueprintSidebar
         viewingOldVersion={viewingOldVersion} newStatus={newStatus} setNewStatus={setNewStatus} handleCreateStatus={handleCreateStatus}
         selectedElement={selectedElement} renameValue={renameValue} setRenameValue={setRenameValue}
@@ -429,7 +433,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
         setIsAddingValidation={setIsAddingValidation} handleDeleteElement={handleDeleteElement}
       />
 
-        {/* LIENZO (REACTFLOW) */}
         <div className="flex-1 relative bg-gray-50/50 dark:bg-gray-950 shadow-inner">
           <ReactFlow 
             nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} 
