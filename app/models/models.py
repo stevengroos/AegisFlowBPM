@@ -147,9 +147,9 @@ class Module(Base):
     blueprints = relationship("Blueprint", back_populates="module")
     cases = relationship("Case", back_populates="module")
     
-    __table_args__ = (
-        UniqueConstraint('company_id', 'name', name='uix_company_module_name'),
-    )
+    #__table_args__ = (
+    #    UniqueConstraint('company_id', 'name', name='uix_company_module_name'),
+    #)
 
 class Form(Base):
     __tablename__ = "forms"
