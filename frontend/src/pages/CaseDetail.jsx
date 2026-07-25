@@ -576,6 +576,14 @@ const CaseDetail = () => {
     );
   };
 
+  // 🔥 AGREGAR AQUÍ LA LÓGICA DEL TÍTULO DINÁMICO 🔥
+  const primaryField = formFields.find(field => field.is_primary === true);
+  let displayTitle = `Registro #${caseData?.id}`; 
+
+  if (primaryField && caseData?.data && caseData.data[primaryField.api_name]) {
+      displayTitle = caseData.data[primaryField.api_name];
+  }
+
   // 🔥 Quitamos <Layout> porque el App.jsx ya lo envuelve 🔥
   return (
     <>
@@ -584,7 +592,7 @@ const CaseDetail = () => {
           <button onClick={() => navigate(`/modules/${caseData.module_id}`)} className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-200 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 rounded-lg transition"><ArrowLeft size={20} /></button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">Registro #{caseData.id}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">{displayTitle}</h1>
               <span className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-2.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5"><CheckCircle size={12}/> {currentStatusName || 'Sin Estado'}</span>
               
               {/* 🔥 FASE 2: INDICADOR DE SLA EN EL HEADER 🔥 */}
