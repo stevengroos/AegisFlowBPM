@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle, Phone, CircleDollarSign } from 'lucide-react';
 import { createPortal } from 'react-dom';
 // 🔥 Importaciones Arquitectura Limpia 🔥
 import { useNotification } from '../context/NotificationContext';
@@ -11,6 +11,11 @@ import SubformTable from '../features/cases/SubformTable';
 import ExportPdfButton from '../components/ExportPdfButton';
 import CaseComments from '../features/cases/CaseComments';
 import CaseExternalChat from '../features/cases/CaseExternalChat';
+
+// 🔥 IMPORTACIONES DE LIBRERÍAS DE 3ROS PARA LOS NUEVOS CAMPOS 🔥
+import PhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/style.css';
+import CurrencyInput from 'react-currency-input-field';
 
 const CaseDetail = () => {
   const { id } = useParams();
@@ -37,8 +42,8 @@ const CaseDetail = () => {
   const [companyRoles, setCompanyRoles] = useState([]); 
   const [editAssignedTo, setEditAssignedTo] = useState('');
   const [userData, setUserData] = useState(null);
-  const [hasSignaturit, setHasSignaturit] = useState(false); // 🔥 NUEVO ESTADO
-  const [signaturesList, setSignaturesList] = useState([]); // 🔥 NUEVO ESTADO PARA EL HISTORIAL DE FIRMAS
+  const [hasSignaturit, setHasSignaturit] = useState(false);
+  const [signaturesList, setSignaturesList] = useState([]);
   const [isModulePublished, setIsModulePublished] = useState(false);
 
   const fetchAllData = async (signal) => {
@@ -51,27 +56,21 @@ const CaseDetail = () => {
       const currentCase = caseRes.data;
       const moduleId = currentCase.module_id; 
 
-      // 🔥 VERIFICAR SI EL MÓDULO TIENE CHAT B2C (CATÁLOGO O COMPRAS) 🔥
       try {
-        // Consultamos la info del módulo y la configuración global de la App al mismo tiempo
         const [moduleRes, settingsRes] = await Promise.all([
           api.get(`/api/v1/modules/${moduleId}`, { signal }),
           api.get(`/api/v1/mobile/settings/mobile`, { signal }).catch(() => ({ data: {} }))
         ]);
         
         const isPublished = moduleRes.data?.mobile_config?.is_published === true;
-        // Verificamos si este módulo es el que elegimos en Settings para guardar los pedidos
         const isPurchasesModule = String(settingsRes.data?.purchases_module_id) === String(moduleId);
         
-        // Habilitamos el chat si es un catálogo público O si es la bandeja de compras B2C
         setIsModulePublished(isPublished || isPurchasesModule);
       } catch (err) {
         console.error("No se pudo verificar configuración B2C");
       }
 
-      // 🔥 Consultamos si Signaturit está activo
       const sigPromise = api.get(`/api/v1/modules/${moduleId}/integrations/signaturit`, { signal }).catch(() => ({ data: { is_active: false, has_token: false } }));
-      // 🔥 Traemos el historial de firmas del registro
       const sigListPromise = api.get(`/api/v1/cases/${id}/signatures`, { signal }).catch(() => ({ data: [] }));
 
       const [fieldsRes, secRes, statusRes, transRes, blueprintsRes, usersRes, rolesRes, sigRes, sigListRes] = await Promise.all([
@@ -116,7 +115,6 @@ const CaseDetail = () => {
          } catch (err) { relData[targetModuleId] = []; }
       };
 
-      // Cargamos relaciones secuencialmente para no saturar
       for (const f of fetchedFields) {
         if (f.field_type === 'relation' && f.options?.target_module_id) {
            await loadTargetModuleData(f.options.target_module_id);
@@ -142,7 +140,7 @@ const CaseDetail = () => {
       setRelationData(relData);
       setHasSignaturit(sigRes.data?.is_active && sigRes.data?.has_token);
       setSignaturesList(sigListRes.data || []);
-      // BÚSQUEDA INVERSA DE REGISTROS RELACIONADOS 
+      
       try {
          setLoadingLinked(true);
          const linkedRes = await api.get(`/api/v1/cases/${id}/linked`, { signal });
@@ -154,7 +152,7 @@ const CaseDetail = () => {
       }
     } catch (error) {
       if (error.name !== 'CanceledError') {
-        console.error("🔥 EL CULPABLE ES:", error); // Lo movimos aquí adentro
+        console.error("🔥 EL CULPABLE ES:", error); 
         
         if (error.response && (error.response.status === 403 || error.response.status === 404)) {
            notify.error("Acceso denegado o registro no encontrado.");
@@ -169,17 +167,16 @@ const CaseDetail = () => {
     }
   };
 
-  // 🔥 ESTADOS PARA SIGNATURIT (FASE 3) 🔥
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signaturitTemplates, setSignaturitTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [sendingSignature, setSendingSignature] = useState(false);
   const [sigConfig, setSigConfig] = useState({
-     sourceType: 'template', // 'template' o 'file'
+     sourceType: 'template',
      templateId: '',
      file: null,
-     signatureType: 'advanced', // 'advanced' o 'simple'
-     deliveryType: 'email', // 'email' o 'url'
+     signatureType: 'advanced',
+     deliveryType: 'email', 
      signers: [{ name: '', email: '' }]
   });
 
@@ -189,7 +186,6 @@ const CaseDetail = () => {
     try {
       const res = await api.get(`/api/v1/modules/${caseData.module_id}/integrations/signaturit/templates`);
       setSignaturitTemplates(res.data || []);
-      // Pre-llenar firmante si ya hay datos en el caso (Opcional, busca correos)
       const foundEmail = Object.values(caseData.data).find(v => typeof v === 'string' && v.includes('@'));
       if (foundEmail) setSigConfig(prev => ({...prev, signers: [{name: 'Cliente', email: foundEmail}]}));
     } catch (e) {
@@ -212,10 +208,9 @@ const CaseDetail = () => {
     try {
       notify.success("Iniciando descarga segura...");
       const response = await api.get(`/api/v1/cases/${id}/signatures/${signatureId}/download`, {
-        responseType: 'blob' // ¡Súper importante para descargar archivos!
+        responseType: 'blob' 
       });
       
-      // Magia del navegador para forzar la descarga del archivo
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -242,7 +237,6 @@ const CaseDetail = () => {
     try {
       await api.post(`/api/v1/cases/${id}/signatures/${signatureId}/cancel`);
       notify.success("El envío ha sido cancelado.");
-      // Recargamos los datos para que el estado se actualice visualmente
       fetchAllData(new AbortController().signal); 
     } catch (error) {
       notify.error(error.response?.data?.detail || "Error al cancelar.");
@@ -274,7 +268,6 @@ const CaseDetail = () => {
       
       setIsSignatureModalOpen(false);
       
-      // MAGIA "FIRMAR YO": Abrir la pestaña si se seleccionó URL
       if (sigConfig.deliveryType === 'url' && res.data.signature_url) {
          notify.success("¡Documento listo! Redirigiendo a la sala de firmas...");
          window.open(res.data.signature_url, '_blank');
@@ -290,7 +283,6 @@ const CaseDetail = () => {
   };
 
   useEffect(() => { 
-    // 🔥 FIX: Resetear la pestaña y el modo edición al navegar a un nuevo caso
     setActiveTab('details');
     setIsEditing(false);
     
@@ -376,12 +368,8 @@ const CaseDetail = () => {
   const currentOwner = companyUsers.find(u => u.id === caseData.assigned_to);
   const ownerName = currentOwner ? (currentOwner.first_name ? `${currentOwner.first_name} ${currentOwner.last_name || ''}` : currentOwner.email) : 'Sin asignar';
 
-  // ==========================================
-  // 🔥 FASE 2: CALCULADORA DE SLA 🔥
-  // ==========================================
   const getSlaStatus = () => {
      if (!caseData || !caseData.status_id) return null;
-     // Aquí usamos 'statuses' que es el estado local de este componente
      const status = statuses.find(s => s.id === caseData.status_id);
      if (!status || !status.sla_hours) return null; 
 
@@ -398,9 +386,6 @@ const CaseDetail = () => {
      return { state: 'good', label: 'A tiempo', hours: hoursRemaining.toFixed(1) };
   };
 
-  // ==========================================
-  // 🔥 LÓGICA ZERO TRUST (RBAC) 🔥
-  // ==========================================
   let canEdit = userData.is_superadmin;
   let canDelete = userData.is_superadmin;
 
@@ -464,7 +449,9 @@ const CaseDetail = () => {
     const value = isEditing ? editFormData[fieldKey] : caseData.data[fieldKey];
     const isFullWidth = field.field_type === 'textarea' || field.field_type === 'subform';
 
+    // ==============================================================
     // MODO LECTURA
+    // ==============================================================
     if (!isEditing) {
       return (
         <div key={field.id} className={`flex flex-col gap-1.5 border-b border-gray-100 dark:border-gray-800/60 pb-3 ${isFullWidth ? 'col-span-full' : ''}`}>
@@ -495,10 +482,26 @@ const CaseDetail = () => {
 
           ) : field.field_type === 'url' && value ? (
              <a href={value.startsWith('http') ? value : `https://${value}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"><Link2 size={14}/> {value}</a>
+          
           ) : field.field_type === 'map' && value ? (
              <a href={`https://www.google.com/maps/search/?api=1&query=${value}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1.5"><MapPin size={14}/> Ver en Google Maps ({value})</a>
+          
           ) : field.field_type === 'formula' ? (
              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5"><Calculator size={14}/> {value !== undefined ? value : '--'}</span>
+          
+          /* 🔥 NUEVO: MODO LECTURA DE MONEDA 🔥 */
+          ) : field.field_type === 'currency' && value !== undefined && value !== "" && value !== null ? (
+             <span className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+               <CircleDollarSign size={14} className="text-amber-500"/>
+               {field.options?.symbol_position === 'right' ? `${value} ${field.options?.symbol || '$'}` : `${field.options?.symbol || '$'} ${value}`}
+             </span>
+             
+          /* 🔥 NUEVO: MODO LECTURA DE TELÉFONO 🔥 */
+          ) : field.field_type === 'phone' && value ? (
+             <span className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+               <Phone size={14} className="text-teal-500"/> +{value}
+             </span>
+
           ) : field.field_type === 'subform' ? (
              <SubformTable field={field} value={value || []} relationData={relationData} isEditing={false} />
           ) : (
@@ -510,8 +513,10 @@ const CaseDetail = () => {
       );
     }
 
+    // ==============================================================
     // MODO EDICIÓN
-    const inputClasses = `w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg outline-none text-sm text-gray-900 dark:text-white ${isReadOnly ? 'opacity-60 cursor-not-allowed border-transparent px-0 bg-transparent font-medium' : 'focus:ring-2 focus:ring-blue-500 hover:border-blue-400'}`;
+    // ==============================================================
+    const inputClasses = `w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg outline-none text-sm text-gray-900 dark:text-white transition-colors ${isReadOnly ? 'opacity-60 cursor-not-allowed border-transparent px-0 bg-transparent font-medium' : 'focus:ring-2 focus:ring-blue-500 hover:border-blue-400'}`;
 
     return (
       <div key={field.id} className={`flex flex-col gap-1.5 ${isFullWidth ? 'col-span-full' : ''}`}>
@@ -526,7 +531,6 @@ const CaseDetail = () => {
         
         : field.field_type === 'relation' ? <SearchableSelect placeholder="Buscar registro..." value={value || ''} onChange={(val) => setEditFormData({...editFormData, [fieldKey]: val})} disabled={isReadOnly} options={relationData[field.options?.target_module_id] || []} /> 
         
-        /* 🔥 NUEVO: EDICIÓN DE RELACIÓN CON USUARIOS 🔥 */
         : field.field_type === 'user_relation' ? (
           <SearchableSelect 
              placeholder="Buscar usuario..." 
@@ -544,10 +548,50 @@ const CaseDetail = () => {
           />
         )
 
+        /* 🔥 NUEVO: CAMPO DE TELÉFONO ENRIQUECIDO (MODO EDICIÓN) 🔥 */
+        : field.field_type === 'phone' ? (
+          <div className="react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
+            <PhoneInput
+              country={field.options?.default_country?.toLowerCase() || 'py'}
+              disableDropdown={field.options?.restrict_country || false}
+              value={value || ''}
+              onChange={(phone) => setEditFormData({...editFormData, [fieldKey]: phone})}
+              inputClass={inputClasses}
+              buttonClass="border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 !rounded-l-lg !border-r-0 !border-y-0"
+              containerClass="w-full relative"
+              inputStyle={{width: '100%', height: '38px', paddingLeft: '48px', backgroundColor: 'transparent', borderColor: 'transparent', color: 'inherit'}}
+              disabled={isReadOnly}
+            />
+          </div>
+        )
+
+        /* 🔥 NUEVO: CAMPO DE MONEDA Y DECIMALES (MODO EDICIÓN) 🔥 */
+        : field.field_type === 'currency' ? (
+          <div className="relative">
+            {field.options?.symbol_position === 'left' && (
+               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
+            )}
+            <CurrencyInput
+              id={`currency-${fieldKey}`}
+              name={fieldKey}
+              value={value || ''}
+              decimalsLimit={field.options?.decimal_places ?? 2}
+              decimalSeparator={field.options?.decimal_separator || ','}
+              groupSeparator={field.options?.thousand_separator || '.'}
+              onValueChange={(val) => setEditFormData({...editFormData, [fieldKey]: val || ''})}
+              className={`${inputClasses} ${field.options?.symbol_position === 'left' ? 'pl-8' : ''} ${field.options?.symbol_position === 'right' ? 'pr-8' : ''}`}
+              placeholder="0.00"
+              disabled={isReadOnly}
+            />
+            {field.options?.symbol_position === 'right' && (
+               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
+            )}
+          </div>
+        )
+
         : field.field_type === 'textarea' ? <textarea required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} />
         : field.field_type === 'checkbox' ? <input type="checkbox" disabled={isReadOnly} checked={value || false} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.checked})} className={`w-5 h-5 rounded text-blue-600 focus:ring-blue-500 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} /> 
         
-        /* 🔥 AQUÍ ESTÁN TUS DOS CAMPOS NUEVOS 🔥 */
         : field.field_type === 'map' ? (
           <div className="flex gap-2">
              <input type="text" required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses} placeholder="Latitud, Longitud" />
@@ -583,7 +627,6 @@ const CaseDetail = () => {
     );
   };
 
-  // 🔥 AGREGAR AQUÍ LA LÓGICA DEL TÍTULO DINÁMICO 🔥
   const primaryField = formFields.find(field => field.is_primary === true);
   let displayTitle = `Registro #${caseData?.id}`; 
 
@@ -591,7 +634,6 @@ const CaseDetail = () => {
       displayTitle = caseData.data[primaryField.api_name];
   }
 
-  // 🔥 Quitamos <Layout> porque el App.jsx ya lo envuelve 🔥
   return (
     <>
       <div className="sticky -top-8 -mx-8 px-8 pt-8 pb-4 mb-8 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4 z-40 transition-colors shadow-sm dark:shadow-none">
@@ -602,7 +644,6 @@ const CaseDetail = () => {
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">{displayTitle}</h1>
               <span className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-2.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5"><CheckCircle size={12}/> {currentStatusName || 'Sin Estado'}</span>
               
-              {/* 🔥 FASE 2: INDICADOR DE SLA EN EL HEADER 🔥 */}
               {(() => {
                  const sla = getSlaStatus();
                  if (!sla) return null;
@@ -630,7 +671,6 @@ const CaseDetail = () => {
         <div className="flex flex-wrap items-center gap-3">
           {!isEditing && caseData.status_id && showTransitions && (
             <div className="w-64 mr-2 pr-4 border-r border-gray-200 dark:border-gray-800 flex items-center">
-              {/* 🔥 REEMPLAZAMOS LOS BOTONES POR EL SELECT2 🔥 */}
               <SearchableSelect 
                  placeholder="Transicionar a..." 
                  value="" 
@@ -644,13 +684,11 @@ const CaseDetail = () => {
           {!isEditing ? (
             <>
               {canDelete && <button onClick={handleDeleteCase} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Mover a papelera"><Trash2 size={18} /></button>}
-              {/* 🔥 BOTÓN ENVIAR A FIRMA (SOLO SI ESTÁ CONFIGURADO) 🔥 */}
               {hasSignaturit && (
                   <button onClick={handleOpenSignatureModal} className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 hover:text-emerald-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
                      <PenTool size={16}/> Firmar
                   </button>
               )}
-              {/* 🔥 AQUÍ INYECTAMOS NUESTRO BOTÓN MÁGICO 🔥 */}
               <ExportPdfButton moduleId={caseData.module_id} recordId={caseData.id} />
 
               {canEdit && <button onClick={handleEditClick} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"><Edit2 size={16} /> Editar</button>}
@@ -675,19 +713,16 @@ const CaseDetail = () => {
           <button onClick={() => setActiveTab('comments')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'comments' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
             <MessageSquare size={16} /> Comentarios
           </button>
-          {/* 🔥 NUEVA PESTAÑA: CHAT CON CLIENTE (SOLO SI ES MÓDULO B2C) 🔥 */}
           {isModulePublished && (
             <button onClick={() => setActiveTab('external_chat')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'external_chat' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
               <MessageCircle size={16} /> Chat B2C
             </button>
           )}
-          {/* 🔥 NUEVA PESTAÑA CONDICIONADA 🔥 */}
           {hasSignaturit && (
             <button onClick={() => setActiveTab('signatures')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'signatures' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
               <PenTool size={16} /> Firmas Digitales
             </button>
           )}
-          {/*  NUEVA PESTAÑA CONDICIONADA SI HAY REGISTROS VINCULADOS  */}
           {Object.keys(linkedCases).length > 0 && (
             <button onClick={() => setActiveTab('linked')} className={`pb-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'linked' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'}`}>
               <LinkIcon size={16} /> Relacionados ({Object.values(linkedCases).flat().length})
@@ -815,19 +850,16 @@ const CaseDetail = () => {
             </div>
           </div>
         )}
-        {/* 🔥 RENDERIZAR EL COMPONENTE DE CHAT 🔥 */}
         {activeTab === 'comments' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-3xl mx-auto">
             <CaseComments caseId={id} currentUser={userData} />
           </div>
         )}
-        {/* 🔥 RENDERIZAR EL CHAT EXTERNO B2C 🔥 */}
         {activeTab === 'external_chat' && isModulePublished && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-4xl mx-auto">
             <CaseExternalChat caseId={id} currentUser={userData} />
           </div>
         )}
-        {/* 🔥 PESTAÑA DE REGISTROS VINCULADOS (MAGIA RELACIONAL) 🔥 */}
         {activeTab === 'linked' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-4xl mx-auto space-y-6">
              {loadingLinked ? (
@@ -842,11 +874,9 @@ const CaseDetail = () => {
                       </div>
                       <div className="divide-y divide-gray-100 dark:divide-gray-800">
                          {casesList.map(c => {
-                        // 🔥 LÓGICA PARA EXTRAER EL TÍTULO INTELIGENTEMENTE 🔥
                         let linkedTitle = `Registro #${c.id}`;
                         
                         if (c.data && Object.keys(c.data).length > 0) {
-                            // Buscamos el primer valor dentro del JSON que sea un texto útil (ni vacío, ni muy largo, ni una URL)
                             const firstValidText = Object.values(c.data).find(val => 
                                 typeof val === 'string' && 
                                 val.trim() !== '' && 
@@ -882,7 +912,6 @@ const CaseDetail = () => {
              )}
           </div>
         )}
-        {/* 🔥 RENDERIZAR EL TABLERO DE FIRMAS 🔥 */}
         {activeTab === 'signatures' && hasSignaturit && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10 max-w-4xl mx-auto">
             <div className="flex justify-between items-center mb-6">
@@ -928,13 +957,11 @@ const CaseDetail = () => {
                         </div>
 
                         <div className="flex flex-col items-start md:items-end gap-2 shrink-0 border-t md:border-t-0 border-gray-100 dark:border-gray-800 pt-4 md:pt-0">
-                           {/* ESTADO DINÁMICO */}
                            {['completed', 'document_signed'].includes(sig.status) ? (
                               <div className="flex flex-col items-start md:items-end gap-2">
                                   <span className="bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
                                      <CheckCircle size={16} /> Completado y Firmado
                                   </span>
-                                  {/* 🔥 NUEVO BOTÓN DE DESCARGA 🔥 */}
                                   <button onClick={() => handleDownloadSignedDocument(sig.id)} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition-colors flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-200 dark:hover:bg-emerald-800/50 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 shadow-sm mt-1 active:scale-95">
                                      <Download size={14}/> Descargar PDF Firmado
                                   </button>
@@ -953,7 +980,6 @@ const CaseDetail = () => {
                               </span>
                            )}
                            
-                           {/* Acciones adicionales si no está completado ni cancelado */}
                            {['in_queue', 'ready', 'document_opened'].includes(sig.status) && (
                               <div className="flex flex-wrap items-center gap-3 mt-2 md:justify-end">
                                  <button onClick={() => handleRemindSignature(sig.id)} className="text-[11px] font-bold text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
@@ -973,7 +999,6 @@ const CaseDetail = () => {
           </div>
         )}
       </div>
-      {/* 🔥 MODAL DE ENVÍO A SIGNATURIT 🔥 */}
       {isSignatureModalOpen && createPortal(
         <div className="fixed inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-emerald-200 dark:border-emerald-800/50 overflow-hidden flex flex-col max-h-[90vh]">
@@ -985,15 +1010,14 @@ const CaseDetail = () => {
             
             <form onSubmit={handleSendToSignaturit} className="p-6 overflow-y-auto custom-scrollbar space-y-6">
               
-             {/* TIPO DE ORIGEN */}
               <div className="flex gap-2 bg-gray-100 dark:bg-gray-950 p-1.5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-inner">
                 <button 
                   type="button" 
                   onClick={() => setSigConfig({
                     ...sigConfig, 
                     sourceType: 'template', 
-                    deliveryType: 'email', // 🔥 Forzamos correo al volver a plantillas
-                    signers: [{ name: '', email: '' }] // Reseteamos firmantes
+                    deliveryType: 'email', 
+                    signers: [{ name: '', email: '' }] 
                   })} 
                   className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${sigConfig.sourceType === 'template' ? 'bg-white dark:bg-gray-800 shadow-sm text-emerald-600 dark:text-emerald-400 border border-gray-200 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border border-transparent'}`}
                 >
@@ -1013,7 +1037,6 @@ const CaseDetail = () => {
                  <div>
                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Plantilla de Signaturit</label>
                    {loadingTemplates ? <p className="text-sm text-emerald-600 dark:text-emerald-500 flex items-center gap-2 animate-pulse"><Loader2 size={16} className="animate-spin"/> Cargando plantillas...</p> : (
-                     /* 🔥 SELECT2 (SearchableSelect) MÁGICO 🔥 */
                      <SearchableSelect 
                         placeholder="Buscar plantilla..." 
                         value={sigConfig.templateId} 
@@ -1032,7 +1055,6 @@ const CaseDetail = () => {
                  </div>
               )}
 
-              {/* CONFIGURACIÓN DE FIRMA */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-100 dark:border-gray-800 pt-6">
                  <div>
                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Validez Legal</label>
@@ -1060,7 +1082,6 @@ const CaseDetail = () => {
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none text-sm text-gray-900 dark:text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all"
                    >
                       <option value="email">Por Correo Electrónico</option>
-                      {/* 🔥 SOLO MOSTRAMOS ESTA OPCIÓN SI ES SUBIDA MANUAL 🔥 */}
                       {sigConfig.sourceType === 'file' && (
                          <option value="url">"Firmar Yo" (Embebido Presencial)</option>
                       )}
@@ -1068,7 +1089,6 @@ const CaseDetail = () => {
                  </div>
               </div>
 
-              {/* FIRMANTES */}
               <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
                  <div className="flex justify-between items-center mb-4">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Users size={14}/> Firmantes Requeridos</label>

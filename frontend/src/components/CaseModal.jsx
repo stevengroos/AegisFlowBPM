@@ -1,44 +1,92 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // Para el portal del SearchableSelect
 import api from '../api/axios';
-import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator  } from 'lucide-react';
+import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator, Phone, CircleDollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-// 🔥 1. IMPORTAMOS NUESTRAS NOTIFICACIONES 🔥
 import { useNotification } from '../context/NotificationContext';
-import FileUploadField from '../components/ui/FileUploadField'; // 🔥 Importamos el componente con IA
+import FileUploadField from '../components/ui/FileUploadField';
+
+// 🔥 IMPORTACIONES DE LIBRERÍAS DE 3ROS PARA LOS NUEVOS CAMPOS 🔥
+import PhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/style.css';
+import CurrencyInput from 'react-currency-input-field';
 
 // ==========================================
-// COMPONENTES AUXILIARES (Archivos y Selects)
+// COMPONENTE: SEARCHABLE SELECT CON PORTAL
 // ==========================================
-
-
 const SearchableSelect = ({ options, value, onChange, disabled, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const wrapperRef = useRef(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const containerRef = useRef(null);
+  const dropdownRef = useRef(null);
 
-  useEffect(() => {
-    function handleClickOutside(event) { if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false); }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Validación segura para evitar crasheos si options no es array
   const safeOptions = Array.isArray(options) ? options : [];
   const selectedOption = safeOptions.find(opt => opt.value == value);
   const displayValue = selectedOption ? selectedOption.label : '';
   const filteredOptions = safeOptions.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase()));
 
+  const updateCoords = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width
+      });
+    }
+  }, []);
+
+  const handleToggle = () => {
+    if (disabled) return;
+    if (!isOpen) updateCoords();
+    setIsOpen(!isOpen);
+    setSearchTerm('');
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        containerRef.current && !containerRef.current.contains(event.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleScrollOrResize = () => { if (isOpen) updateCoords(); };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      window.addEventListener('scroll', handleScrollOrResize, true);
+      window.addEventListener('resize', handleScrollOrResize);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [isOpen, updateCoords]);
+
   return (
-    <div ref={wrapperRef} className="relative w-full">
-      <div onClick={() => !disabled && setIsOpen(!isOpen)} className={`w-full px-4 py-2.5 bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/50 rounded-xl text-sm text-gray-700 dark:text-gray-200 transition-colors flex justify-between items-center ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500'}`}>
+    <div ref={containerRef} className="relative w-full">
+      <div onClick={handleToggle} className={`w-full px-4 py-2.5 bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/50 rounded-xl text-sm text-gray-700 dark:text-gray-200 transition-colors flex justify-between items-center ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500'}`}>
         <span className={`truncate ${selectedOption ? '' : 'text-gray-400 dark:text-gray-500'}`}>{selectedOption ? displayValue : placeholder}</span>
         <ChevronDown size={16} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </div>
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in duration-100">
-          <div className="sticky top-0 bg-white dark:bg-gray-800 p-2 border-b border-gray-100 dark:border-gray-700 z-10"><div className="relative"><Search size={14} className="absolute left-3 top-2.5 text-gray-400" /><input type="text" autoFocus className="w-full pl-9 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-200" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onClick={(e) => e.stopPropagation()}/></div></div>
-          <div className="p-1">{filteredOptions.length === 0 ? <div className="px-3 py-4 text-sm text-gray-500 text-center italic">No hay resultados</div> : filteredOptions.map(opt => (<div key={opt.value} className={`px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors truncate ${value == opt.value ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`} onClick={() => {onChange(opt.value); setIsOpen(false); setSearchTerm('');}}>{opt.label}</div>))}</div>
-        </div>
+      
+      {isOpen && createPortal(
+        <div ref={dropdownRef} style={{ position: 'absolute', top: `${coords.top + 4}px`, left: `${coords.left}px`, width: `${Math.max(coords.width, 200)}px`, zIndex: 999999 }} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in duration-100">
+          <div className="sticky top-0 bg-white dark:bg-gray-800 p-2 border-b border-gray-100 dark:border-gray-700 z-10">
+             <div className="relative">
+                <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+                <input type="text" autoFocus className="w-full pl-9 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-200" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onClick={(e) => e.stopPropagation()}/>
+             </div>
+          </div>
+          <div className="p-1 max-h-60 overflow-y-auto custom-scrollbar">
+             {filteredOptions.length === 0 ? <div className="px-3 py-4 text-sm text-gray-500 text-center italic">No hay resultados</div> : filteredOptions.map(opt => (<div key={opt.value} className={`px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors truncate ${value == opt.value ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`} onClick={() => {onChange(opt.value); setIsOpen(false); setSearchTerm('');}}>{opt.label}</div>))}
+          </div>
+        </div>, document.body
       )}
     </div>
   );
@@ -51,7 +99,6 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder }) =
 const SubformTable = ({ field, value, onChange, relationData }) => {
   const rows = Array.isArray(value) ? value : [];
   
-  // Validación segura
   let columns = [];
   if (Array.isArray(field.subform_config)) {
     columns = field.subform_config;
@@ -82,7 +129,7 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
   return (
     <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm col-span-full">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm whitespace-nowrap">
+        <table className="w-full text-left text-sm whitespace-nowrap min-w-[600px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
             <tr>
               {columns.map((col, i) => <th key={i} className="px-4 py-3 font-bold">{col.label}</th>)}
@@ -101,14 +148,12 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
                        {col.type === 'select' ? (
                           <select value={cellValue} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
                              <option value="">...</option>
-                             {/* Safe mapping */}
                              {(typeof col.options === 'string' ? col.options.split(',') : (Array.isArray(col.options) ? col.options : [])).map((o, i) => <option key={i} value={o.trim()}>{o.trim()}</option>)}
                           </select>
                        ) : col.type === 'relation' ? (
-                          <select value={cellValue} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
-                             <option value="">Seleccionar...</option>
-                             {(relationData[col.target_module_id] || []).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                          </select>
+                          <div className="min-w-[200px]">
+                             <SearchableSelect value={cellValue} onChange={val => handleChangeCell(rIdx, col.label, val)} options={relationData[col.target_module_id] || []} placeholder="Seleccionar..." />
+                          </div>
                        ) : col.type === 'file' || col.type === 'image' ? (
                           <div className="min-w-[200px]">
                             <FileUploadField type={col.type} value={cellValue} onChange={val => handleChangeCell(rIdx, col.label, val)} disabled={false} />
@@ -253,7 +298,6 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   e.preventDefault(); 
   setLoading(true);
   try {
-    // 🔥 Capturamos la respuesta del servidor (res)
     const res = await api.post('/api/v1/cases/', { 
       form_id: selectedForm.id, 
       module_id: moduleId, 
@@ -261,7 +305,6 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
       assigned_to: assignedTo ? parseInt(assignedTo) : null 
     });
 
-    // Extraemos el ID del registro recién creado
     const newCaseId = res.data.id; 
 
     notify.success("Registro creado con éxito.");
@@ -269,7 +312,6 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
     if (onSuccess) onSuccess(); 
     onClose();
 
-    // 🔥 REDIRECCIÓN: Navegamos directamente al detalle del caso
     navigate(`/cases/${newCaseId}`);
 
   } catch (error) { 
@@ -291,7 +333,6 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
       if (!fieldKey) return null;
       const isFullWidth = field.field_type === 'textarea' || field.field_type === 'subform';
       
-      // Sanitizamos opciones para evitar el map de strings
       let renderOptions = [];
       if (Array.isArray(field.options)) renderOptions = field.options;
       else if (typeof field.options === 'string') renderOptions = field.options.split(',');
@@ -303,14 +344,18 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
             {field.label} {field.required && <span className="text-red-500 dark:text-red-400">*</span>}
           </label>
           
+          {/* ========================================================================= */}
+          {/* 🔥 LÓGICA DE RENDERIZADO PRINCIPAL 🔥 */}
+          {/* ========================================================================= */}
+          
           {field.field_type === 'select' ? (
             <select required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={inputClasses}>
               <option value="">Selecciona una opción...</option>
               {renderOptions.map((opt, i) => <option key={i} value={typeof opt === 'string' ? opt.trim() : opt}>{typeof opt === 'string' ? opt.trim() : opt}</option>)}
             </select>
+            
           ) : field.field_type === 'relation' ? (
             <SearchableSelect placeholder="Enlazar con un registro..." value={formData[fieldKey] || ''} onChange={(val) => setFormData({...formData, [fieldKey]: val})} disabled={false} options={relationData[field.options?.target_module_id] || []} />
-          
           
           ) : field.field_type === 'user_relation' ? (
             <SearchableSelect 
@@ -322,26 +367,58 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                   let filtered = companyUsers;
                   const rId = field.options?.role_id;
                   const pId = field.options?.profile_id;
-                  // Si el administrador configuró filtros, los aplicamos:
                   if (rId) filtered = filtered.filter(u => String(u.role_id) === String(rId));
                   if (pId) filtered = filtered.filter(u => String(u.profile_id) === String(pId));
-                  // Retornamos el formato que entiende SearchableSelect
-                  return filtered.map(u => ({ 
-                      value: u.id, 
-                      label: u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.email 
-                  }));
+                  return filtered.map(u => ({ value: u.id, label: u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.email }));
                })()} 
             />
           
+          
+          ) : field.field_type === 'phone' ? (
+            <div className="react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
+              <PhoneInput
+                country={field.options?.default_country?.toLowerCase() || 'py'}
+                disableDropdown={field.options?.restrict_country || false}
+                value={formData[fieldKey] || ''}
+                onChange={(phone) => setFormData({...formData, [fieldKey]: phone})}
+                inputClass={inputClasses}
+                buttonClass="border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 !rounded-l-xl !border-r-0 !border-y-0"
+                containerClass="w-full relative"
+                inputStyle={{width: '100%', height: '42px', paddingLeft: '48px', backgroundColor: 'transparent', borderColor: 'var(--tw-border-opacity)', color: 'inherit'}}
+              />
+            </div>
+            
+         
+          ) : field.field_type === 'currency' ? (
+            <div className="relative">
+              {field.options?.symbol_position === 'left' && (
+                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
+              )}
+              <CurrencyInput
+                id={`currency-${fieldKey}`}
+                name={fieldKey}
+                value={formData[fieldKey] || ''}
+                decimalsLimit={field.options?.decimal_places ?? 2}
+                decimalSeparator={field.options?.decimal_separator || ','}
+                groupSeparator={field.options?.thousand_separator || '.'}
+                onValueChange={(value) => setFormData({...formData, [fieldKey]: value || ''})}
+                className={`${inputClasses} ${field.options?.symbol_position === 'left' ? 'pl-9' : ''} ${field.options?.symbol_position === 'right' ? 'pr-9' : ''}`}
+                placeholder="0.00"
+              />
+              {field.options?.symbol_position === 'right' && (
+                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
+              )}
+            </div>
+
           ) : field.field_type === 'textarea' ? (
             <textarea required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} />
+            
           ) : field.field_type === 'checkbox' ? (
             <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
               <input type="checkbox" checked={formData[fieldKey] || false} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.checked})} className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-blue-600 focus:ring-blue-500 cursor-pointer" />
               <span className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => setFormData({...formData, [fieldKey]: !formData[fieldKey]})}>Marcar como verdadero</span>
             </div>
-          
-          
+            
           ) : field.field_type === 'map' ? (
             <div className="flex gap-2">
                <input type="text" required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={inputClasses} placeholder="Latitud, Longitud" />
@@ -355,12 +432,12 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                   <MapPin size={20}/>
                </button>
             </div>
+            
           ) : field.field_type === 'formula' ? (
             <div className="relative">
                <Calculator className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={16} />
                <input type="text" disabled value={calculateVisualFormula(field.options, formData)} className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} placeholder="Calculado automáticamente" />
             </div>
-          
 
           ) : field.field_type === 'file' || field.field_type === 'image' ? (
             <FileUploadField 
@@ -368,18 +445,19 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                value={formData[fieldKey] || ''} 
                onChange={(url) => setFormData({...formData, [fieldKey]: url})} 
                disabled={false} 
-               // 🔥 FASE 3.3: Le pasamos los campos que se muestran en el modal de creación
                expectedFields={fieldsToShow.filter(f => !['file', 'image', 'subform', 'url'].includes(f.field_type)).map(f => f.api_name || f.label)}
-               // 🔥 FASE 3.3: Autocompletamos el formulario
                onDataExtracted={(aiData) => setFormData(prev => ({ ...prev, ...aiData }))}
             />
+            
           ) : field.field_type === 'url' ? (
             <div className="relative">
               <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input type="url" required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={`${inputClasses} pl-9`} placeholder="https://" />
             </div>
+            
           ) : field.field_type === 'subform' ? (
             <SubformTable field={field} value={formData[fieldKey] || []} onChange={(val) => setFormData({...formData, [fieldKey]: val})} relationData={relationData} />
+            
           ) : (
             <input type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'email' ? 'email' : 'text'} required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={inputClasses} />
           )}

@@ -3,6 +3,11 @@ import { Link2, Trash2, Plus } from 'lucide-react';
 import FileUploadField from '../../components/ui/FileUploadField';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 
+// 🔥 IMPORTAMOS LAS LIBRERÍAS NUEVAS 🔥
+import PhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/style.css';
+import CurrencyInput from 'react-currency-input-field';
+
 const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
   const rows = Array.isArray(value) ? value : [];
   const columns = field.subform_config || [];
@@ -29,8 +34,9 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
   };
 
   return (
-    <div className={`border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 w-full ${isEditing ? 'shadow-sm' : ''}`}>
-      <div className="overflow-x-auto">
+    
+    <div className={`border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 w-full ${isEditing ? 'shadow-sm overflow-visible' : 'overflow-hidden'}`}>
+      <div className={isEditing ? "overflow-visible" : "overflow-x-auto"}>
         <table className="w-full text-left text-sm whitespace-nowrap min-w-[600px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
             <tr>
@@ -44,8 +50,12 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                 {columns.map((col, cIdx) => {
                   const cellValue = row[col.label];
                   
+                  // ==========================================
+                  // MODO LECTURA (VISTA)
+                  // ==========================================
                   if (!isEditing) {
                     let displayValue = cellValue;
+                    
                     if (col.type === 'relation' && cellValue) {
                        const relOpt = (relationData[col.target_module_id] || []).find(o => o.value == cellValue);
                        displayValue = relOpt ? relOpt.label : `ID: ${cellValue}`;
@@ -53,6 +63,16 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                     if (col.type === 'file' || col.type === 'image') {
                         return <td key={cIdx} className="px-4 py-2"><FileUploadField type={col.type} value={cellValue} disabled={true} /></td>;
                     }
+                    
+                    // 🔥 NUEVO: Formato bonito para Monedas y Teléfonos en modo lectura
+                    if (col.type === 'currency' && cellValue) {
+                       const sym = col.options?.symbol || '$';
+                       displayValue = col.options?.symbol_position === 'right' ? `${cellValue} ${sym}` : `${sym} ${cellValue}`;
+                    }
+                    if (col.type === 'phone' && cellValue) {
+                       displayValue = `+${cellValue}`; // Agregamos el + para denotar código internacional
+                    }
+
                     return (
                       <td key={cIdx} className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                         {col.type === 'relation' && cellValue ? (
@@ -64,6 +84,9 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                     );
                   }
 
+                  // ==========================================
+                  // MODO EDICIÓN
+                  // ==========================================
                   const inputClass = "w-full px-3 py-1.5 bg-transparent border-0 border-b border-transparent focus:border-blue-500 hover:border-gray-300 dark:hover:border-gray-600 focus:ring-0 outline-none text-sm text-gray-900 dark:text-white transition-colors";
                   return (
                     <td key={cIdx} className="px-4 py-2 align-top">
@@ -81,6 +104,44 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                                placeholder="Seleccionar..."
                             />
                           </div>
+                          
+                       // 🔥 NUEVO: INPUT DE TELÉFONO EN TABLA 🔥
+                       ) : col.type === 'phone' ? (
+                          <div className="min-w-[200px] react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
+                            <PhoneInput
+                              country={col.options?.default_country?.toLowerCase() || 'py'}
+                              disableDropdown={col.options?.restrict_country || false}
+                              value={cellValue || ''}
+                              onChange={val => handleChangeCell(rIdx, col.label, val)}
+                              inputClass={inputClass}
+                              buttonClass="border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 !rounded-l-xl !border-r-0 !border-y-0"
+                              containerClass="w-full relative"
+                              inputStyle={{width: '100%', height: '34px', paddingLeft: '48px', backgroundColor: 'transparent', borderColor: 'transparent', color: 'inherit'}}
+                            />
+                          </div>
+                          
+                       // 🔥 NUEVO: INPUT DE MONEDA EN TABLA 🔥
+                       ) : col.type === 'currency' ? (
+                          <div className="min-w-[150px] relative">
+                             {col.options?.symbol_position === 'left' && (
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">{col.options?.symbol || '$'}</span>
+                             )}
+                             <CurrencyInput
+                               id={`currency-${rIdx}-${cIdx}`}
+                               name={`currency-${rIdx}-${cIdx}`}
+                               value={cellValue || ''}
+                               decimalsLimit={col.options?.decimal_places ?? 2}
+                               decimalSeparator={col.options?.decimal_separator || ','}
+                               groupSeparator={col.options?.thousand_separator || '.'}
+                               onValueChange={(val) => handleChangeCell(rIdx, col.label, val || '')}
+                               className={`${inputClass} ${col.options?.symbol_position === 'left' ? 'pl-6' : ''} ${col.options?.symbol_position === 'right' ? 'pr-6' : ''}`}
+                               placeholder="0.00"
+                             />
+                             {col.options?.symbol_position === 'right' && (
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">{col.options?.symbol || '$'}</span>
+                             )}
+                          </div>
+
                        ) : col.type === 'file' || col.type === 'image' ? (
                           <div className="min-w-[150px]"><FileUploadField type={col.type} value={cellValue || ''} onChange={val => handleChangeCell(rIdx, col.label, val)} disabled={false} /></div>
                        ) : (

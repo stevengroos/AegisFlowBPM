@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users } from 'lucide-react';
+import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign } from 'lucide-react'; // 🔥 NUEVOS ÍCONOS AÑADIDOS
 import { PALETTE_ITEMS } from './Palette';
 
 const FieldPropertiesModal = ({ 
@@ -9,10 +9,10 @@ const FieldPropertiesModal = ({
   editingField, 
   setEditingField, 
   onSave, 
-  modulesList = [], // 🔥 AÑADIR FALLBACK = []
-  rolesList = [],   // 🔥 AÑADIR FALLBACK = []
-  profilesList = [],// 🔥 AÑADIR FALLBACK = []
-  localFields // Necesitamos conocer los otros campos para armar las Fórmulas
+  modulesList = [], 
+  rolesList = [],   
+  profilesList = [],
+  localFields 
 }) => {
   if (!isOpen || !editingField) return null;
 
@@ -57,7 +57,86 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 NUEVO: CONFIGURACIÓN RELACIONAL (LOOKUP) 🔥 */}
+           {/* 🔥 NUEVO: CONFIGURACIÓN DE TELÉFONO 🔥 */}
+           {editingField.field_type === 'phone' && (
+             <div className="bg-teal-50/50 dark:bg-teal-900/10 border border-teal-200 dark:border-teal-800/50 p-4 rounded-xl space-y-4">
+               <label className="block text-xs font-bold text-teal-700 dark:text-teal-400 uppercase mb-1.5 flex items-center gap-1">
+                 <Phone size={14}/> Configuración de Teléfono Internacional
+               </label>
+               <p className="text-xs text-gray-600 dark:text-gray-400">Selecciona el código de país que se mostrará por defecto.</p>
+               
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">País Predeterminado</label>
+                   <select 
+                     value={editingField.options?.default_country || 'PY'} 
+                     onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, default_country: e.target.value }})} 
+                     className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                   >
+                     <option value="PY">🇵🇾 Paraguay (+595)</option>
+                     <option value="AR">🇦🇷 Argentina (+54)</option>
+                     <option value="BR">🇧🇷 Brasil (+55)</option>
+                     <option value="US">🇺🇸 EE.UU. (+1)</option>
+                     <option value="MX">🇲🇽 México (+52)</option>
+                     <option value="ES">🇪🇸 España (+34)</option>
+                     <option value="CO">🇨🇴 Colombia (+57)</option>
+                   </select>
+                 </div>
+                 
+                 <div className="flex items-center gap-2 pt-5 cursor-pointer" onClick={() => setEditingField({...editingField, options: { ...editingField.options, restrict_country: !editingField.options?.restrict_country }})}>
+                   <input type="checkbox" checked={editingField.options?.restrict_country || false} readOnly className="w-4 h-4 rounded text-teal-600 cursor-pointer" />
+                   <label className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Bloquear cambio de país</label>
+                 </div>
+               </div>
+             </div>
+           )}
+
+           {/* 🔥 NUEVO: CONFIGURACIÓN DE MONEDA / DECIMALES 🔥 */}
+           {editingField.field_type === 'currency' && (
+             <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-4 rounded-xl space-y-4">
+               <label className="block text-xs font-bold text-amber-700 dark:text-amber-400 uppercase mb-1.5 flex items-center gap-1">
+                 <CircleDollarSign size={14}/> Formato de Número y Moneda
+               </label>
+               
+               <div className="grid grid-cols-2 gap-4">
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Decimales</label>
+                   <select value={editingField.options?.decimal_places ?? 2} onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, decimal_places: parseInt(e.target.value) }})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500">
+                     <option value={0}>0 (Solo Enteros)</option>
+                     <option value={1}>1 Decimal (0.0)</option>
+                     <option value={2}>2 Decimales (0.00)</option>
+                     <option value={3}>3 Decimales (0.000)</option>
+                     <option value={4}>4 Decimales (0.0000)</option>
+                   </select>
+                 </div>
+                 
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Símbolo</label>
+                   <input type="text" value={editingField.options?.symbol ?? '$'} onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, symbol: e.target.value }})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500" placeholder="Ej: $, €, Gs." />
+                 </div>
+                 
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Separador de Miles</label>
+                   <select value={editingField.options?.thousand_separator ?? '.'} onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, thousand_separator: e.target.value }})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500">
+                     <option value=".">Punto (1.000)</option>
+                     <option value=",">Coma (1,000)</option>
+                     <option value=" ">Espacio (1 000)</option>
+                     <option value="">Sin separador (1000)</option>
+                   </select>
+                 </div>
+                 
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Separador Decimal</label>
+                   <select value={editingField.options?.decimal_separator ?? ','} onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, decimal_separator: e.target.value }})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-amber-500">
+                     <option value=",">Coma (0,00)</option>
+                     <option value=".">Punto (0.00)</option>
+                   </select>
+                 </div>
+               </div>
+             </div>
+           )}
+
+           {/* CONFIGURACIÓN RELACIONAL (LOOKUP) */}
            {editingField.field_type === 'relation' && (
              <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 p-4 rounded-xl">
                <label className="block text-xs font-bold text-blue-700 dark:text-blue-400 uppercase mb-1.5 flex items-center gap-1"><LinkIcon size={14}/> Módulo Destino (Lookup)</label>
@@ -69,7 +148,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 NUEVO: CONFIGURACIÓN DE RELACIÓN CON USUARIOS 🔥 */}
+           {/* CONFIGURACIÓN DE RELACIÓN CON USUARIOS */}
            {editingField.field_type === 'user_relation' && (
              <div className="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase mb-1.5 flex items-center gap-1">
@@ -86,7 +165,6 @@ const FieldPropertiesModal = ({
                      className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
                    >
                      <option value="">Cualquier Perfil</option>
-                     {/* Nos aseguramos de que sea un array y tenga datos antes de mapear */}
                      {Array.isArray(profilesList) && profilesList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                    </select>
                  </div>
@@ -98,7 +176,6 @@ const FieldPropertiesModal = ({
                      className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
                    >
                      <option value="">Cualquier Rol</option>
-                     {/* Nos aseguramos de que sea un array y tenga datos antes de mapear */}
                      {Array.isArray(rolesList) && rolesList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                    </select>
                  </div>
@@ -107,7 +184,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 NUEVO: CONFIGURACIÓN DE FÓRMULAS MATEMÁTICAS 🔥 */}
+           {/* CONFIGURACIÓN DE FÓRMULAS MATEMÁTICAS */}
            {editingField.field_type === 'formula' && (
              <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 p-4 rounded-xl space-y-4">
                <div>
@@ -129,7 +206,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 NUEVO: CONFIGURACIÓN DE GEOLOCALIZACIÓN 🔥 */}
+           {/* CONFIGURACIÓN DE GEOLOCALIZACIÓN */}
            {editingField.field_type === 'map' && (
              <div className="bg-red-50/50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 p-4 rounded-xl">
                <label className="block text-xs font-bold text-red-700 dark:text-red-400 uppercase mb-1.5 flex items-center gap-1"><MapPin size={14}/> Campo Geográfico</label>
@@ -150,7 +227,8 @@ const FieldPropertiesModal = ({
                          <div className="flex gap-2 items-center">
                            <input type="text" placeholder="Nombre Columna" value={col.label} onChange={e => updateSubformCol(idx, 'label', e.target.value)} className="flex-1 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required/>
                            <select value={col.type} onChange={e => updateSubformCol(idx, 'type', e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
-                              {PALETTE_ITEMS.filter(p => p.type !== 'subform').map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
+                              {/* 🔥 ACTUALIZADO: Filtramos 'subform', 'map' y otros súper campos que no deben ir en tablas */}
+                              {PALETTE_ITEMS.filter(p => !['subform', 'map', 'formula', 'user_relation'].includes(p.type)).map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
                            </select>
                            <button type="button" onClick={() => removeSubformCol(idx)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
                          </div>

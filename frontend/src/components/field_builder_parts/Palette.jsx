@@ -1,18 +1,20 @@
 import React from 'react';
-import { Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, LinkIcon, MapPin, Calculator, Link2, Users } from 'lucide-react';
+import { Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, LinkIcon, MapPin, Calculator, Link2, Users, Phone, CircleDollarSign } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 
-// 🔥 AÑADIMOS LOS 3 SÚPER CAMPOS (MapPin, Calculator, LinkIcon) 🔥
+// 🔥 AÑADIMOS LOS NUEVOS CAMPOS (Phone, Currency) 🔥
 export const PALETTE_ITEMS = [
   { type: 'text', icon: <Type size={16}/>, label: 'Texto Corto' },
   { type: 'textarea', icon: <AlignLeft size={16}/>, label: 'Texto Largo' },
-  { type: 'number', icon: <Hash size={16}/>, label: 'Número' },
+  { type: 'number', icon: <Hash size={16}/>, label: 'Número Entero' },
+  { type: 'currency', icon: <CircleDollarSign size={16} className="text-amber-500"/>, label: 'Moneda / Decimal' },
+  { type: 'phone', icon: <Phone size={16} className="text-teal-500"/>, label: 'Teléfono' },
   { type: 'date', icon: <Calendar size={16}/>, label: 'Fecha' },
   { type: 'select', icon: <List size={16}/>, label: 'Desplegable' },
   { type: 'checkbox', icon: <CheckSquare size={16}/>, label: 'Casilla (Sí/No)' },
   { type: 'url', icon: <Link2 size={16}/>, label: 'Enlace Web' },
   { type: 'relation', icon: <LinkIcon size={16}/>, label: 'Relacional (Otro Módulo)' },
-  { type: 'user_relation', icon: <Users size={16} className="text-indigo-500"/>, label: 'Relación con Usuarios' }, // 🔥 AÑADE ESTA LÍNEA 🔥
+  { type: 'user_relation', icon: <Users size={16} className="text-indigo-500"/>, label: 'Relación con Usuarios' },
   { type: 'map', icon: <MapPin size={16} className="text-red-500"/>, label: 'Geolocalización' },
   { type: 'formula', icon: <Calculator size={16} className="text-emerald-500"/>, label: 'Fórmula (Calculado)' },
   { type: 'file', icon: <FileBox size={16}/>, label: 'Archivo Adjunto' },
