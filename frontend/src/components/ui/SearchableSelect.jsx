@@ -1,18 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // 1. Importar createPortal
 import { Search, ChevronDown } from 'lucide-react';
 
 const SearchableSelect = ({ options, value, onChange, placeholder, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // 2. Estados para manejar las coordenadas espaciales
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  
+  // 3. Dos referencias separadas: una para el botón y otra para el portal
+  const containerRef = useRef(null);
   const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => { 
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false); 
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   // 🔥 FIX: Ahora soporta opciones con 'value' o con 'api_name' para ser compatible con todo 🔥
   const getOptValue = (opt) => opt.value !== undefined ? opt.value : opt.api_name;
@@ -25,10 +24,61 @@ const SearchableSelect = ({ options, value, onChange, placeholder, disabled = fa
     return labelMatch || valueMatch;
   }).slice(0, 50);
 
+  // 4. Función para calcular la posición exacta del botón en la pantalla
+  const updateCoords = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width
+      });
+    }
+  }, []);
+
+  // 5. Función manejadora de apertura
+  const handleToggle = () => {
+    if (disabled) return;
+    if (!isOpen) {
+      updateCoords(); // Calculamos dónde abrir antes de mostrar
+    }
+    setIsOpen(!isOpen);
+    setSearchTerm('');
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => { 
+      // 6. Verificar si el clic fue fuera del botón Y fuera del portal flotante
+      if (
+        containerRef.current && !containerRef.current.contains(event.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleScrollOrResize = () => {
+      if (isOpen) updateCoords();
+    };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      // 7. Actualizar coordenadas si el usuario scrollea la tabla o redimensiona
+      window.addEventListener('scroll', handleScrollOrResize, true); 
+      window.addEventListener('resize', handleScrollOrResize);
+    }
+    
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [isOpen, updateCoords]);
+
   return (
-    <div className={`relative w-full ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`} ref={dropdownRef}>
+    <div className={`relative w-full ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`} ref={containerRef}>
       <div 
-        onClick={() => !disabled && setIsOpen(!isOpen)} 
+        onClick={handleToggle} 
         className={`w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white shadow-sm flex justify-between items-center ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span className={selectedOption ? '' : 'text-gray-400'}>
@@ -37,8 +87,19 @@ const SearchableSelect = ({ options, value, onChange, placeholder, disabled = fa
         <ChevronDown size={16} className="text-gray-400" />
       </div>
 
-      {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2">
+      {/* 8. Renderizamos la caja de búsqueda usando createPortal */}
+      {isOpen && !disabled && createPortal(
+        <div 
+          ref={dropdownRef}
+          style={{
+            position: 'absolute',
+            top: `${coords.top + 4}px`,
+            left: `${coords.left}px`,
+            width: `${Math.max(coords.width, 200)}px`,
+            zIndex: 99999 // Asegura que siempre esté por encima de todo
+          }}
+          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2"
+        >
           <div className="p-2 border-b border-gray-100 dark:border-gray-700 relative">
             <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input 
@@ -69,7 +130,6 @@ const SearchableSelect = ({ options, value, onChange, placeholder, disabled = fa
                     className="px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer rounded-md flex justify-between items-center group"
                   >
                     <span className="font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400">{opt.label}</span>
-                    {/* Solo mostramos el badge gris si el valor es un texto (como un api_name), no si es un ID numérico */}
                     {typeof optValue === 'string' && isNaN(optValue) && (
                       <span className="text-[10px] text-gray-400 font-mono bg-gray-100 dark:bg-gray-900 px-1.5 py-0.5 rounded">{optValue}</span>
                     )}
@@ -78,7 +138,8 @@ const SearchableSelect = ({ options, value, onChange, placeholder, disabled = fa
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body // Inyectamos este menú directamente en el body
       )}
     </div>
   );
