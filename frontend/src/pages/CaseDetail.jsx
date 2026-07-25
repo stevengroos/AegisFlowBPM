@@ -834,22 +834,41 @@ const CaseDetail = () => {
                          <span className="ml-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs px-2 py-0.5 rounded-full font-bold">{casesList.length}</span>
                       </div>
                       <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                         {casesList.map(c => (
+                         {casesList.map(c => {
+                        // 🔥 LÓGICA PARA EXTRAER EL TÍTULO INTELIGENTEMENTE 🔥
+                        let linkedTitle = `Registro #${c.id}`;
+                        
+                        if (c.data && Object.keys(c.data).length > 0) {
+                            // Buscamos el primer valor dentro del JSON que sea un texto útil (ni vacío, ni muy largo, ni una URL)
+                            const firstValidText = Object.values(c.data).find(val => 
+                                typeof val === 'string' && 
+                                val.trim() !== '' && 
+                                val.length < 60 && 
+                                !val.includes('http')
+                            );
+                            
+                            if (firstValidText) {
+                                linkedTitle = firstValidText;
+                            }
+                        }
+
+                        return (
                             <div key={c.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors flex items-center justify-between group">
-                               <div>
+                              <div>
                                   <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                     Registro #{c.id}
-                                     <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 border border-gray-200 dark:border-gray-700 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    {linkedTitle}
+                                    <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 border border-gray-200 dark:border-gray-700 px-1.5 py-0.5 rounded uppercase tracking-wider">
                                         Estado: {statuses.find(s => s.id === c.status_id)?.name || 'N/A'}
-                                     </span>
+                                    </span>
                                   </p>
                                   <p className="text-xs text-gray-500 mt-1">Creado: {new Date(c.created_at).toLocaleDateString()}</p>
-                               </div>
-                               <button onClick={() => navigate(`/cases/${c.id}`)} className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              </div>
+                              <button onClick={() => navigate(`/cases/${c.id}`)} className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   Ver Detalles <ArrowRight size={14}/>
-                               </button>
+                              </button>
                             </div>
-                         ))}
+                        );
+                      })}
                       </div>
                    </div>
                 ))
