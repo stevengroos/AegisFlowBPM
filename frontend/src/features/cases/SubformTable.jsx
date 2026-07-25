@@ -29,8 +29,8 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
   };
 
   return (
-    <div className={`border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 w-full ${isEditing ? 'shadow-sm' : ''}`}>
-      <div className="overflow-x-auto">
+    <div className={`border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 w-full ${isEditing ? 'shadow-sm overflow-visible' : 'overflow-hidden'}`}>
+      <div className={isEditing ? "overflow-visible" : "overflow-x-auto"}>
         <table className="w-full text-left text-sm whitespace-nowrap min-w-[600px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
             <tr>
