@@ -474,8 +474,15 @@ const CaseDetail = () => {
           {field.field_type === 'file' || field.field_type === 'image' ? (
              <FileUploadField type={field.field_type} value={value || ''} onChange={() => {}} disabled={true} />
           ) : field.field_type === 'relation' && value ? (
-             <button onClick={() => navigate(`/cases/${value}`)} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline text-left flex items-center gap-1.5"><LinkIcon size={14}/> Ir al Registro vinculado</button>
-          
+             <button onClick={() => navigate(`/cases/${value}`)} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline text-left flex items-center gap-1.5">
+               <LinkIcon size={14}/> 
+               {(() => {
+                  const targetModuleId = field.options?.target_module_id;
+                  const options = relationData[targetModuleId] || [];
+                  const foundOpt = options.find(opt => String(opt.value) === String(value));
+                  return foundOpt ? foundOpt.label : `Registro #${value}`;
+               })()}
+             </button>
           
           ) : field.field_type === 'user_relation' && value ? (
              <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
