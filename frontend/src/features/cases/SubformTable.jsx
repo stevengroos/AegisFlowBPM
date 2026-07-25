@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link2, Trash2, Plus } from 'lucide-react';
 import FileUploadField from '../../components/ui/FileUploadField';
+import SearchableSelect from '../../components/ui/SearchableSelect';
 
 const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
   const rows = Array.isArray(value) ? value : [];
@@ -71,12 +72,16 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                              <option value="">...</option>
                              {(col.options ? col.options.split(',') : []).map((o, i) => <option key={i} value={o.trim()}>{o.trim()}</option>)}
                           </select>
-                       ) : col.type === 'relation' ? (
-                          <select value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
-                             <option value="">Seleccionar...</option>
-                             {(relationData[col.target_module_id] || []).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                          </select>
-                       ) : col.type === 'file' || col.type === 'image' ? (
+                          ) : col.type === 'relation' ? (
+                            <div className="w-full min-w-[200px]">
+                              <SearchableSelect
+                                value={cellValue || ''}
+                                onChange={val => handleChangeCell(rIdx, col.label, val)}
+                                options={relationData[col.target_module_id] || []}
+                                placeholder="Seleccionar..."
+                              />
+                            </div>
+                          ) : col.type === 'file' || col.type === 'image' ? (
                           <div className="min-w-[150px]"><FileUploadField type={col.type} value={cellValue || ''} onChange={val => handleChangeCell(rIdx, col.label, val)} disabled={false} /></div>
                        ) : (
                           <input type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'} value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass} placeholder={`Escribir ${col.label.toLowerCase()}`} />
