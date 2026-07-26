@@ -3,13 +3,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from pydantic import BaseModel
 from typing import List
+import json
 
 from app.db.session import get_db
 from app.models import models
 from app.api import deps
 from app.core.global_audit import log_global_event
 
-# Importamos tu motor de reglas para que se disparen cuando el webhook cree un caso
+# Importamos tu motor de reglas para que se disparen cuando el webhook cree/actualice un caso
 from app.api.v1.endpoints.cases import process_global_rules, StatusUpdate
 
 router = APIRouter()
@@ -34,20 +35,19 @@ class WebhookResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 # =======================================================
-# 🔥 1. EL PORTERO PÚBLICO (INBOUND WEBHOOK) 🔥
+# 🔥 1. API PÚBLICA RESTful (INBOUND WEBHOOKS) 🔥
 # =======================================================
+
 @router.post("/in/{token}")
-async def receive_external_data(
+async def create_external_record(
     token: str,
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    """
-    Ruta pública (sin autenticación tradicional). 
-    Se valida únicamente con el Token secreto generado en la URL.
-    """
+    """[POST] Crea un nuevo caso en el módulo y formulario vinculado."""
     webhook = db.query(models.WebhookEndpoint).filter(
         models.WebhookEndpoint.token == token,
         models.WebhookEndpoint.is_active == True
@@ -56,13 +56,11 @@ async def receive_external_data(
     if not webhook:
         raise HTTPException(status_code=401, detail="Token de webhook inválido o inactivo.")
 
-    # 1. Leer el JSON que nos manda el sistema externo
     try:
         payload = await request.json()
     except:
         raise HTTPException(status_code=400, detail="El cuerpo de la petición debe ser un JSON válido.")
 
-    # 2. Buscar el estado inicial del módulo para que el caso nazca correctamente
     blueprint = db.query(models.Blueprint).filter(
         models.Blueprint.company_id == webhook.company_id,
         models.Blueprint.module_id == webhook.module_id,
@@ -78,19 +76,16 @@ async def receive_external_data(
         if status:
             initial_status_id = status.id
 
-    # 3. Crear el Registro (Case) con los datos inyectados
     new_case = models.Case(
         company_id=webhook.company_id,
-        created_by=webhook.created_by, # Queda a nombre de quien generó el webhook
+        created_by=webhook.created_by,
         module_id=webhook.module_id,
         form_id=webhook.form_id,
         status_id=initial_status_id,
-        data=payload, # Metemos toda la data externa aquí
+        data=payload,
         ui_rules={}
     )
 
-    # 4. 🔥 DISPARAR MAGIA: Ejecutar reglas de SLA, Asignaciones y Alertas 🔥
-    # Simulamos que el creador del webhook fue quien hizo la acción
     system_user_id = webhook.created_by or 0
     process_global_rules(db, new_case, system_user_id, "ON_CREATE", background_tasks=background_tasks)
 
@@ -98,12 +93,91 @@ async def receive_external_data(
     db.commit()
     db.refresh(new_case)
 
-    return {"status": "success", "message": "Datos recibidos y registro creado.", "case_id": new_case.id}
+    return {"status": "success", "message": "Registro creado.", "case_id": new_case.id}
+
+
+@router.get("/in/{token}/{case_id}")
+def get_external_record(
+    token: str,
+    case_id: int,
+    db: Session = Depends(get_db)
+):
+    """[GET] Consulta los datos de un caso específico usando el token como autorización."""
+    webhook = db.query(models.WebhookEndpoint).filter(
+        models.WebhookEndpoint.token == token,
+        models.WebhookEndpoint.is_active == True
+    ).first()
+
+    if not webhook:
+        raise HTTPException(status_code=401, detail="Token de webhook inválido.")
+
+    case = db.query(models.Case).filter(
+        models.Case.id == case_id, 
+        models.Case.company_id == webhook.company_id,
+        models.Case.module_id == webhook.module_id
+    ).first()
+
+    if not case:
+        raise HTTPException(status_code=404, detail="Registro no encontrado en este módulo.")
+
+    return {
+        "status": "success", 
+        "case_id": case.id, 
+        "status_id": case.status_id,
+        "created_at": case.created_at,
+        "data": case.data
+    }
+
+
+@router.put("/in/{token}/{case_id}")
+async def update_external_record(
+    token: str,
+    case_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """[PUT] Actualiza la data de un caso existente. Hace un 'merge' del JSON."""
+    webhook = db.query(models.WebhookEndpoint).filter(
+        models.WebhookEndpoint.token == token,
+        models.WebhookEndpoint.is_active == True
+    ).first()
+
+    if not webhook:
+        raise HTTPException(status_code=401, detail="Token de webhook inválido.")
+
+    case = db.query(models.Case).filter(
+        models.Case.id == case_id, 
+        models.Case.company_id == webhook.company_id,
+        models.Case.module_id == webhook.module_id
+    ).first()
+
+    if not case:
+        raise HTTPException(status_code=404, detail="Registro no encontrado.")
+
+    try:
+        payload = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="El cuerpo debe ser un JSON válido.")
+
+    # Hacer un 'Merge' para no sobreescribir campos que no vengan en el payload
+    current_data = dict(case.data)
+    current_data.update(payload)
+    case.data = current_data
+
+    # Disparamos las reglas de negocio (Automatizaciones) al actualizar
+    system_user_id = webhook.created_by or 0
+    process_global_rules(db, case, system_user_id, "ON_UPDATE", background_tasks=background_tasks)
+
+    db.commit()
+
+    return {"status": "success", "message": "Registro actualizado.", "case_id": case.id}
 
 
 # =======================================================
 # 🔥 2. GESTIÓN INTERNA (CRUD PARA ADMINS) 🔥
 # =======================================================
+
 @router.post("/", response_model=dict)
 def create_webhook(
     webhook_in: WebhookCreate,
@@ -111,7 +185,6 @@ def create_webhook(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Genera una nueva URL secreta para recibir datos."""
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Solo los administradores pueden crear Webhooks.")
 
@@ -145,7 +218,6 @@ def get_webhooks(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Lista todos los webhooks activos de un módulo."""
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="No tienes permisos.")
 
@@ -154,7 +226,6 @@ def get_webhooks(
         models.WebhookEndpoint.module_id == module_id
     ).order_by(models.WebhookEndpoint.created_at.desc()).all()
     
-    # Formatear fecha para el response
     for w in webhooks:
         w.created_at = w.created_at.strftime("%Y-%m-%d %H:%M:%S") if w.created_at else ""
         
@@ -167,7 +238,6 @@ def delete_webhook(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Elimina (desactiva) un webhook para que no reciba más datos."""
     if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="No tienes permisos.")
 
@@ -190,6 +260,64 @@ def delete_webhook(
 
     return {"message": "Webhook eliminado permanentemente."}
 
+
+@router.get("/{webhook_id}/example")
+def get_webhook_json_example(
+    webhook_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    """
+    Lee la estructura del Formulario vinculado a este webhook y 
+    genera un JSON de ejemplo para mostrarle al desarrollador en el Frontend.
+    """
+    webhook = db.query(models.WebhookEndpoint).filter(
+        models.WebhookEndpoint.id == webhook_id,
+        models.WebhookEndpoint.company_id == current_user.company_id
+    ).first()
+
+    if not webhook:
+        raise HTTPException(status_code=404, detail="Webhook no encontrado")
+
+    fields = db.query(models.FormField).filter(
+        models.FormField.form_id == webhook.form_id,
+        models.FormField.is_active == True
+    ).order_by(models.FormField.order).all()
+
+    example_payload = {}
+
+    for f in fields:
+        key = f.api_name or f.label
+        if not key: continue
+
+        # Asignar un valor falso dependiendo del tipo de campo
+        if f.field_type in ['number', 'currency']:
+            example_payload[key] = 1500.50
+        elif f.field_type == 'checkbox':
+            example_payload[key] = True
+        elif f.field_type == 'date':
+            example_payload[key] = "2026-10-15"
+        elif f.field_type == 'phone':
+            example_payload[key] = "595981123456"
+        elif f.field_type in ['file', 'image', 'url']:
+            example_payload[key] = "https://ejemplo.com/archivo.pdf"
+        elif f.field_type == 'subform':
+            # Intentar generar un objeto anidado para tablas
+            sub_obj = {}
+            if f.subform_config and isinstance(f.subform_config, list):
+                for col in f.subform_config:
+                    col_key = col.get('label', 'columna')
+                    col_type = col.get('type', 'text')
+                    if col_type in ['number', 'currency']: sub_obj[col_key] = 99.99
+                    elif col_type == 'date': sub_obj[col_key] = "2026-10-15"
+                    else: sub_obj[col_key] = "Dato de tabla"
+            example_payload[key] = [sub_obj]
+        else:
+            example_payload[key] = f"Texto de ejemplo para {f.label}"
+
+    return {"example": example_payload}
+
+
 # =======================================================
 # 🔥 3. EL OÍDO DE SIGNATURIT (WEBHOOK DE EVENTOS) 🔥
 # =======================================================
@@ -199,9 +327,6 @@ async def signaturit_webhook(
     background_tasks: BackgroundTasks, 
     db: Session = Depends(get_db)
 ):
-    """
-    Ruta pública que Signaturit llama automáticamente cuando ocurre un evento.
-    """
     try:
         payload = await request.json()
     except Exception:
@@ -236,7 +361,6 @@ async def signaturit_webhook(
             details=f"Documento de Signaturit ({signaturit_id}) acaba de ser firmado.", request=request
         )
 
-    # 🔥 MAGIA ENTERPRISE: EL AUTO-AVANCE INTELIGENTE 🔥
     elif event_type == "signature_request_completed" or nuevo_estado == "completed":
         log_global_event(
             db=db, user_id=sig_request.created_by, company_id=sig_request.company_id,
@@ -244,27 +368,21 @@ async def signaturit_webhook(
             details=f"Todos los firmantes completaron el documento ({signaturit_id}).", request=request
         )
         
-        # 1. Traemos el caso actual
         case = db.query(models.Case).filter(models.Case.id == sig_request.case_id).first()
         if case and case.status_id:
-            # 2. Buscamos las transiciones que salen del estado actual
             outgoing_transitions = db.query(models.Transition).filter(
                 models.Transition.from_status_id == case.status_id
             ).all()
             
             for t in outgoing_transitions:
-                # 3. Revisamos si esta transición estaba bloqueada esperando la firma
                 val = db.query(models.TransitionValidation).filter(
                     models.TransitionValidation.transition_id == t.id,
                     models.TransitionValidation.operator == "HAS_COMPLETED_SIGNATURE"
                 ).first()
                 
                 if val:
-                    # ¡Bingo! Esta es la ruta. Hacemos el avance automático.
                     from app.api.v1.endpoints.cases import change_case_status 
-                    
                     system_user = db.query(models.User).filter(models.User.id == sig_request.created_by).first()
-                    
                     if system_user:
                         try:
                             change_case_status(

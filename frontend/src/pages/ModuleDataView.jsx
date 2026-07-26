@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { createPortal } from 'react-dom'; // 🔥 NUEVO
-import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X } from 'lucide-react'; // 🔥 Añadimos Globe, Copy y X // 🔥 Añadimos Clock y AlertTriangle
-import Select from 'react-select'; // 🔥 IMPORTAMOS REACT-SELECT 🔥
+import { createPortal } from 'react-dom'; 
+import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft } from 'lucide-react'; // 🔥 NUEVOS ÍCONOS: BookOpen, Terminal, ArrowLeft
+import Select from 'react-select'; 
 
 import CaseModal from '../components/CaseModal';
 import ImportDataModal from '../features/modules/ImportDataModal';
@@ -22,23 +22,28 @@ const ModuleDataView = () => {
   const [fields, setFields] = useState([]);
   const [forms, setForms] = useState([]); 
   
-  // ESTADOS PARA CATÁLOGOS
   const [allStatuses, setAllStatuses] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
 
-  // Modales
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
-  // 🔥 FASE 3: ESTADOS PARA WEBHOOKS DE ENTRADA 🔥
+  // ==========================================
+  // 🔥 FASE 3: ESTADOS PARA WEBHOOKS API 🔥
+  // ==========================================
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [moduleWebhooks, setModuleWebhooks] = useState([]);
   const [newWebhookName, setNewWebhookName] = useState('');
   const [loadingWebhooks, setLoadingWebhooks] = useState(false);
+  
+  // Estados para el Portal del Desarrollador (Docs API)
+  const [docsWebhook, setDocsWebhook] = useState(null);
+  const [webhookExample, setWebhookExample] = useState(null);
+  const [docsLoading, setDocsLoading] = useState(false);
 
   const fetchWebhooks = async () => {
       setLoadingWebhooks(true);
@@ -53,7 +58,10 @@ const ModuleDataView = () => {
   };
 
   useEffect(() => {
-      if (isWebhookModalOpen) fetchWebhooks();
+      if (isWebhookModalOpen) {
+         fetchWebhooks();
+         setDocsWebhook(null); // Reseteamos la vista de docs al abrir
+      }
   }, [isWebhookModalOpen]);
 
   const handleCreateWebhook = async (e) => {
@@ -65,7 +73,7 @@ const ModuleDataView = () => {
           await api.post('/api/v1/webhooks/', {
               name: newWebhookName,
               module_id: parseInt(moduleId),
-              form_id: forms[0].id // Usamos el primer formulario por defecto
+              form_id: forms[0].id 
           });
           notify.success("Webhook generado exitosamente.");
           setNewWebhookName('');
@@ -87,21 +95,37 @@ const ModuleDataView = () => {
       try {
           await api.delete(`/api/v1/webhooks/${webhookId}`);
           notify.success("Webhook eliminado.");
+          if (docsWebhook && docsWebhook.id === webhookId) setDocsWebhook(null);
           fetchWebhooks();
       } catch (error) {
           notify.error("Error al eliminar el webhook.");
       }
   };
 
-  const copyToClipboard = (token) => {
-      // 🔥 DINÁMICO: Usamos estrictamente la URL del backend, sin importar dónde esté alojado el frontend
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const url = `${baseUrl}/api/v1/webhooks/in/${token}`;
-      navigator.clipboard.writeText(url);
-      notify.success("URL copiada al portapapeles.");
+  const copyText = (text) => {
+      navigator.clipboard.writeText(text);
+      notify.success("Copiado al portapapeles.");
   };
 
-  // Grid, Filtros y Columnas
+  const getBaseUrl = () => import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  const handleOpenDocs = async (wh) => {
+      setDocsWebhook(wh);
+      setDocsLoading(true);
+      try {
+          const res = await api.get(`/api/v1/webhooks/${wh.id}/example`);
+          setWebhookExample(res.data.example);
+      } catch (error) {
+          notify.error("Error al cargar la documentación API.");
+          setWebhookExample(null);
+      } finally {
+          setDocsLoading(false);
+      }
+  };
+
+  // ==========================================
+  // Grid, Filtros y Columnas (Sin Cambios)
+  // ==========================================
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState('newest'); 
@@ -120,7 +144,6 @@ const ModuleDataView = () => {
   const columnsPerPage = 8;
   const columnSelectorRef = useRef(null);
 
-  // 🔥 DETECCIÓN DE MODO OSCURO PARA REACT-SELECT 🔥
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
   useEffect(() => {
     const observer = new MutationObserver(() => setIsDarkMode(document.documentElement.classList.contains('dark')));
@@ -128,7 +151,6 @@ const ModuleDataView = () => {
     return () => observer.disconnect();
   }, []);
 
-  // 🔥 ESTILOS CUSTOM PARA REACT-SELECT 🔥
   const customSingleSelectStyles = {
     control: (provided) => ({ ...provided, borderColor: isDarkMode ? '#374151' : '#e5e7eb', backgroundColor: isDarkMode ? '#111827' : 'white', borderRadius: '0.5rem', minHeight: '38px', fontSize: '0.875rem', boxShadow: 'none', color: isDarkMode ? 'white' : 'black', '&:hover': { borderColor: isDarkMode ? '#4b5563' : '#9ca3af' } }),
     singleValue: (provided) => ({ ...provided, color: isDarkMode ? '#f9fafb' : '#111827' }),
@@ -227,29 +249,21 @@ const ModuleDataView = () => {
      const u = allUsers.find(u => u.id === userId);
      return u ? (u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email) : `Usuario ID: ${userId}`;
   };
-  // 🔥 FASE 2: CALCULADORA DE SLA 🔥
+  
   const getSlaStatus = (rec) => {
      if (!rec.status_id) return null;
      const status = allStatuses.find(s => s.id === rec.status_id);
-     // Si el estado no tiene límite de horas configurado, no hay SLA que medir
      if (!status || !status.sla_hours) return null; 
 
-     // Tomamos la fecha en la que entró a este estado (o si es muy viejo, la de creación)
      const startTime = new Date(rec.entered_status_at || rec.created_at);
-     // Le sumamos las horas permitidas para sacar la "Fecha Límite"
      const deadline = new Date(startTime.getTime() + (status.sla_hours * 60 * 60 * 1000));
      const now = new Date();
 
      const timeRemaining = deadline - now;
      const hoursRemaining = timeRemaining / (1000 * 60 * 60);
 
-     // Si el tiempo restante es negativo, ya se rompió el SLA
      if (timeRemaining < 0) return { state: 'breached', label: 'SLA Vencido', hours: Math.abs(hoursRemaining).toFixed(1) };
-     
-     // Si le queda menos del 20% del tiempo total, está en riesgo (Naranja)
      if (hoursRemaining <= (status.sla_hours * 0.2)) return { state: 'warning', label: 'Por vencer', hours: hoursRemaining.toFixed(1) };
-     
-     // De lo contrario, está a tiempo (Verde/Normal)
      return { state: 'good', label: 'A tiempo', hours: hoursRemaining.toFixed(1) };
   };
 
@@ -296,7 +310,6 @@ const ModuleDataView = () => {
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
   const currentListRecords = filteredAndSortedRecords.slice(indexOfFirstRecord, indexOfLastRecord);
 
-  // 🔥 NUEVA FUNCIÓN PARA AGREGAR FILTROS DESDE REACT-SELECT 🔥
   const handleAddFieldFilter = (selectedOption) => {
     if (!selectedOption) return;
     const key = selectedOption.value;
@@ -322,7 +335,7 @@ const ModuleDataView = () => {
   };
 
   const exportToCSV = () => {
-    if (filteredAndSortedRecords.length === 0) return notify.warning("No hay registros para exportar con los filtros actuales.");
+    if (filteredAndSortedRecords.length === 0) return notify.warning("No hay registros para exportar.");
     
     const sanitizeCSV = (str) => {
       let text = String(str).replace(/"/g, '""').replace(/\n/g, ' ');
@@ -356,9 +369,6 @@ const ModuleDataView = () => {
     notify.success("Exportación completada.");
   };
 
-  // ==========================================
-  // 🔥 LÓGICA DE ACCIONES MASIVAS 🔥
-  // ==========================================
   const [selectedRecords, setSelectedRecords] = useState([]);
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
@@ -385,20 +395,17 @@ const ModuleDataView = () => {
   const handleBulkUpdate = async (fieldApiName, value) => {
     setIsBulkSaving(true);
     try {
-      // Mandamos 1 SOLA petición con todos los IDs y el dato a cambiar
       await api.put('/api/v1/cases/bulk/update', {
         case_ids: selectedRecords,
         field_api_name: fieldApiName,
         new_value: value
       });
-      
       notify.success(`${selectedRecords.length} registros actualizados de forma masiva.`);
       setIsBulkUpdateModalOpen(false);
       setSelectedRecords([]);
-      fetchData(new AbortController().signal); // Recargamos la tabla
+      fetchData(new AbortController().signal); 
     } catch (error) {
       notify.error("Error en la actualización masiva.");
-      console.error(error);
     } finally {
       setIsBulkSaving(false);
     }
@@ -407,11 +414,10 @@ const ModuleDataView = () => {
   const handleBulkDelete = async () => {
     const isConfirmed = await confirm({
       title: 'Eliminación Masiva',
-      message: `¿Estás seguro de eliminar los ${selectedRecords.length} registros seleccionados? Esta acción es irreversible.`,
-      confirmText: 'Sí, eliminar seleccionados',
+      message: `¿Estás seguro de eliminar los ${selectedRecords.length} registros seleccionados?`,
+      confirmText: 'Sí, eliminar',
       variant: 'danger'
     });
-
     if (!isConfirmed) return;
 
     try {
@@ -456,10 +462,11 @@ const ModuleDataView = () => {
                  </button>
                </>
             )}
+            
             {/* 🔥 BOTÓN DE WEBHOOKS (SOLO SUPERADMIN) 🔥 */}
             {userData?.is_superadmin && (
                <button onClick={() => setIsWebhookModalOpen(true)} className="px-3 py-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-1.5 text-xs font-semibold border-l border-gray-200 dark:border-gray-800/80" title="Integraciones Webhook (Entrada)">
-                 <Globe size={14} /> <span className="hidden sm:inline">Webhooks</span>
+                 <Globe size={14} /> <span className="hidden sm:inline">API Webhooks</span>
                </button>
             )}
           </div>
@@ -556,82 +563,33 @@ const ModuleDataView = () => {
                     <div className="flex-1 min-w-0">
                       <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1 truncate">{fieldLabel}</label>
                       
-                      {/* 🔥 REACT-SELECT PARA FILTROS ACTIVOS 🔥 */}
                       {isSystemStatus ? (
-                         <Select
-                            options={allStatuses.map(s => ({ value: s.name, label: s.name }))}
-                            value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null}
-                            onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')}
-                            placeholder="Cualquier estado..."
-                            isClearable
-                            styles={customSingleSelectStyles}
-                            menuPortalTarget={document.body}
-                            menuPosition={'fixed'}
-                         />
+                         <Select options={allStatuses.map(s => ({ value: s.name, label: s.name }))} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier estado..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} />
                       ) : isSystemOwner ? (
-                         <Select
-                            options={allUsers.map(u => {
-                               const name = u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email;
-                               return { value: name, label: name };
-                            })}
-                            value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null}
-                            onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')}
-                            placeholder="Cualquier propietario..."
-                            isClearable
-                            styles={customSingleSelectStyles}
-                            menuPortalTarget={document.body}
-                            menuPosition={'fixed'}
-                         />
+                         <Select options={allUsers.map(u => { const name = u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email; return { value: name, label: name }; })} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier propietario..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} />
                       ) : fieldDef?.field_type === 'select' ? (
-                         <Select
-                            options={fieldDef.options?.map(opt => ({ value: opt, label: opt })) || []}
-                            value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null}
-                            onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')}
-                            placeholder="Cualquier valor..."
-                            isClearable
-                            styles={customSingleSelectStyles}
-                            menuPortalTarget={document.body}
-                            menuPosition={'fixed'}
-                         />
+                         <Select options={fieldDef.options?.map(opt => ({ value: opt, label: opt })) || []} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier valor..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} />
                       ) : (
                         <input type="text" placeholder="Contiene..." value={fieldFilters[key] || ''} onChange={e => handleFilterValueChange(key, e.target.value)} className="w-full px-3 py-2 min-h-[38px] text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500" />
                       )}
                     </div>
-                    <button onClick={() => handleRemoveFieldFilter(key)} className="mb-0.5 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors shrink-0" title="Quitar filtro">
-                      <Trash2 size={18} />
-                    </button>
+                    <button onClick={() => handleRemoveFieldFilter(key)} className="mb-0.5 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors shrink-0" title="Quitar filtro"><Trash2 size={18} /></button>
                   </div>
                 );
               })}
             </div>
           )}
           <div className="pt-2">
-            {/* 🔥 REACT-SELECT PARA AÑADIR NUEVOS FILTROS 🔥 */}
             <Select
                options={[
-                  {
-                     label: 'Datos del Sistema',
-                     options: [
-                        !visibleFilterKeys.includes('SYSTEM_STATUS') ? { value: 'SYSTEM_STATUS', label: 'Estado del Registro' } : null,
-                        !visibleFilterKeys.includes('SYSTEM_OWNER') ? { value: 'SYSTEM_OWNER', label: 'Propietario / Asignado a' } : null
-                     ].filter(Boolean)
-                  },
-                  {
-                     label: 'Campos del Formulario',
-                     options: fields.filter(f => !visibleFilterKeys.includes(f.api_name || f.label)).map(f => ({ value: f.api_name || f.label, label: f.label }))
-                  }
+                  { label: 'Datos del Sistema', options: [ !visibleFilterKeys.includes('SYSTEM_STATUS') ? { value: 'SYSTEM_STATUS', label: 'Estado del Registro' } : null, !visibleFilterKeys.includes('SYSTEM_OWNER') ? { value: 'SYSTEM_OWNER', label: 'Propietario / Asignado a' } : null ].filter(Boolean) },
+                  { label: 'Campos del Formulario', options: fields.filter(f => !visibleFilterKeys.includes(f.api_name || f.label)).map(f => ({ value: f.api_name || f.label, label: f.label })) }
                ]}
                value={null}
                onChange={(opt) => { if (opt) handleAddFieldFilter(opt); }}
                placeholder="+ Añadir regla de filtro..."
-               styles={{
-                  ...customSingleSelectStyles,
-                  control: (provided) => ({ ...customSingleSelectStyles.control(provided), borderColor: isDarkMode ? '#1e3a8a' : '#bfdbfe', backgroundColor: 'transparent', color: isDarkMode ? '#60a5fa' : '#2563eb' }),
-                  placeholder: (provided) => ({ ...provided, color: isDarkMode ? '#60a5fa' : '#2563eb', fontWeight: '600' })
-               }}
-               menuPortalTarget={document.body}
-               menuPosition={'fixed'}
-               isSearchable
+               styles={{ ...customSingleSelectStyles, control: (provided) => ({ ...customSingleSelectStyles.control(provided), borderColor: isDarkMode ? '#1e3a8a' : '#bfdbfe', backgroundColor: 'transparent', color: isDarkMode ? '#60a5fa' : '#2563eb' }), placeholder: (provided) => ({ ...provided, color: isDarkMode ? '#60a5fa' : '#2563eb', fontWeight: '600' }) }}
+               menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
             />
           </div>
         </div>
@@ -657,20 +615,12 @@ const ModuleDataView = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50/50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800/80">
               <tr>
-                {/* 🔥 ¡ESTE ES EL BLOQUE QUE TE FALTA! 🔥 */}
                 <th className="px-6 py-3.5 w-10">
-                  <input 
-                    type="checkbox" 
-                    onChange={handleSelectAll} 
-                    checked={currentListRecords.length > 0 && currentListRecords.every(r => selectedRecords.includes(r.id))}
-                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                  />
+                  <input type="checkbox" onChange={handleSelectAll} checked={currentListRecords.length > 0 && currentListRecords.every(r => selectedRecords.includes(r.id))} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer" />
                 </th>
                 <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">ID</th>
                 <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Creado</th>
-                {visibleFields.map(field => (
-                  <th key={field.id} className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{field.label}</th>
-                ))}
+                {visibleFields.map(field => ( <th key={field.id} className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{field.label}</th> ))}
                 <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Propietario</th>
                 <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Estado</th>
                 <th className="px-6 py-3.5 text-right"></th>
@@ -681,33 +631,15 @@ const ModuleDataView = () => {
                 <tr>
                   <td colSpan={visibleFields.length + 6} className="px-6 py-16 text-center">
                     <Box className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-700 mb-3" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
-                      {(searchTerm || startDate || endDate || Object.keys(fieldFilters).length > 0) ? 'No hay resultados para esta búsqueda.' : 'No hay registros en este módulo todavía.'}
-                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{(searchTerm || startDate || endDate || Object.keys(fieldFilters).length > 0) ? 'No hay resultados para esta búsqueda.' : 'No hay registros en este módulo todavía.'}</p>
                   </td>
                 </tr>
               ) : (
                 currentListRecords.map((rec) => (
-                  <tr 
-                    key={rec.id} 
-                    onClick={() => navigate(`/cases/${rec.id}`)} 
-                    className={`transition-colors group cursor-pointer ${
-                      selectedRecords.includes(rec.id) 
-                        ? 'bg-blue-50/50 dark:bg-blue-900/10' 
-                        : 'hover:bg-gray-50/80 dark:hover:bg-gray-800/40'
-                    }`}
-                  >
-                    {/* 🔥 AGREGA ESTE TD AQUÍ 🔥 */}
+                  <tr key={rec.id} onClick={() => navigate(`/cases/${rec.id}`)} className={`transition-colors group cursor-pointer ${selectedRecords.includes(rec.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-gray-50/80 dark:hover:bg-gray-800/40'}`}>
                     <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedRecords.includes(rec.id)}
-                        onChange={(e) => toggleRecordSelection(e, rec.id)}
-                        className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                      />
+                      <input type="checkbox" checked={selectedRecords.includes(rec.id)} onChange={(e) => toggleRecordSelection(e, rec.id)} className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 cursor-pointer" />
                     </td>
-                    {/* ------------------------- */}
-
                     <td className="px-6 py-4 text-sm font-bold text-gray-700 dark:text-gray-300">#{rec.id}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{new Date(rec.created_at).toLocaleDateString()}</td>
                     {visibleFields.map(field => (
@@ -716,35 +648,16 @@ const ModuleDataView = () => {
                       </td>
                     ))}
                     
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                       {getUserName(rec.assigned_to || rec.created_by)}
-                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{getUserName(rec.assigned_to || rec.created_by)}</td>
                     
                     <td className="px-6 py-4 whitespace-nowrap flex items-center gap-2">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-                         {getStatusName(rec.status_id)}
-                      </span>
-                      
-                      {/* 🔥 FASE 2: INDICADORES VISUALES DE SLA 🔥 */}
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">{getStatusName(rec.status_id)}</span>
                       {(() => {
                          const sla = getSlaStatus(rec);
                          if (!sla) return null;
-                         
-                         if (sla.state === 'breached') {
-                           return (
-                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest animate-pulse" title={`Vencido por ${sla.hours} horas`}>
-                               <AlertTriangle size={12} /> SLA Roto
-                             </span>
-                           );
-                         }
-                         if (sla.state === 'warning') {
-                           return (
-                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest" title={`Quedan ${sla.hours} horas`}>
-                               <Clock size={12} /> En Riesgo
-                             </span>
-                           );
-                         }
-                         return null; // Si está a tiempo, no saturamos visualmente la tabla
+                         if (sla.state === 'breached') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest animate-pulse" title={`Vencido por ${sla.hours} horas`}><AlertTriangle size={12} /> SLA Roto</span>;
+                         if (sla.state === 'warning') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest" title={`Quedan ${sla.hours} horas`}><Clock size={12} /> En Riesgo</span>;
+                         return null;
                       })()}
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -770,102 +683,148 @@ const ModuleDataView = () => {
         )}
       </div>
 
-      {isModalOpen && (
-        <CaseModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => fetchData()} moduleId={moduleId} />
-      )}
-
-      <ImportDataModal 
-        isOpen={isImportModalOpen} 
-        onClose={() => setIsImportModalOpen(false)} 
-        moduleId={moduleId} 
-        fields={fields} 
-        forms={forms} 
-        onSuccess={() => fetchData()} 
-      />
-      <ImportHistoryModal 
-        isOpen={isHistoryModalOpen} 
-        onClose={() => setIsHistoryModalOpen(false)} 
-        moduleId={moduleId} 
-        onSuccess={() => fetchData()} 
-      />
-      <BulkActionsBar 
-        selectedCount={selectedRecords.length}
-        onClear={() => setSelectedRecords([])}
-        onUpdate={() => setIsBulkUpdateModalOpen(true)}
-        onDelete={handleBulkDelete}
-        canDelete={canCreate} 
-      />
-
-      <BulkUpdateModal 
-        isOpen={isBulkUpdateModalOpen}
-        onClose={() => setIsBulkUpdateModalOpen(false)}
-        fields={fields}
-        selectedCount={selectedRecords.length}
-        isSaving={isBulkSaving}
-        onConfirm={handleBulkUpdate}
-      />
-      {/* 🔥 MODAL DE GESTIÓN DE WEBHOOKS 🔥 */}
+      {isModalOpen && <CaseModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => fetchData()} moduleId={moduleId} />}
+      <ImportDataModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} moduleId={moduleId} fields={fields} forms={forms} onSuccess={() => fetchData()} />
+      <ImportHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} moduleId={moduleId} onSuccess={() => fetchData()} />
+      <BulkActionsBar selectedCount={selectedRecords.length} onClear={() => setSelectedRecords([])} onUpdate={() => setIsBulkUpdateModalOpen(true)} onDelete={handleBulkDelete} canDelete={canCreate} />
+      <BulkUpdateModal isOpen={isBulkUpdateModalOpen} onClose={() => setIsBulkUpdateModalOpen(false)} fields={fields} selectedCount={selectedRecords.length} isSaving={isBulkSaving} onConfirm={handleBulkUpdate} />
+      
+      {/* ========================================================= */}
+      {/* 🔥 MODAL DE GESTIÓN DE WEBHOOKS & API DOCS 🔥 */}
+      {/* ========================================================= */}
       {isWebhookModalOpen && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[555] p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 max-h-[85vh]">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl md:max-w-3xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 max-h-[90vh]">
             
             <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
               <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Globe size={18} className="text-blue-500" /> Webhooks de Entrada (Inbound API)
+                {docsWebhook ? (
+                  <><Terminal size={18} className="text-emerald-500"/> Docs API: {docsWebhook.name}</>
+                ) : (
+                  <><Globe size={18} className="text-blue-500" /> Webhooks de Entrada (Inbound API)</>
+                )}
               </h3>
               <button onClick={() => setIsWebhookModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
             </div>
             
             <div className="p-6 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-6">
               
-              <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-4">
-                 <h4 className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase mb-2">Generar Nueva URL de Ingesta</h4>
-                 <form onSubmit={handleCreateWebhook} className="flex gap-2">
-                    <input 
-                       type="text" required placeholder="Ej: Conexión con Zapier, Formulario Web..." 
-                       value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} 
-                       className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg outline-none focus:border-blue-500" 
-                    />
-                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap">
-                       <Plus size={14}/> Generar
+              {/* VISTA DE DOCUMENTACIÓN DEL WEBHOOK */}
+              {docsWebhook ? (
+                 <div className="flex flex-col gap-5 animate-in slide-in-from-right-4 duration-300">
+                    <button onClick={() => setDocsWebhook(null)} className="flex items-center gap-1.5 text-sm font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white w-fit transition-colors">
+                       <ArrowLeft size={16}/> Volver a la lista
                     </button>
-                 </form>
-              </div>
 
-              <div>
-                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Webhooks Activos</h4>
-                 {loadingWebhooks ? (
-                    <div className="flex justify-center py-8"><Loader2 className="animate-spin text-blue-500" size={24}/></div>
-                 ) : moduleWebhooks.length === 0 ? (
-                    <div className="text-center py-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
-                       <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">No hay Webhooks activos para este módulo.</p>
-                    </div>
-                 ) : (
-                    <div className="space-y-3">
-                       {moduleWebhooks.map(wh => (
-                          <div key={wh.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm flex flex-col gap-3">
-                             <div className="flex justify-between items-start">
-                                <div>
-                                   <p className="text-sm font-bold text-gray-900 dark:text-white">{wh.name}</p>
-                                   <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mt-0.5">Creado: {wh.created_at}</p>
-                                </div>
-                                <button onClick={() => handleDeleteWebhook(wh.id)} className="text-gray-400 hover:text-red-500 p-1 rounded-md transition-colors"><Trash2 size={16}/></button>
-                             </div>
-                             
-                             <div className="flex items-center gap-2">
-                                <code className="flex-1 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-xs text-blue-600 dark:text-blue-400 font-mono truncate select-all">
-                                   [POST] .../api/v1/webhooks/in/{wh.token}
-                                </code>
-                                <button onClick={() => copyToClipboard(wh.token)} className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0 border border-gray-200 dark:border-gray-700">
-                                   <Copy size={14}/> Copiar URL
-                                </button>
-                             </div>
+                    <div className="space-y-4">
+                       {/* POST */}
+                       <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/50 rounded-xl p-4">
+                          <div className="flex justify-between items-center mb-2">
+                             <h4 className="text-xs font-bold text-emerald-800 dark:text-emerald-400 uppercase">Crear un Nuevo Registro</h4>
                           </div>
-                       ))}
-                    </div>
-                 )}
-              </div>
+                          <div className="flex items-center gap-2">
+                             <span className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold px-2 py-1 rounded">POST</span>
+                             <code className="flex-1 bg-white dark:bg-gray-950 border border-emerald-100 dark:border-emerald-800/30 rounded-lg px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 font-mono truncate select-all">
+                                {getBaseUrl()}/api/v1/webhooks/in/{docsWebhook.token}
+                             </code>
+                             <button onClick={() => copyText(`${getBaseUrl()}/api/v1/webhooks/in/${docsWebhook.token}`)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors shrink-0"><Copy size={16}/></button>
+                          </div>
+                       </div>
+                       
+                       {/* GET */}
+                       <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-xl p-4">
+                          <div className="flex justify-between items-center mb-2">
+                             <h4 className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase">Consultar un Registro</h4>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <span className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 text-[10px] font-bold px-2 py-1 rounded">GET</span>
+                             <code className="flex-1 bg-white dark:bg-gray-950 border border-blue-100 dark:border-blue-800/30 rounded-lg px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 font-mono truncate select-all">
+                                {getBaseUrl()}/api/v1/webhooks/in/{docsWebhook.token}/<span className="text-blue-500 font-bold">{'{case_id}'}</span>
+                             </code>
+                             <button onClick={() => copyText(`${getBaseUrl()}/api/v1/webhooks/in/${docsWebhook.token}/{case_id}`)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors shrink-0"><Copy size={16}/></button>
+                          </div>
+                       </div>
 
+                       {/* PUT */}
+                       <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-xl p-4">
+                          <div className="flex justify-between items-center mb-2">
+                             <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400 uppercase">Actualizar un Registro (Merge)</h4>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 text-[10px] font-bold px-2 py-1 rounded">PUT</span>
+                             <code className="flex-1 bg-white dark:bg-gray-950 border border-amber-100 dark:border-amber-800/30 rounded-lg px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 font-mono truncate select-all">
+                                {getBaseUrl()}/api/v1/webhooks/in/{docsWebhook.token}/<span className="text-amber-500 font-bold">{'{case_id}'}</span>
+                             </code>
+                             <button onClick={() => copyText(`${getBaseUrl()}/api/v1/webhooks/in/${docsWebhook.token}/{case_id}`)} className="text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors shrink-0"><Copy size={16}/></button>
+                          </div>
+                       </div>
+
+                       {/* CONSOLA DE EJEMPLO */}
+                       <div className="mt-6">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Terminal size={14}/> Formato del JSON Payload (Body)</h4>
+                          <div className="bg-[#1e1e1e] rounded-xl p-4 overflow-x-auto relative group shadow-inner border border-gray-800">
+                             <button onClick={() => copyText(JSON.stringify(webhookExample, null, 2))} className="absolute top-3 right-3 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 rounded-lg transition-colors" title="Copiar Payload">
+                               <Copy size={14}/>
+                             </button>
+                             {docsLoading ? (
+                                <div className="flex justify-center py-6"><Loader2 className="animate-spin text-emerald-500" size={24}/></div>
+                             ) : (
+                                <pre className="text-emerald-400 text-xs font-mono leading-relaxed">
+                                   {webhookExample ? JSON.stringify(webhookExample, null, 2) : '// No se pudo generar el ejemplo.'}
+                                </pre>
+                             )}
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-2 italic">Envía los datos con la cabecera <code>Content-Type: application/json</code>.</p>
+                       </div>
+                    </div>
+                 </div>
+
+              ) : (
+                 /* VISTA ORIGINAL DE LISTADO DE WEBHOOKS */
+                 <div className="flex flex-col gap-6 animate-in slide-in-from-left-4 duration-300">
+                    <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-4">
+                       <h4 className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase mb-2">Generar Nueva Integración</h4>
+                       <form onSubmit={handleCreateWebhook} className="flex gap-2">
+                          <input type="text" required placeholder="Ej: Conexión con Zapier, Formulario Web..." value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg outline-none focus:border-blue-500" />
+                          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap"><Plus size={14}/> Generar</button>
+                       </form>
+                    </div>
+
+                    <div>
+                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Webhooks Activos</h4>
+                       {loadingWebhooks ? (
+                          <div className="flex justify-center py-8"><Loader2 className="animate-spin text-blue-500" size={24}/></div>
+                       ) : moduleWebhooks.length === 0 ? (
+                          <div className="text-center py-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                             <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">No hay Webhooks activos para este módulo.</p>
+                          </div>
+                       ) : (
+                          <div className="space-y-3">
+                             {moduleWebhooks.map(wh => (
+                                <div key={wh.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm flex flex-col gap-4">
+                                   <div className="flex justify-between items-start">
+                                      <div>
+                                         <p className="text-sm font-bold text-gray-900 dark:text-white">{wh.name}</p>
+                                         <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mt-0.5">Creado: {wh.created_at}</p>
+                                      </div>
+                                      <button onClick={() => handleDeleteWebhook(wh.id)} className="text-gray-400 hover:text-red-500 p-1 rounded-md transition-colors bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={16}/></button>
+                                   </div>
+                                   
+                                   <div className="flex flex-col sm:flex-row gap-2">
+                                      <button onClick={() => handleOpenDocs(wh)} className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5">
+                                         <BookOpen size={14}/> Ver Documentación API
+                                      </button>
+                                      <button onClick={() => copyText(`${getBaseUrl()}/api/v1/webhooks/in/${wh.token}`)} className="flex-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5">
+                                         <Copy size={14}/> Copiar URL (POST)
+                                      </button>
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       )}
+                    </div>
+                 </div>
+              )}
             </div>
           </div>
         </div>,
