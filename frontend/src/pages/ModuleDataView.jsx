@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { createPortal } from 'react-dom'; 
-import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft } from 'lucide-react'; // 🔥 NUEVOS ÍCONOS: BookOpen, Terminal, ArrowLeft
+import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info } from 'lucide-react'; // 🔥 NUEVO ÍCONO Info
 import Select from 'react-select'; 
 
 import CaseModal from '../components/CaseModal';
@@ -38,6 +38,7 @@ const ModuleDataView = () => {
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [moduleWebhooks, setModuleWebhooks] = useState([]);
   const [newWebhookName, setNewWebhookName] = useState('');
+  const [selectedFormId, setSelectedFormId] = useState(''); // 🔥 NUEVO ESTADO PARA ELEGIR EL FORMULARIO
   const [loadingWebhooks, setLoadingWebhooks] = useState(false);
   
   // Estados para el Portal del Desarrollador (Docs API)
@@ -68,15 +69,17 @@ const ModuleDataView = () => {
       e.preventDefault();
       if (!newWebhookName.trim()) return notify.warning("Escribe un nombre para el webhook.");
       if (forms.length === 0) return notify.warning("No hay un formulario activo en este módulo.");
+      if (!selectedFormId) return notify.warning("Por favor, selecciona un formulario para el webhook."); // 🔥 VALIDACIÓN NUEVA
       
       try {
           await api.post('/api/v1/webhooks/', {
               name: newWebhookName,
               module_id: parseInt(moduleId),
-              form_id: forms[0].id 
+              form_id: parseInt(selectedFormId) // 🔥 USO DEL ESTADO SELECCIONADO
           });
           notify.success("Webhook generado exitosamente.");
           setNewWebhookName('');
+          setSelectedFormId('');
           fetchWebhooks();
       } catch (error) {
           notify.error("Error al generar el webhook.");
@@ -759,22 +762,51 @@ const ModuleDataView = () => {
                           </div>
                        </div>
 
-                       {/* CONSOLA DE EJEMPLO */}
-                       <div className="mt-6">
-                          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Terminal size={14}/> Formato del JSON Payload (Body)</h4>
-                          <div className="bg-[#1e1e1e] rounded-xl p-4 overflow-x-auto relative group shadow-inner border border-gray-800">
-                             <button onClick={() => copyText(JSON.stringify(webhookExample, null, 2))} className="absolute top-3 right-3 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 rounded-lg transition-colors" title="Copiar Payload">
-                               <Copy size={14}/>
-                             </button>
-                             {docsLoading ? (
-                                <div className="flex justify-center py-6"><Loader2 className="animate-spin text-emerald-500" size={24}/></div>
-                             ) : (
-                                <pre className="text-emerald-400 text-xs font-mono leading-relaxed">
-                                   {webhookExample ? JSON.stringify(webhookExample, null, 2) : '// No se pudo generar el ejemplo.'}
-                                </pre>
-                             )}
+                       {/* CONSOLA DE EJEMPLO Y EXPLICACIÓN DE FLUJO */}
+                       <div className="mt-8 space-y-5 border-t border-gray-100 dark:border-gray-800 pt-6">
+                          
+                          <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 p-4 rounded-xl flex gap-3 text-sm text-blue-900 dark:text-blue-200">
+                             <Info size={20} className="shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+                             <div>
+                                <p className="font-bold mb-1.5">¿Cómo funciona el ciclo de vida de esta API?</p>
+                                <ul className="list-disc pl-4 space-y-1.5 text-xs text-blue-800 dark:text-blue-300">
+                                   <li><strong>Formulario Dinámico:</strong> Este Webhook ya está enlazado internamente al formulario que seleccionaste. No necesitas declarar IDs de formularios en el JSON.</li>
+                                   <li><strong>Captura del case_id (POST):</strong> Al enviar una petición <code>POST</code> exitosa, la API devolverá un <code>case_id</code>. El sistema externo debe guardar ese número.</li>
+                                   <li><strong>Consulta y Actualización (GET / PUT):</strong> Para consultar o actualizar el registro en el futuro, se debe inyectar el <code>case_id</code> guardado al final de la URL. En el método <code>PUT</code>, solo es necesario enviar los campos que se desean modificar (Merge).</li>
+                                </ul>
+                             </div>
                           </div>
-                          <p className="text-[10px] text-gray-500 mt-2 italic">Envía los datos con la cabecera <code>Content-Type: application/json</code>.</p>
+
+                          <div>
+                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Terminal size={14}/> 1. Formato de Envío (Body para POST o PUT)</h4>
+                              <div className="bg-[#1e1e1e] rounded-xl p-4 overflow-x-auto relative group shadow-inner border border-gray-800">
+                                 <button onClick={() => copyText(JSON.stringify(webhookExample, null, 2))} className="absolute top-3 right-3 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 rounded-lg transition-colors" title="Copiar Payload">
+                                   <Copy size={14}/>
+                                 </button>
+                                 {docsLoading ? (
+                                    <div className="flex justify-center py-6"><Loader2 className="animate-spin text-emerald-500" size={24}/></div>
+                                 ) : (
+                                    <pre className="text-emerald-400 text-xs font-mono leading-relaxed">
+                                       {webhookExample ? JSON.stringify(webhookExample, null, 2) : '// No se pudo generar el ejemplo.'}
+                                    </pre>
+                                 )}
+                              </div>
+                              <p className="text-[10px] text-gray-500 mt-2 italic">Envía los datos usando la cabecera HTTP <code>Content-Type: application/json</code>.</p>
+                          </div>
+
+                          <div>
+                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Terminal size={14}/> 2. Respuesta Esperada al crear (POST)</h4>
+                              <div className="bg-[#1e1e1e] rounded-xl p-4 overflow-x-auto shadow-inner border border-gray-800">
+                                    <pre className="text-blue-400 text-xs font-mono leading-relaxed">
+{`{
+  "status": "success",
+  "message": "Registro creado.",
+  "case_id": 1234
+}`}
+                                    </pre>
+                              </div>
+                              <p className="text-[10px] text-gray-500 mt-2 italic">Extrae el valor <code>case_id</code> de esta respuesta para utilizar las rutas GET y PUT posteriores.</p>
+                          </div>
                        </div>
                     </div>
                  </div>
@@ -784,9 +816,17 @@ const ModuleDataView = () => {
                  <div className="flex flex-col gap-6 animate-in slide-in-from-left-4 duration-300">
                     <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-4">
                        <h4 className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase mb-2">Generar Nueva Integración</h4>
-                       <form onSubmit={handleCreateWebhook} className="flex gap-2">
+                       <form onSubmit={handleCreateWebhook} className="flex flex-col sm:flex-row gap-2">
                           <input type="text" required placeholder="Ej: Conexión con Zapier, Formulario Web..." value={newWebhookName} onChange={e => setNewWebhookName(e.target.value)} className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg outline-none focus:border-blue-500" />
-                          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap"><Plus size={14}/> Generar</button>
+                          
+                          <select required value={selectedFormId} onChange={e => setSelectedFormId(e.target.value)} className="w-full sm:w-1/3 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white rounded-lg outline-none focus:border-blue-500">
+                             <option value="">Seleccionar Formulario...</option>
+                             {forms.map(f => (
+                                 <option key={f.id} value={f.id}>{f.name}</option>
+                             ))}
+                          </select>
+
+                          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 whitespace-nowrap"><Plus size={14}/> Generar</button>
                        </form>
                     </div>
 
