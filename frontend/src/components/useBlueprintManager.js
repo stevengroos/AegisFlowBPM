@@ -19,11 +19,9 @@ export const useBlueprintManager = ({
   const [transitionActions, setTransitionActions] = useState([]);
   const [transitionValidations, setTransitionValidations] = useState([]);
 
-  // Memorias para rastrear eliminaciones locales
   const deletedStatusIdsRef = useRef(new Set());
   const deletedTransitionIdsRef = useRef(new Set());
   
-  // Catálogos
   const [moduleFields, setModuleFields] = useState([]);
   const [moduleSections, setModuleSections] = useState([]);
   const [companyUsers, setCompanyUsers] = useState([]);
@@ -87,8 +85,6 @@ export const useBlueprintManager = ({
 
       setNodes(currentNodes => {
          const tempNodes = currentNodes.filter(n => n.id.toString().startsWith('temp_'));
-         
-         // 🔥 FIX CRÍTICO 1: Filtramos comprobando tanto en String como en Integer para evitar resurrecciones
          const activeStatuses = statusesRes.data.filter(status => 
             !deletedStatusIdsRef.current.has(status.id) && 
             !deletedStatusIdsRef.current.has(status.id.toString()) &&
@@ -116,8 +112,6 @@ export const useBlueprintManager = ({
 
       setEdges(currentEdges => {
          const tempEdges = currentEdges.filter(e => e.id.toString().startsWith('temp_'));
-         
-         // 🔥 FIX CRÍTICO 2: Misma protección de tipos de datos para las transiciones
          const activeTransitions = transRes.data.filter(t => 
             !deletedTransitionIdsRef.current.has(t.id) && 
             !deletedTransitionIdsRef.current.has(t.id.toString()) &&
@@ -159,19 +153,16 @@ export const useBlueprintManager = ({
     }
   }, [currentVersionId, notify, setHasUnsavedChanges]);
 
+  // 🔥 CORE FIX 1: Guardado en Cascada (Nodos -> Flechas -> Reglas)
   const saveBlueprintChanges = async (fetchBlueprintDataCb) => {
     if (viewingOldVersion) return;
     try {
-      // 1. Procesar Eliminaciones pendientes
+      // 1. Procesar Eliminaciones
       for (const statusId of deletedStatusIdsRef.current) {
-        if (!statusId.toString().startsWith('temp_')) {
-          await api.delete(`/api/v1/statuses/${statusId}`);
-        }
+        if (!statusId.toString().startsWith('temp_')) await api.delete(`/api/v1/statuses/${statusId}`);
       }
       for (const transId of deletedTransitionIdsRef.current) {
-        if (!transId.toString().startsWith('temp_')) {
-          await api.delete(`/api/v1/transitions/${transId}`);
-        }
+        if (!transId.toString().startsWith('temp_')) await api.delete(`/api/v1/transitions/${transId}`);
       }
 
       const tempIdToRealIdMap = {};
@@ -197,7 +188,7 @@ export const useBlueprintManager = ({
         }
       }
 
-      // 3. Procesar Conexiones
+      // 3. Procesar Conexiones y Reglas Anidadas
       for (const edge of edges) {
         const transData = edge.data.raw_data;
         let sourceId = edge.source.toString();
@@ -215,20 +206,41 @@ export const useBlueprintManager = ({
           to_status_id: parseInt(targetId)
         };
 
+        let finalTransId = transData.id;
+
         if (edge.id.toString().startsWith('temp_')) {
-          await api.post('/api/v1/transitions/', payload);
+          const resTrans = await api.post('/api/v1/transitions/', payload);
+          finalTransId = resTrans.data.id;
+          
+          // 🔥 INYECTAR REGLAS Y VALIDACIONES EN LA TRANSICIÓN NUEVA
+          if (transData.actions && transData.actions.length > 0) {
+              for (const action of transData.actions) {
+                  const actionPayload = { ...action };
+                  delete actionPayload.id; 
+                  delete actionPayload.transition_id; 
+                  await api.post(`/api/v1/transitions/${finalTransId}/actions`, actionPayload);
+              }
+          }
+          if (transData.validations && transData.validations.length > 0) {
+              for (const validation of transData.validations) {
+                  const valPayload = { ...validation };
+                  delete valPayload.id; 
+                  delete valPayload.transition_id;
+                  await api.post(`/api/v1/transitions/${finalTransId}/validations`, valPayload);
+              }
+          }
+
         } else {
           await api.put(`/api/v1/transitions/${edge.id}`, payload);
         }
       }
 
-      // 🔥 FIX CRÍTICO 3: Destruir la memoria temporal ANTES de recargar para evitar nodos duplicados en pantalla
       setNodes(nds => nds.filter(n => !n.id.toString().startsWith('temp_')));
       setEdges(eds => eds.filter(e => !e.id.toString().startsWith('temp_')));
       deletedStatusIdsRef.current.clear();
       deletedTransitionIdsRef.current.clear();
 
-      notify.success("¡Diseño del flujo guardado con éxito!");
+      notify.success("¡Flujo y automatizaciones guardados con éxito!");
       if (setHasUnsavedChanges) setHasUnsavedChanges(false);
       
       if (fetchBlueprintDataCb) fetchBlueprintDataCb();
@@ -282,35 +294,106 @@ export const useBlueprintManager = ({
     } catch (error) { notify.error("Error al generar versión."); }
   };
 
+  // 🔥 CORE FIX 2: Exportación Profunda
   const handleExportBlueprint = async () => {
     try {
-       const exportData = { blueprint: selectedBlueprint, statuses: nodes.map(n => n.data.raw_data), transitions: edges.map(e => e.data.raw_data) };
+       notify.info("Compilando reglas de negocio...");
+       
+       // Descargamos las reglas de todas las flechas concurrentemente
+       const exportTransitions = await Promise.all(edges.map(async (edge) => {
+           const tData = { ...edge.data.raw_data };
+           if (!tData.id.toString().startsWith('temp_')) {
+               const [actRes, valRes] = await Promise.all([
+                   api.get(`/api/v1/transitions/${tData.id}/actions`),
+                   api.get(`/api/v1/transitions/${tData.id}/validations`)
+               ]);
+               tData.actions = actRes.data;
+               tData.validations = valRes.data;
+           } else {
+               tData.actions = [];
+               tData.validations = [];
+           }
+           return tData;
+       }));
+
+       const exportData = { blueprint: selectedBlueprint, statuses: nodes.map(n => n.data.raw_data), transitions: exportTransitions };
        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
        const url = URL.createObjectURL(blob);
        const a = document.createElement('a'); a.href = url; a.download = `flujo_${selectedBlueprint.name.replace(/\s+/g, '_').toLowerCase()}_v${selectedBlueprint.version || 1}.json`; a.click(); URL.revokeObjectURL(url);
-       notify.success("Exportación completada.");
-    } catch(err) { notify.error("Error al exportar."); }
+       
+       notify.success("Exportación de flujo inteligente completada.");
+    } catch(err) { notify.error("Error compilando exportación."); }
   };
 
+  // 🔥 CORE FIX 3: Mapeo de IDs en Importación
   const handleImportBlueprint = (event, fetchBlueprintDataCb) => {
     if (viewingOldVersion) return;
     const file = event.target.files[0];
     if (!file) return;
+    
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const importedData = JSON.parse(e.target.result);
-        const newNodes = importedData.statuses.map((status, index) => ({
-          id: `temp_${Date.now()}_${index}`,
-          data: { raw_data: status },
-          position: { x: status.position_x || 50, y: status.position_y || 50 },
-          type: status.bpmn_shape || 'task'
-        }));
+        const currentDarkMode = document.documentElement.classList.contains('dark');
+        
+        const oldToTempMap = {};
+
+        const newNodes = (importedData.statuses || []).map((status, index) => {
+          const tempId = `temp_${Date.now()}_node_${index}`;
+          oldToTempMap[status.id] = tempId; 
+          
+          return {
+            id: tempId,
+            data: { raw_data: { ...status, id: tempId } }, 
+            position: { x: status.position_x || 50, y: status.position_y || 50 },
+            type: status.bpmn_shape || 'task',
+            style: {
+               backgroundColor: currentDarkMode ? '#1f2937' : 'white',
+               border: currentDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
+            }
+          };
+        });
+
+        const newEdges = (importedData.transitions || []).map((t, index) => {
+          const sourceTempId = oldToTempMap[t.from_status_id];
+          const targetTempId = oldToTempMap[t.to_status_id];
+          
+          if (!sourceTempId || !targetTempId) return null;
+
+          const tempEdgeId = `temp_${Date.now()}_edge_${index}`;
+          
+          return {
+            id: tempEdgeId,
+            source: sourceTempId,
+            target: targetTempId,
+            label: t.name,
+            data: { 
+              raw_data: { 
+                ...t, 
+                id: tempEdgeId, 
+                from_status_id: sourceTempId, 
+                to_status_id: targetTempId 
+              } 
+            },
+            labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
+            labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
+            labelBgPadding: [4, 4],
+            markerEnd: { type: 'arrowclosed', color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
+            style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
+            animated: true,
+          };
+        }).filter(Boolean); 
+
         setNodes(newNodes);
-        setEdges([]);
+        setEdges(newEdges); 
+        
         if (setHasUnsavedChanges) setHasUnsavedChanges(true);
-        notify.success("¡Flujo importado en memoria! Guarda para confirmar.");
-      } catch (err) { notify.error("Error al importar JSON."); }
+        notify.success("¡Flujo importado en memoria con sus transiciones! Guarda para confirmar.");
+        
+      } catch (err) { 
+        notify.error("Error al importar JSON. Formato inválido."); 
+      }
       event.target.value = '';
     };
     reader.readAsText(file);
