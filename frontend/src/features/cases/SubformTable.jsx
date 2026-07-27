@@ -34,9 +34,9 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
   };
 
   return (
-    
-    <div className={`border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 w-full ${isEditing ? 'shadow-sm overflow-visible' : 'overflow-hidden'}`}>
-      <div className={isEditing ? "overflow-visible" : "overflow-x-auto"}>
+   
+    <div className="border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 w-full shadow-sm overflow-hidden">
+      <div className="overflow-x-auto custom-scrollbar">
         <table className="w-full text-left text-sm whitespace-nowrap min-w-[600px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
             <tr>
@@ -105,7 +105,7 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                             />
                           </div>
                           
-                       // 🔥 NUEVO: INPUT DE TELÉFONO EN TABLA 🔥
+                       
                        ) : col.type === 'phone' ? (
                           <div className="min-w-[200px] react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
                             <PhoneInput
@@ -120,7 +120,7 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                             />
                           </div>
                           
-                       // 🔥 NUEVO: INPUT DE MONEDA EN TABLA 🔥
+                       
                        ) : col.type === 'currency' ? (
                           <div className="min-w-[150px] relative">
                              {col.options?.symbol_position === 'left' && (
