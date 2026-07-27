@@ -231,17 +231,17 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     setIsRenaming(true);
 
     if (selectedElement.type === 'status') {
-      // 1. Preparamos la data actualizada
+      // 1. Sincronizamos los datos actualizados
       const updatedRaw = { 
         ...selectedElement.data, 
         name: renameValue, 
         sla_hours: editSlaHours ? parseInt(editSlaHours) : null 
       };
       
-      // 2. Sincronizamos la UI para que el panel lateral no tenga datos viejos
+      // 2. Refrescamos el elemento seleccionado para evitar desincronización
       setSelectedElement({ ...selectedElement, data: updatedRaw });
 
-      // 3. Actualizamos el nodo en el lienzo
+      // 3. Actualizamos el nodo visual
       setNodes((nds) => nds.map((n) => {
         if (n.id.toString() === selectedElement.data.id.toString()) {
           return { ...n, data: { ...n.data, raw_data: updatedRaw } };
@@ -250,7 +250,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       }));
     } else {
       const updatedRaw = { ...selectedElement.data, name: renameValue };
-      
       setSelectedElement({ ...selectedElement, data: updatedRaw });
 
       setEdges((eds) => eds.map((e) => {
@@ -288,22 +287,34 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     if (selectedElement.type === 'status') {
       const statusIdStr = selectedElement.data.id.toString();
       
-      // 🔥 FIX: Guardamos SOLO el string. Evita dobles iteraciones y errores 404 al guardar
+      // Mandamos a borrar el estado
       deletedStatusIdsRef.current.add(statusIdStr);
       
+      // 🔥 FIX CRÍTICO: Rastrear flechas conectadas y mandarlas a borrar también
+      setEdges((eds) => {
+        const edgesToKeep = [];
+        eds.forEach((edge) => {
+          if (edge.source.toString() === statusIdStr || edge.target.toString() === statusIdStr) {
+            // Si la flecha tocaba este estado, DEBEMOS eliminarla de la BD
+            deletedTransitionIdsRef.current.add(edge.id.toString());
+          } else {
+            edgesToKeep.push(edge);
+          }
+        });
+        return edgesToKeep;
+      });
+      
       setNodes((nds) => nds.filter((n) => n.id.toString() !== statusIdStr));
-      setEdges((eds) => eds.filter((e) => e.source.toString() !== statusIdStr && e.target.toString() !== statusIdStr));
+      
     } else {
       const transIdStr = selectedElement.data.id.toString();
-      
       deletedTransitionIdsRef.current.add(transIdStr);
-      
       setEdges((eds) => eds.filter((e) => e.id.toString() !== transIdStr));
     }
 
     setSelectedElement(null);
     reportChanges(true);
-    notify.success("Elemento removido de la vista. Guarda para consolidar.");
+    notify.success("Elemento removido de la vista. Guarda para consolidar en la BD.");
   };
 
   const handleSaveAction = async (e) => {

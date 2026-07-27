@@ -157,18 +157,20 @@ export const useBlueprintManager = ({
   const saveBlueprintChanges = async (fetchBlueprintDataCb) => {
     if (viewingOldVersion) return;
     try {
-      // 1. Procesar Eliminaciones (Blindado contra dobles ejecuciones)
-      const uniqueStatusesToDelete = Array.from(new Set(Array.from(deletedStatusIdsRef.current).map(id => id.toString())));
-      for (const statusId of uniqueStatusesToDelete) {
-        if (!statusId.startsWith('temp_')) {
-            await api.delete(`/api/v1/statuses/${statusId}`);
-        }
-      }
-
+      // 1. Procesar Eliminaciones (🔥 ORDEN INVERTIDO PARA PROTEGER INTEGRIDAD)
+      // Primero eliminamos las flechas (hijos)
       const uniqueTransitionsToDelete = Array.from(new Set(Array.from(deletedTransitionIdsRef.current).map(id => id.toString())));
       for (const transId of uniqueTransitionsToDelete) {
         if (!transId.startsWith('temp_')) {
             await api.delete(`/api/v1/transitions/${transId}`);
+        }
+      }
+
+      // Luego eliminamos los estados (padres)
+      const uniqueStatusesToDelete = Array.from(new Set(Array.from(deletedStatusIdsRef.current).map(id => id.toString())));
+      for (const statusId of uniqueStatusesToDelete) {
+        if (!statusId.startsWith('temp_')) {
+            await api.delete(`/api/v1/statuses/${statusId}`);
         }
       }
 
