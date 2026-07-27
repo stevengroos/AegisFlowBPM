@@ -231,21 +231,30 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     setIsRenaming(true);
 
     if (selectedElement.type === 'status') {
+      // 1. Preparamos la data actualizada
+      const updatedRaw = { 
+        ...selectedElement.data, 
+        name: renameValue, 
+        sla_hours: editSlaHours ? parseInt(editSlaHours) : null 
+      };
+      
+      // 2. Sincronizamos la UI para que el panel lateral no tenga datos viejos
+      setSelectedElement({ ...selectedElement, data: updatedRaw });
+
+      // 3. Actualizamos el nodo en el lienzo
       setNodes((nds) => nds.map((n) => {
         if (n.id.toString() === selectedElement.data.id.toString()) {
-          const updatedRaw = { 
-            ...n.data.raw_data, 
-            name: renameValue, 
-            sla_hours: editSlaHours ? parseInt(editSlaHours) : null 
-          };
           return { ...n, data: { ...n.data, raw_data: updatedRaw } };
         }
         return n;
       }));
     } else {
+      const updatedRaw = { ...selectedElement.data, name: renameValue };
+      
+      setSelectedElement({ ...selectedElement, data: updatedRaw });
+
       setEdges((eds) => eds.map((e) => {
         if (e.id.toString() === selectedElement.data.id.toString()) {
-          const updatedRaw = { ...e.data.raw_data, name: renameValue };
           return { ...e, label: renameValue, data: { ...e.data, raw_data: updatedRaw } };
         }
         return e;
@@ -277,21 +286,19 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     if (!selectedElement || viewingOldVersion) return;
     
     if (selectedElement.type === 'status') {
-      const statusId = selectedElement.data.id;
-      // 🔥 FIX 5: Protegemos el borrado inyectando en la memoria tanto el número como el string
-      deletedStatusIdsRef.current.add(statusId);
-      deletedStatusIdsRef.current.add(statusId.toString());
-      deletedStatusIdsRef.current.add(Number(statusId));
+      const statusIdStr = selectedElement.data.id.toString();
       
-      setNodes((nds) => nds.filter((n) => n.id.toString() !== statusId.toString()));
-      setEdges((eds) => eds.filter((e) => e.source.toString() !== statusId.toString() && e.target.toString() !== statusId.toString()));
+      // 🔥 FIX: Guardamos SOLO el string. Evita dobles iteraciones y errores 404 al guardar
+      deletedStatusIdsRef.current.add(statusIdStr);
+      
+      setNodes((nds) => nds.filter((n) => n.id.toString() !== statusIdStr));
+      setEdges((eds) => eds.filter((e) => e.source.toString() !== statusIdStr && e.target.toString() !== statusIdStr));
     } else {
-      const transId = selectedElement.data.id;
-      deletedTransitionIdsRef.current.add(transId);
-      deletedTransitionIdsRef.current.add(transId.toString());
-      deletedTransitionIdsRef.current.add(Number(transId));
+      const transIdStr = selectedElement.data.id.toString();
       
-      setEdges((eds) => eds.filter((e) => e.id.toString() !== transId.toString()));
+      deletedTransitionIdsRef.current.add(transIdStr);
+      
+      setEdges((eds) => eds.filter((e) => e.id.toString() !== transIdStr));
     }
 
     setSelectedElement(null);

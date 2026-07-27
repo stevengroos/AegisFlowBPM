@@ -157,12 +157,19 @@ export const useBlueprintManager = ({
   const saveBlueprintChanges = async (fetchBlueprintDataCb) => {
     if (viewingOldVersion) return;
     try {
-      // 1. Procesar Eliminaciones
-      for (const statusId of deletedStatusIdsRef.current) {
-        if (!statusId.toString().startsWith('temp_')) await api.delete(`/api/v1/statuses/${statusId}`);
+      // 1. Procesar Eliminaciones (Blindado contra dobles ejecuciones)
+      const uniqueStatusesToDelete = Array.from(new Set(Array.from(deletedStatusIdsRef.current).map(id => id.toString())));
+      for (const statusId of uniqueStatusesToDelete) {
+        if (!statusId.startsWith('temp_')) {
+            await api.delete(`/api/v1/statuses/${statusId}`);
+        }
       }
-      for (const transId of deletedTransitionIdsRef.current) {
-        if (!transId.toString().startsWith('temp_')) await api.delete(`/api/v1/transitions/${transId}`);
+
+      const uniqueTransitionsToDelete = Array.from(new Set(Array.from(deletedTransitionIdsRef.current).map(id => id.toString())));
+      for (const transId of uniqueTransitionsToDelete) {
+        if (!transId.startsWith('temp_')) {
+            await api.delete(`/api/v1/transitions/${transId}`);
+        }
       }
 
       const tempIdToRealIdMap = {};
