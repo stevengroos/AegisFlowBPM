@@ -136,11 +136,19 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN RELACIONAL (LOOKUP) */}
+           {/* 🔥 CORRECCIÓN: CONFIGURACIÓN RELACIONAL (LOOKUP) */}
            {editingField.field_type === 'relation' && (
              <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 p-4 rounded-xl">
                <label className="block text-xs font-bold text-blue-700 dark:text-blue-400 uppercase mb-1.5 flex items-center gap-1"><LinkIcon size={14}/> Módulo Destino (Lookup)</label>
-               <select required value={editingField.target_module_id || ''} onChange={(e) => setEditingField({...editingField, target_module_id: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all">
+               <select 
+                 required 
+                 value={editingField.options?.target_module_id || ''} 
+                 onChange={(e) => setEditingField({
+                   ...editingField, 
+                   options: { ...editingField.options, target_module_id: e.target.value }
+                 })} 
+                 className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all"
+               >
                  <option value="">Seleccione Módulo a vincular...</option>
                  {modulesList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                </select>
