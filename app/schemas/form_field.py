@@ -49,7 +49,7 @@ class FormFieldBase(BaseModel):
     
     required: bool = False
     order: int = 0
-    options: Optional[Union[List[str], CurrencyConfig, PhoneConfig, dict, Any]] = None
+    options: Optional[Union[List[str], dict, Any]] = None
     
     is_active: bool = True
     show_in_create: Optional[bool] = True
