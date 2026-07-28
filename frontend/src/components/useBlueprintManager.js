@@ -1,581 +1,419 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import { X, User, Copy, Database, BellRing, Code, Zap, Sparkles, Type, FileBox, UploadCloud, CheckCircle, Loader2, Edit2, Trash2, Plus, ShieldAlert } from 'lucide-react';
-import ReactFlow, { Background, Controls, MarkerType, applyNodeChanges, applyEdgeChanges } from 'reactflow';
-import 'reactflow/dist/style.css';
-import { useNotification } from '../context/NotificationContext';
 
-// Nodos y Modales
-import { TaskNode, StartNode, EndNode, GatewayNode } from './BpmnNodes';
-import ShapeSelectorModal from './modals/ShapeSelectorModal';
-import ValidationModal from './modals/ValidationModal';
-import ActionModal from './modals/ActionModal';
-import BlueprintHeader from './BlueprintHeader';
-import BlueprintSidebar from './BlueprintSidebar';
-import { useBlueprintManager } from './useBlueprintManager';
+export const useBlueprintManager = ({ 
+  moduleId, 
+  currentVersionId, 
+  selectedBlueprint, 
+  viewingOldVersion, 
+  notify, 
+  confirm, 
+  reloadBlueprints,
+  setHasUnsavedChanges
+}) => {
 
-const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsavedChanges, reloadBlueprints }) => {
-  const { notify, confirm } = useNotification(); 
+  const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
+  const [versions, setVersions] = useState([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [transitionActions, setTransitionActions] = useState([]);
+  const [transitionValidations, setTransitionValidations] = useState([]);
 
-  const [isActionsListOpen, setIsActionsListOpen] = useState(false);
-  const [isValidationsListOpen, setIsValidationsListOpen] = useState(false);
+  const deletedStatusIdsRef = useRef(new Set());
+  const deletedTransitionIdsRef = useRef(new Set());
   
-  const [newStatus, setNewStatus] = useState({ name: '', is_initial: false, sla_hours: '' });
-  const [isShapeModalOpen, setIsShapeModalOpen] = useState(false);
-  
-  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [aiMode, setAiMode] = useState('text');
-  const [aiFile, setAiFile] = useState(null);
-  const aiBlueprintFileInputRef = useRef(null);
+  const [moduleFields, setModuleFields] = useState([]);
+  const [moduleSections, setModuleSections] = useState([]);
+  const [companyUsers, setCompanyUsers] = useState([]);
+  const [companyRoles, setCompanyRoles] = useState([]);
+  const [companyProfiles, setCompanyProfiles] = useState([]);
+  const [allModules, setAllModules] = useState([]);
+  const [allForms, setAllForms] = useState([]);
 
   useEffect(() => {
-     if (isShapeModalOpen === 'ai_modal') {
-        setIsAiModalOpen(true);
-        setIsShapeModalOpen(false);
-     }
-  }, [isShapeModalOpen]);
+    const fetchCatalogs = async () => {
+      try {
+        const [fieldsRes, usersRes, modRes, formsRes, rolesRes, profilesRes] = await Promise.all([
+          api.get(`/api/v1/fields/?module_id=${moduleId}`),
+          api.get('/api/v1/auth/users'),
+          api.get('/api/v1/modules/'),
+          api.get('/api/v1/forms/'),
+          api.get('/api/v1/security/roles'),
+          api.get('/api/v1/security/profiles')
+        ]);
+        
+        const activeFields = fieldsRes.data.filter(f => f.is_active);
+        const uniqueFieldsMap = new Map();
+        activeFields.forEach(f => {
+            const key = f.api_name || f.label;
+            if (!uniqueFieldsMap.has(key)) {
+                f.display_label = f.api_name && f.api_name !== f.label ? `${f.label} (${f.api_name})` : f.label;
+                uniqueFieldsMap.set(key, f);
+            }
+        });
+        setModuleFields(Array.from(uniqueFieldsMap.values()));
+        setCompanyUsers(usersRes.data);
+        setAllModules(modRes.data);
+        setAllForms(formsRes.data);
+        setCompanyRoles(rolesRes.data);
+        setCompanyProfiles(profilesRes.data);
 
-  const nodeTypes = useMemo(() => ({ task: TaskNode, start: StartNode, end: EndNode, gateway: GatewayNode }), []);
-  const [selectedElement, setSelectedElement] = useState(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [editSlaHours, setEditSlaHours] = useState(""); 
-  const [isRenaming, setIsRenaming] = useState(false);
-  
-  const [showVersions, setShowVersions] = useState(false);
-  const [viewingOldVersion, setViewingOldVersion] = useState(false); 
-  const [currentVersionId, setCurrentVersionId] = useState(selectedBlueprint.id); 
+        const modForms = formsRes.data.filter(f => f.module_id === parseInt(moduleId) && f.is_active);
+        let allSections = [];
+        for(let f of modForms) {
+            try {
+                const secRes = await api.get(`/api/v1/fields/sections?form_id=${f.id}`);
+                allSections = [...allSections, ...secRes.data];
+            } catch(e) {}
+        }
+        setModuleSections(allSections);
+      } catch (error) { 
+          notify.error("Error al cargar los catálogos del sistema."); 
+      }
+    };
+    if (moduleId) fetchCatalogs();
+  }, [moduleId, notify]);
 
-  const [activeTab, setActiveTab] = useState('actions'); 
-
-  const [isAddingAction, setIsAddingAction] = useState(false);
-  const [editingActionId, setEditingActionId] = useState(null); 
-  const defaultActionState = { action_type: 'UPDATE_VALUE', target_field: '', action_value: '', function_code: '', action_config: {} };
-  const [newAction, setNewAction] = useState(defaultActionState);
-
-  const [isAddingValidation, setIsAddingValidation] = useState(false);
-  const [editingValidationId, setEditingValidationId] = useState(null);
-  const defaultValidationState = { target_field: '', operator: '==', validation_value: '', error_message: '' };
-  const [newValidation, setNewValidation] = useState(defaultValidationState);
-
-  const [pendingConnection, setPendingConnection] = useState(null);
-  const [newTransitionName, setNewTransitionName] = useState('');
-  const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
-  const [targetModuleFields, setTargetModuleFields] = useState([]); 
-
-  const fileInputRef = useRef(null); 
-  const aiImageInputRef = useRef(null); 
-  const selectedElementRef = useRef(selectedElement);
-
-  useEffect(() => { selectedElementRef.current = selectedElement; }, [selectedElement]);
-
-  // 🔥 FIX 1: Estabilizador para aislar setHasUnsavedChanges y romper el bucle infinito de recargas
+  // FIX: Rompemos el ciclo infinito aislando setHasUnsavedChanges
   const setHasUnsavedChangesRef = useRef(setHasUnsavedChanges);
-  useEffect(() => { 
-      setHasUnsavedChangesRef.current = setHasUnsavedChanges; 
-  }, [setHasUnsavedChanges]);
+  useEffect(() => { setHasUnsavedChangesRef.current = setHasUnsavedChanges; }, [setHasUnsavedChanges]);
 
-  const reportChanges = useCallback((hasPendingChanges) => {
-      if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(hasPendingChanges);
-  }, []);
+  const fetchBlueprintData = useCallback(async (setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef) => {
+    try {
+      const [statusesRes, transRes] = await Promise.all([
+        api.get(`/api/v1/statuses/?blueprint_id=${currentVersionId}`),
+        api.get(`/api/v1/transitions/?blueprint_id=${currentVersionId}`)
+      ]);
 
-  const {
+      const currentDarkMode = document.documentElement.classList.contains('dark');
+
+      setNodes(currentNodes => {
+         const tempNodes = currentNodes.filter(n => n.id.toString().startsWith('temp_'));
+         
+         const activeStatuses = statusesRes.data.filter(status => 
+            !deletedStatusIdsRef.current.has(status.id) && 
+            !deletedStatusIdsRef.current.has(status.id.toString()) &&
+            !deletedStatusIdsRef.current.has(Number(status.id))
+         );
+         
+         const dbNodes = activeStatuses.map((status, index) => {
+           const existingNode = currentNodes.find(n => n.id === status.id.toString());
+           const xPos = status.position_x !== null ? status.position_x : (existingNode ? existingNode.position.x : (index % 4) * 250 + 50);
+           const yPos = status.position_y !== null ? status.position_y : (existingNode ? existingNode.position.y : Math.floor(index / 4) * 150 + 50);
+
+           return {
+             id: status.id.toString(),
+             data: { raw_data: status },
+             position: { x: xPos, y: yPos },
+             type: status.bpmn_shape || 'task',
+             style: {
+               backgroundColor: currentDarkMode ? '#1f2937' : 'white',
+               border: currentDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
+             }
+           };
+         });
+         return [...dbNodes, ...tempNodes];
+      });
+
+      setEdges(currentEdges => {
+         const tempEdges = currentEdges.filter(e => e.id.toString().startsWith('temp_'));
+         
+         const activeTransitions = transRes.data.filter(t => 
+            !deletedTransitionIdsRef.current.has(t.id) && 
+            !deletedTransitionIdsRef.current.has(t.id.toString()) &&
+            !deletedTransitionIdsRef.current.has(Number(t.id))
+         );
+
+         const dbEdges = activeTransitions.map(t => ({
+           id: t.id.toString(), source: t.from_status_id.toString(), target: t.to_status_id.toString(), label: t.name, data: { raw_data: t }, 
+           labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
+           labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
+           labelBgPadding: [4, 4],
+           markerEnd: { type: 'arrowclosed', color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
+           style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }, animated: true,
+         }));
+         return [...dbEdges, ...tempEdges];
+      });
+
+      if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(false);
+
+      const currentSelected = selectedElementRef.current;
+      if (currentSelected) {
+         if (currentSelected.type === 'status') {
+             const updatedStatus = statusesRes.data.find(s => s.id.toString() === currentSelected.data.id.toString());
+             if (updatedStatus) {
+                 setSelectedElement({ type: 'status', data: updatedStatus });
+                 setRenameValue(updatedStatus.name);
+                 setEditSlaHours(updatedStatus.sla_hours || "");
+             } else { setSelectedElement(null); }
+         } else {
+             const updatedTrans = transRes.data.find(t => t.id.toString() === currentSelected.data.id.toString());
+             if (updatedTrans) {
+                 setSelectedElement({ type: 'transition', data: updatedTrans });
+                 setRenameValue(updatedTrans.name);
+             } else { setSelectedElement(null); }
+         }
+      }
+    } catch (error) { 
+        notify.error("Error al cargar el flujo de trabajo.");
+    }
+  }, [currentVersionId, notify]);
+
+  const saveBlueprintChanges = async (fetchBlueprintDataCb) => {
+    if (viewingOldVersion) return;
+    try {
+      // Primero eliminamos las flechas (hijos)
+      const uniqueTransitionsToDelete = Array.from(new Set(Array.from(deletedTransitionIdsRef.current).map(id => id.toString())));
+      for (const transId of uniqueTransitionsToDelete) {
+        if (!transId.startsWith('temp_')) {
+            await api.delete(`/api/v1/transitions/${transId}`);
+        }
+      }
+
+      // Luego eliminamos los estados (padres)
+      const uniqueStatusesToDelete = Array.from(new Set(Array.from(deletedStatusIdsRef.current).map(id => id.toString())));
+      for (const statusId of uniqueStatusesToDelete) {
+        if (!statusId.startsWith('temp_')) {
+            await api.delete(`/api/v1/statuses/${statusId}`);
+        }
+      }
+
+      const tempIdToRealIdMap = {};
+
+      // Procesar Nodos
+      for (const node of nodes) {
+        const statusData = node.data.raw_data;
+        const payload = {
+          name: statusData.name,
+          is_initial: statusData.is_initial || false,
+          blueprint_id: parseInt(currentVersionId),
+          sla_hours: statusData.sla_hours ? parseInt(statusData.sla_hours) : null,
+          bpmn_shape: node.type || 'task',
+          position_x: Math.round(node.position.x),
+          position_y: Math.round(node.position.y)
+        };
+
+        if (node.id.toString().startsWith('temp_')) {
+          const res = await api.post('/api/v1/statuses/', payload);
+          tempIdToRealIdMap[node.id] = res.data.id.toString();
+        } else {
+          await api.put(`/api/v1/statuses/${node.id}`, payload);
+        }
+      }
+
+      // Procesar Conexiones y Reglas Anidadas
+      for (const edge of edges) {
+        const transData = edge.data.raw_data;
+        let sourceId = edge.source.toString();
+        let targetId = edge.target.toString();
+
+        if (sourceId.startsWith('temp_')) sourceId = tempIdToRealIdMap[sourceId];
+        if (targetId.startsWith('temp_')) targetId = tempIdToRealIdMap[targetId];
+
+        if (!sourceId || !targetId) continue; 
+
+        const payload = {
+          name: transData.name || 'Avanzar',
+          blueprint_id: parseInt(currentVersionId),
+          from_status_id: parseInt(sourceId),
+          to_status_id: parseInt(targetId)
+        };
+
+        let finalTransId = transData.id;
+
+        if (edge.id.toString().startsWith('temp_')) {
+          const resTrans = await api.post('/api/v1/transitions/', payload);
+          finalTransId = resTrans.data.id;
+          
+          if (transData.actions && transData.actions.length > 0) {
+              for (const action of transData.actions) {
+                  const actionPayload = { ...action };
+                  delete actionPayload.id; 
+                  delete actionPayload.transition_id; 
+                  await api.post(`/api/v1/transitions/${finalTransId}/actions`, actionPayload);
+              }
+          }
+          if (transData.validations && transData.validations.length > 0) {
+              for (const validation of transData.validations) {
+                  const valPayload = { ...validation };
+                  delete valPayload.id; 
+                  delete valPayload.transition_id;
+                  await api.post(`/api/v1/transitions/${finalTransId}/validations`, valPayload);
+              }
+          }
+
+        } else {
+          await api.put(`/api/v1/transitions/${edge.id}`, payload);
+        }
+      }
+
+      setNodes(nds => nds.filter(n => !n.id.toString().startsWith('temp_')));
+      setEdges(eds => eds.filter(e => !e.id.toString().startsWith('temp_')));
+      deletedStatusIdsRef.current.clear();
+      deletedTransitionIdsRef.current.clear();
+
+      notify.success("¡Flujo y automatizaciones guardados con éxito!");
+      if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(false);
+      
+      if (fetchBlueprintDataCb) fetchBlueprintDataCb();
+
+    } catch (error) {
+      notify.error(error.response?.data?.detail || "Error al guardar los cambios del flujo.");
+    }
+  };
+
+  const loadTransitionDetails = async (transitionId) => {
+    try {
+      const [actRes, valRes] = await Promise.all([
+         api.get(`/api/v1/transitions/${transitionId}/actions`),
+         api.get(`/api/v1/transitions/${transitionId}/validations`)
+      ]);
+      setTransitionActions(actRes.data);
+      setTransitionValidations(valRes.data);
+    } catch (error) { console.error("Error detalles transición:", error); }
+  };
+
+  const fetchVersions = async (setShowVersions) => {
+    setLoadingVersions(true);
+    try {
+      const res = await api.get(`/api/v1/blueprints/${selectedBlueprint.id}/versions`);
+      setVersions(res.data);
+      setShowVersions(true);
+    } catch (error) { notify.error("Error historial versiones."); } 
+    finally { setLoadingVersions(false); }
+  };
+
+  const handleRestoreVersion = async (setCurrentVersionId, setViewingOldVersion) => {
+    const isConfirmed = await confirm({ title: 'Restaurar Versión', message: '¿Crear una NUEVA versión exacta a esta y activarla?', confirmText: 'Sí, restaurar', variant: 'primary' });
+    if (!isConfirmed) return;
+    try {
+      const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, { name: selectedBlueprint.name, is_active: true });
+      notify.success("¡Versión restaurada con éxito!");
+      setViewingOldVersion(false); setCurrentVersionId(res.data.id);
+      if(reloadBlueprints) reloadBlueprints();
+    } catch (error) { notify.error("Error al restaurar."); }
+  };
+
+  const handleCreateNewVersion = async (setCurrentVersionId) => {
+    const currentV = versions.find(v => v.id === currentVersionId)?.version || selectedBlueprint.version || 1;
+    const isConfirmed = await confirm({ title: 'Generar Nueva Versión', message: `Creará la Versión ${currentV + 1}. ¿Deseas continuar?`, confirmText: `Sí, crear V${currentV + 1}`, variant: 'primary' });
+    if (!isConfirmed) return;
+    try {
+      const res = await api.put(`/api/v1/blueprints/${currentVersionId}`, { name: selectedBlueprint.name, is_active: true });
+      notify.success(`¡Versión ${res.data.version} generada!`);
+      setCurrentVersionId(res.data.id);
+      if(reloadBlueprints) reloadBlueprints();
+    } catch (error) { notify.error("Error al generar versión."); }
+  };
+
+  const handleExportBlueprint = async () => {
+    try {
+       notify.info("Compilando reglas de negocio...");
+       
+       const exportTransitions = await Promise.all(edges.map(async (edge) => {
+           const tData = { ...edge.data.raw_data };
+           if (!tData.id.toString().startsWith('temp_')) {
+               const [actRes, valRes] = await Promise.all([
+                   api.get(`/api/v1/transitions/${tData.id}/actions`),
+                   api.get(`/api/v1/transitions/${tData.id}/validations`)
+               ]);
+               tData.actions = actRes.data;
+               tData.validations = valRes.data;
+           } else {
+               tData.actions = [];
+               tData.validations = [];
+           }
+           return tData;
+       }));
+
+       const exportData = { blueprint: selectedBlueprint, statuses: nodes.map(n => n.data.raw_data), transitions: exportTransitions };
+       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+       const url = URL.createObjectURL(blob);
+       const a = document.createElement('a'); a.href = url; a.download = `flujo_${selectedBlueprint.name.replace(/\s+/g, '_').toLowerCase()}_v${selectedBlueprint.version || 1}.json`; a.click(); URL.revokeObjectURL(url);
+       
+       notify.success("Exportación de flujo inteligente completada.");
+    } catch(err) { notify.error("Error compilando exportación."); }
+  };
+
+  const handleImportBlueprint = (event, fetchBlueprintDataCb) => {
+    if (viewingOldVersion) return;
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+        const currentDarkMode = document.documentElement.classList.contains('dark');
+        
+        const oldToTempMap = {};
+
+        const newNodes = (importedData.statuses || []).map((status, index) => {
+          const tempId = `temp_${Date.now()}_node_${index}`;
+          oldToTempMap[status.id] = tempId; 
+          
+          return {
+            id: tempId,
+            data: { raw_data: { ...status, id: tempId } }, 
+            position: { x: status.position_x || 50, y: status.position_y || 50 },
+            type: status.bpmn_shape || 'task',
+            style: {
+               backgroundColor: currentDarkMode ? '#1f2937' : 'white',
+               border: currentDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
+            }
+          };
+        });
+
+        const newEdges = (importedData.transitions || []).map((t, index) => {
+          const sourceTempId = oldToTempMap[t.from_status_id];
+          const targetTempId = oldToTempMap[t.to_status_id];
+          
+          if (!sourceTempId || !targetTempId) return null;
+
+          const tempEdgeId = `temp_${Date.now()}_edge_${index}`;
+          
+          return {
+            id: tempEdgeId,
+            source: sourceTempId,
+            target: targetTempId,
+            label: t.name,
+            data: { 
+              raw_data: { 
+                ...t, 
+                id: tempEdgeId, 
+                from_status_id: sourceTempId, 
+                to_status_id: targetTempId 
+              } 
+            },
+            labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
+            labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
+            labelBgPadding: [4, 4],
+            markerEnd: { type: 'arrowclosed', color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
+            style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
+            animated: true,
+          };
+        }).filter(Boolean); 
+
+        setNodes(newNodes);
+        setEdges(newEdges); 
+        
+        if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(true);
+        notify.success("¡Flujo importado en memoria con sus transiciones! Guarda para confirmar.");
+        
+      } catch (err) { 
+        notify.error("Error al importar JSON. Formato inválido."); 
+      }
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  return {
     nodes, setNodes, edges, setEdges,
     deletedStatusIdsRef, deletedTransitionIdsRef,
     moduleFields, moduleSections, companyUsers, companyRoles, companyProfiles, allModules, allForms,
     versions, loadingVersions, transitionActions, transitionValidations,
     fetchBlueprintData, loadTransitionDetails, fetchVersions,
-    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint,
-    saveBlueprintChanges
-  } = useBlueprintManager({
-    moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints, setHasUnsavedChanges: reportChanges
-  });
-
-  const hasTempItems = nodes.some(n => n.id.toString().startsWith('temp_')) || edges.some(e => e.id.toString().startsWith('temp_'));
-  const hasPendingDeletions = deletedStatusIdsRef.current?.size > 0 || deletedTransitionIdsRef.current?.size > 0;
-  const isEditingName = selectedElement && renameValue !== selectedElement.data.name;
-  const isWritingNewStatus = newStatus.name.trim().length > 0;
-  
-  const hasLocalChanges = hasTempItems || hasPendingDeletions || isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation;
-
-  useEffect(() => { reportChanges(hasLocalChanges); }, [hasLocalChanges, reportChanges]);
-
-  useEffect(() => {
-    const handleBeforeUnload = (e) => { if (hasLocalChanges) { e.preventDefault(); e.returnValue = ''; } };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasLocalChanges]);
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => setIsDarkMode(document.documentElement.classList.contains('dark')));
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => { fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef); }, [fetchBlueprintData]);
-
-  useEffect(() => {
-     if (newAction.action_type === 'CREATE_RECORD' && newAction.action_config?.module_id) {
-         api.get(`/api/v1/fields/?module_id=${newAction.action_config.module_id}`).then(res => {
-                const activeTgt = res.data.filter(f => f.is_active);
-                const uniqueTgtMap = new Map();
-                activeTgt.forEach(f => {
-                    const key = f.api_name || f.label;
-                    if (!uniqueTgtMap.has(key)) {
-                        f.display_label = f.api_name && f.api_name !== f.label ? `${f.label} (${f.api_name})` : f.label;
-                        uniqueTgtMap.set(key, f);
-                    }
-                });
-                setTargetModuleFields(Array.from(uniqueTgtMap.values()));
-            }).catch(err => console.error(err));
-     } else { setTargetModuleFields([]); }
-  }, [newAction.action_config?.module_id]);
-
-  useEffect(() => {
-    if (nodes.length === 0) return;
-    setNodes((currentNodes) => currentNodes.map((node) => ({
-        ...node, style: { ...node.style, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb' }
-    })));
-    setEdges((currentEdges) => currentEdges.map((edge) => ({
-        ...edge, labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' }, labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9 }, markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? '#60a5fa' : '#2563eb' }, style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }
-    })));
-  }, [isDarkMode, setNodes, setEdges]); 
-
-  const onNodesChange = useCallback((changes) => {
-    setNodes((nds) => applyNodeChanges(changes, nds));
-    reportChanges(true);
-  }, [setNodes, reportChanges]);
-
-  const onEdgesChange = useCallback((changes) => {
-    setEdges((eds) => applyEdgeChanges(changes, eds));
-    reportChanges(true);
-  }, [setEdges, reportChanges]);
-
-  const handleNodeDragStop = (event, node) => {
-    if (viewingOldVersion) return; 
-    setNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, position: node.position } : n));
-    reportChanges(true); 
+    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint, saveBlueprintChanges
   };
-
-  const onConnect = (connection) => {
-    if(viewingOldVersion) return; 
-    setPendingConnection(connection);
-    setNewTransitionName('');
-  };
-
-  const handleCreateTransition = (e) => {
-    e.preventDefault();
-    if (!newTransitionName.trim() || !pendingConnection || viewingOldVersion) return;
-    
-    const newEdgeId = `temp_${Date.now()}`;
-    const newEdge = {
-      id: newEdgeId,
-      source: pendingConnection.source,
-      target: pendingConnection.target,
-      label: newTransitionName,
-      data: {
-        raw_data: {
-          id: newEdgeId,
-          name: newTransitionName,
-          from_status_id: parseInt(pendingConnection.source),
-          to_status_id: parseInt(pendingConnection.target),
-          blueprint_id: parseInt(currentVersionId)
-        }
-      },
-      markerEnd: { type: 'arrowclosed', color: isDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
-      style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
-      animated: true,
-      labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
-      labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
-      labelBgPadding: [4, 4]
-    };
-
-    setEdges((eds) => [...eds, newEdge]);
-    setPendingConnection(null); 
-    setNewTransitionName('');
-    reportChanges(true);
-    notify.success("Transición agregada en memoria. No olvides guardar.");
-  };
-
-  const handleCreateStatus = (e) => {
-    e.preventDefault();
-    if (viewingOldVersion) return notify.warning("No puedes editar versiones antiguas.");
-    if (!newStatus.name.trim()) return notify.warning("Escribe un nombre para el estado.");
-    
-    const newNodeId = `temp_${Date.now()}`;
-    const newNode = {
-      id: newNodeId,
-      type: newStatus.bpmn_shape || 'task',
-      position: { x: (nodes.length % 4) * 250 + 50, y: Math.floor(nodes.length / 4) * 150 + 50 },
-      data: {
-        raw_data: {
-          id: newNodeId,
-          name: newStatus.name,
-          is_initial: newStatus.is_initial || nodes.length === 0,
-          sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null,
-          blueprint_id: parseInt(currentVersionId),
-          bpmn_shape: newStatus.bpmn_shape || 'task'
-        }
-      },
-      style: {
-        backgroundColor: isDarkMode ? '#1f2937' : 'white',
-        border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
-      }
-    };
-
-    setNodes((nds) => [...nds, newNode]);
-    setNewStatus({ name: '', is_initial: false, sla_hours: '' });
-    reportChanges(true);
-    notify.success("Estado agregado en memoria. No olvides guardar.");
-  };
-
-  // 🔥 FIX 2: Interceptamos el evento para prevenir recargas y actualizamos los datos visuales y de UI
-  const handleRenameElement = (e) => {
-    if (e && e.preventDefault) e.preventDefault(); 
-
-    if (!selectedElement || !renameValue || viewingOldVersion) return;
-    setIsRenaming(true);
-
-    if (selectedElement.type === 'status') {
-      const updatedRaw = { 
-        ...selectedElement.data, 
-        name: renameValue, 
-        sla_hours: editSlaHours ? parseInt(editSlaHours) : null 
-      };
-      
-      setSelectedElement({ ...selectedElement, data: updatedRaw });
-
-      setNodes((nds) => nds.map((n) => {
-        if (n.id.toString() === selectedElement.data.id.toString()) {
-          return { ...n, data: { ...n.data, raw_data: updatedRaw } };
-        }
-        return n;
-      }));
-    } else {
-      const updatedRaw = { ...selectedElement.data, name: renameValue };
-      setSelectedElement({ ...selectedElement, data: updatedRaw });
-
-      setEdges((eds) => eds.map((e) => {
-        if (e.id.toString() === selectedElement.data.id.toString()) {
-          return { ...e, label: renameValue, data: { ...e.data, raw_data: updatedRaw } };
-        }
-        return e;
-      }));
-    }
-
-    reportChanges(true);
-    setIsRenaming(false);
-    notify.success("Propiedades actualizadas en memoria.");
-  };
-
-  const handleChangeShape = (newShape) => {
-    if (!selectedElement || viewingOldVersion || selectedElement.type !== 'status') return;
-    
-    setNodes((nds) => nds.map((n) => {
-      if (n.id.toString() === selectedElement.data.id.toString()) {
-        const updatedRaw = { ...n.data.raw_data, bpmn_shape: newShape };
-        return { ...n, type: newShape, data: { ...n.data, raw_data: updatedRaw } };
-      }
-      return n;
-    }));
-
-    setIsShapeModalOpen(false);
-    reportChanges(true);
-    notify.success("Forma BPMN modificada en memoria.");
-  };
-
-  // 🔥 FIX 3: Rastrear flechas conectadas para borrarlas en cascada en la BD
-  const handleDeleteElement = () => {
-    if (!selectedElement || viewingOldVersion) return;
-    
-    if (selectedElement.type === 'status') {
-      const statusIdStr = selectedElement.data.id.toString();
-      
-      deletedStatusIdsRef.current.add(statusIdStr);
-      
-      setEdges((eds) => {
-        const edgesToKeep = [];
-        eds.forEach((edge) => {
-          if (edge.source.toString() === statusIdStr || edge.target.toString() === statusIdStr) {
-            deletedTransitionIdsRef.current.add(edge.id.toString());
-          } else {
-            edgesToKeep.push(edge);
-          }
-        });
-        return edgesToKeep;
-      });
-      
-      setNodes((nds) => nds.filter((n) => n.id.toString() !== statusIdStr));
-      
-    } else {
-      const transIdStr = selectedElement.data.id.toString();
-      deletedTransitionIdsRef.current.add(transIdStr);
-      setEdges((eds) => eds.filter((e) => e.id.toString() !== transIdStr));
-    }
-
-    setSelectedElement(null);
-    reportChanges(true);
-    notify.success("Elemento removido de la vista. Guarda para consolidar en BD.");
-  };
-
-  const handleSaveAction = async (e) => {
-    e.preventDefault();
-    if (viewingOldVersion) return;
-    try {
-      const payload = { ...newAction };
-      if (payload.action_type === 'CHANGE_OWNER') payload.target_field = 'assigned_to';
-      else if (!['COPY_FIELD', 'CREATE_RECORD', 'SEND_NOTIFICATION'].includes(payload.action_type)) {
-          payload.action_value = payload.action_type === 'UPDATE_VALUE' ? payload.action_value : '';
-          payload.function_code = payload.action_type === 'CUSTOM_FUNCTION' ? payload.function_code : '';
-          payload.action_config = {};
-      }
-      if (editingActionId) await api.put(`/api/v1/transitions/actions/${editingActionId}`, payload);
-      else await api.post(`/api/v1/transitions/${selectedElement.data.id}/actions`, payload);
-      notify.success("Acción guardada.");
-      closeActionModal(); loadTransitionDetails(selectedElement.data.id);
-    } catch (error) { notify.error("Error al guardar la regla."); }
-  };
-
-  const handleDeleteAction = async (actionId) => {
-    if (viewingOldVersion) return;
-    const isConfirmed = await confirm({ title: 'Eliminar', message: '¿Seguro de eliminar esta automatización?', confirmText: 'Sí, eliminar', variant: 'danger' });
-    if (!isConfirmed) return;
-    try { await api.delete(`/api/v1/transitions/actions/${actionId}`); notify.success("Acción eliminada."); loadTransitionDetails(selectedElement.data.id); } 
-    catch (error) { notify.error("Error al eliminar la acción."); }
-  };
-
-  const handleSaveValidation = async (e) => {
-    e.preventDefault();
-    if (viewingOldVersion) return;
-    try {
-       if (editingValidationId) await api.put(`/api/v1/transitions/validations/${editingValidationId}`, newValidation);
-       else await api.post(`/api/v1/transitions/${selectedElement.data.id}/validations`, newValidation);
-       notify.success("Regla guardada.");
-       closeValidationModal(); loadTransitionDetails(selectedElement.data.id);
-    } catch(err) { notify.error("Error al guardar validación."); }
-  };
-
-  const handleDeleteValidation = async (id) => {
-     if (viewingOldVersion) return;
-     try { 
-       await api.delete(`/api/v1/transitions/validations/${id}`); 
-       notify.success("Regla eliminada."); 
-       loadTransitionDetails(selectedElement.data.id); 
-     } catch(err) { 
-       notify.error("Error al eliminar validación."); 
-     }
-  };
-
-  const openEditActionModal = (action) => {
-     setNewAction({ action_type: action.action_type, target_field: action.target_field || '', action_value: action.action_value || '', function_code: action.function_code || '', action_config: action.action_config || {} });
-     setEditingActionId(action.id); setIsAddingAction(true);
-  };
-  
-  const openEditValidationModal = (validation) => {
-     setNewValidation({ target_field: validation.target_field || '', operator: validation.operator || '==', validation_value: validation.validation_value || '', error_message: validation.error_message || '' });
-     setEditingValidationId(validation.id); setIsAddingValidation(true);
-  };
-
-  const closeActionModal = () => { 
-     setIsAddingAction(false); 
-     setEditingActionId(null); 
-     setNewAction(defaultActionState);
-     if (selectedElement?.type === 'transition') setIsActionsListOpen(true);
-  };
-  
-  const closeValidationModal = () => { 
-     setIsAddingValidation(false); 
-     setEditingValidationId(null); 
-     setNewValidation(defaultValidationState);
-     if (selectedElement?.type === 'transition') setIsValidationsListOpen(true);
-  };
-
-  const handleCloseAttempt = async () => {
-    if (hasLocalChanges) {
-        const isConfirmed = await confirm({ title: 'Cambios sin guardar', message: '¿Seguro que deseas descartarlos y salir?', confirmText: 'Descartar', variant: 'danger' });
-        if (isConfirmed) { reportChanges(false); closeCanvas(); }
-    } else { reportChanges(false); closeCanvas(); }
-  };
-
-  const handleLoadVersion = (versionId, isCurrent) => {
-    setCurrentVersionId(versionId); setViewingOldVersion(!isCurrent); setSelectedElement(null); setShowVersions(false);
-    notify.info(isCurrent ? "Viendo la versión actual." : "Viendo una versión antigua. Solo lectura.");
-  };
-
-  const getActionLabel = (type) => { const labels = { UPDATE_VALUE: 'Cambiar Valor', CUSTOM_FUNCTION: 'Low-Code', SET_REQUIRED: 'Obligatorio', SET_OPTIONAL: 'Opcional', SET_READONLY: 'Bloquear', SET_EDITABLE: 'Desbloquear', SET_HIDDEN: 'Ocultar', SET_VISIBLE: 'Mostrar', SEND_NOTIFICATION: 'Disparar Alerta', CHANGE_OWNER: 'Cambiar Propietario', COPY_FIELD: 'Copiar Campo', CREATE_RECORD: 'Crear Registro' }; return labels[type] || type; };
-  const getActionIcon = (type) => {
-     if (type === 'CHANGE_OWNER') return <User size={12} className="text-purple-500"/>;
-     if (type === 'COPY_FIELD') return <Copy size={12} className="text-teal-500"/>;
-     if (type === 'CREATE_RECORD') return <Database size={12} className="text-emerald-500"/>;
-     if (type === 'SEND_NOTIFICATION') return <BellRing size={12} className="text-amber-500"/>;
-     if (type === 'CUSTOM_FUNCTION') return <Code size={12} className="text-green-500"/>;
-     return <Zap size={12} className="text-blue-500"/>;
-  };
-
-  return (
-  <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950/50 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
-    
-    <BlueprintHeader
-      selectedBlueprint={selectedBlueprint} viewingOldVersion={viewingOldVersion} currentVersionId={currentVersionId} versions={versions}
-      handleCloseAttempt={handleCloseAttempt} 
-      handleRestoreVersion={() => handleRestoreVersion(setCurrentVersionId, setViewingOldVersion)}
-      setCurrentVersionId={setCurrentVersionId} setViewingOldVersion={setViewingOldVersion} selectedElement={selectedElement}
-      setIsShapeModalOpen={setIsShapeModalOpen} aiImageInputRef={aiImageInputRef}
-      handleGenerateFromImage={() => {}}
-      handleCreateNewVersion={() => handleCreateNewVersion(setCurrentVersionId)}
-      fetchVersions={() => fetchVersions(setShowVersions)}
-      handleExportBlueprint={handleExportBlueprint} fileInputRef={fileInputRef}
-      handleImportBlueprint={(e) => handleImportBlueprint(e, () => fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef))}
-      showVersions={showVersions} setShowVersions={setShowVersions} loadingVersions={loadingVersions} handleLoadVersion={handleLoadVersion}
-      setIsActionsListOpen={setIsActionsListOpen} 
-      setIsValidationsListOpen={setIsValidationsListOpen}
-      transitionActions={transitionActions} 
-      transitionValidations={transitionValidations}
-      onSaveAllChanges={() => saveBlueprintChanges(() => fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef))}
-      hasUnsavedChanges={hasLocalChanges}
-    />
-
-    <div className="flex flex-1 overflow-hidden relative z-0">
-      <BlueprintSidebar
-        viewingOldVersion={viewingOldVersion} newStatus={newStatus} setNewStatus={setNewStatus} handleCreateStatus={handleCreateStatus}
-        selectedElement={selectedElement} renameValue={renameValue} setRenameValue={setRenameValue}
-        handleRenameElement={handleRenameElement} isRenaming={isRenaming} editSlaHours={editSlaHours} setEditSlaHours={setEditSlaHours}
-        activeTab={activeTab} setActiveTab={setActiveTab} transitionActions={transitionActions}
-        getActionIcon={getActionIcon} getActionLabel={getActionLabel} allModules={allModules}
-        openEditActionModal={openEditActionModal} handleDeleteAction={handleDeleteAction} setIsAddingAction={setIsAddingAction}
-        transitionValidations={transitionValidations} openEditValidationModal={openEditValidationModal} handleDeleteValidation={handleDeleteValidation}
-        setIsAddingValidation={setIsAddingValidation} handleDeleteElement={handleDeleteElement}
-      />
-
-        <div className="flex-1 relative bg-gray-50/50 dark:bg-gray-950 shadow-inner">
-          <ReactFlow 
-            nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} 
-            nodeTypes={nodeTypes} nodesDraggable={!viewingOldVersion} nodesConnectable={!viewingOldVersion} elementsSelectable={true}
-            onNodeDragStop={handleNodeDragStop}
-            onNodeClick={(e,n) => { 
-               setSelectedElement({ type: 'status', data: n.data.raw_data }); 
-               setRenameValue(n.data.raw_data.name); setEditSlaHours(n.data.raw_data.sla_hours || ""); 
-               closeActionModal(); closeValidationModal();
-            }}
-            onEdgeClick={(e, edge) => { 
-               setSelectedElement({ type: 'transition', data: edge.data.raw_data }); 
-               setRenameValue(edge.data.raw_data.name); loadTransitionDetails(edge.data.raw_data.id); 
-               closeActionModal(); closeValidationModal();
-            }} 
-            onPaneClick={() => { setSelectedElement(null); setTransitionActions([]); setTransitionValidations([]); closeActionModal(); closeValidationModal(); }} 
-            fitView attributionPosition="bottom-right"
-          >
-            <Background color={isDarkMode ? '#4b5563' : '#ccc'} gap={16} size={1} />
-            <Controls className="dark:bg-gray-800 dark:text-white dark:border-gray-700 shadow-md" />
-          </ReactFlow>
-        </div>
-      </div>
-
-      {pendingConnection && createPortal(
-         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-               <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                  <h3 className="font-bold text-gray-900 dark:text-white">Conectar Estados</h3>
-                  <button onClick={() => setPendingConnection(null)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-               </div>
-               <form onSubmit={handleCreateTransition} className="p-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Nombre de la transición</label>
-                  <input type="text" autoFocus required placeholder="Ej: Aprobar Documento" value={newTransitionName} onChange={e => setNewTransitionName(e.target.value)} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all shadow-sm" />
-                  <div className="flex justify-end gap-3 mt-6">
-                     <button type="button" onClick={() => setPendingConnection(null)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">Cancelar</button>
-                     <button type="submit" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors active:scale-95">Conectar</button>
-                  </div>
-               </form>
-            </div>
-         </div>, document.body
-      )}
-
-      <ValidationModal isOpen={isAddingValidation} onClose={closeValidationModal} onSave={handleSaveValidation} newValidation={newValidation} setNewValidation={setNewValidation} moduleFields={moduleFields} />
-      <ActionModal isOpen={isAddingAction} onClose={closeActionModal} onSave={handleSaveAction} newAction={newAction} setNewAction={setNewAction} editingActionId={editingActionId} moduleFields={moduleFields} moduleSections={moduleSections} allModules={allModules} allForms={allForms} targetModuleFields={targetModuleFields} companyUsers={companyUsers} companyRoles={companyRoles} companyProfiles={companyProfiles} moduleId={moduleId} blueprintId={currentVersionId} selectedElement={selectedElement} />
-      <ShapeSelectorModal isOpen={isShapeModalOpen} onClose={() => setIsShapeModalOpen(false)} selectedElement={selectedElement} onChangeShape={handleChangeShape} />
-
-      {isActionsListOpen && createPortal(
-         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-blue-200 dark:border-blue-800/50 overflow-hidden flex flex-col max-h-[80vh]">
-               <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-blue-50/50 dark:bg-blue-900/10">
-                  <h3 className="font-bold text-blue-900 dark:text-blue-400 flex items-center gap-2"><Zap size={18} className="fill-blue-500"/> Acciones Automáticas</h3>
-                  <button onClick={() => setIsActionsListOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-               </div>
-               <div className="p-6 overflow-y-auto custom-scrollbar space-y-3">
-                  {transitionActions.length > 0 ? (
-                     transitionActions.map(action => (
-                        <div key={action.id} className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 p-4 rounded-xl flex justify-between items-center shadow-sm group">
-                           <div className="flex items-center gap-3">
-                              <div className="p-2 bg-white dark:bg-gray-900 rounded-lg shadow-sm">{getActionIcon(action.action_type)}</div>
-                              <div>
-                                 <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{getActionLabel(action.action_type)}</p>
-                                 <p className="text-xs text-gray-500">
-                                    {action.action_type === 'CREATE_RECORD' ? `Destino: ${allModules.find(m=>m.id==action.action_config?.module_id)?.name || '?'}` : 
-                                     action.action_type === 'COPY_FIELD' ? `${action.action_value} ➔ ${action.target_field}` :
-                                     action.target_field?.startsWith('section_') ? `Sección ID ${action.target_field.replace('section_','')}` : action.target_field}
-                                 </p>
-                              </div>
-                           </div>
-                           <div className="flex gap-2">
-                              <button onClick={() => { openEditActionModal(action); setIsActionsListOpen(false); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"><Edit2 size={16} /></button>
-                              <button onClick={() => handleDeleteAction(action.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"><Trash2 size={16} /></button>
-                           </div>
-                        </div>
-                     ))
-                  ) : (
-                     <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center"><p className="text-sm text-gray-400 font-medium">Ninguna acción configurada para esta transición.</p></div>
-                  )}
-               </div>
-               <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                  <button onClick={() => { setIsAddingAction(true); setIsActionsListOpen(false); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><Plus size={16} /> Añadir Nueva Acción</button>
-               </div>
-            </div>
-         </div>, document.body
-      )}
-
-      {isValidationsListOpen && createPortal(
-         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99998] p-4 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-red-200 dark:border-red-800/50 overflow-hidden flex flex-col max-h-[80vh]">
-               <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-red-50/50 dark:bg-red-900/10">
-                  <h3 className="font-bold text-red-900 dark:text-red-400 flex items-center gap-2"><ShieldAlert size={18} className="fill-red-500"/> Reglas de Validación (Bloqueos)</h3>
-                  <button onClick={() => setIsValidationsListOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
-               </div>
-               <div className="p-6 overflow-y-auto custom-scrollbar space-y-3">
-                  {transitionValidations.length > 0 ? (
-                     transitionValidations.map(val => (
-                        <div key={val.id} className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 p-4 rounded-xl flex justify-between items-center shadow-sm group">
-                           <div>
-                              <p className="text-sm font-bold text-red-900 dark:text-red-400">Si [{val.target_field}] {val.operator} {val.validation_value ? `"${val.validation_value}"` : ''}</p>
-                              <p className="text-xs text-gray-500 mt-1">Mensaje: "{val.error_message}"</p>
-                           </div>
-                           <div className="flex gap-2">
-                              <button onClick={() => { openEditValidationModal(val); setIsValidationsListOpen(false); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"><Edit2 size={16} /></button>
-                              <button onClick={async () => {
-                                const isConfirmed = await confirm({
-                                    title: 'Eliminar Validación',
-                                    message: '¿Estás seguro de eliminar este bloqueo?',
-                                    confirmText: 'Sí, eliminar',
-                                    variant: 'danger'
-                                });
-                                if (isConfirmed) handleDeleteValidation(val.id);
-                              }} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"><Trash2 size={16} /></button>                           </div>
-                        </div>
-                     ))
-                  ) : (
-                     <div className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center"><p className="text-sm text-gray-400 font-medium">No hay bloqueos configurados.</p></div>
-                  )}
-               </div>
-               <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                  <button onClick={() => { setIsAddingValidation(true); setIsValidationsListOpen(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><Plus size={16} /> Añadir Regla de Bloqueo</button>
-               </div>
-            </div>
-         </div>, document.body
-      )}
-
-    </div>
-  );
 };
-
-export default BlueprintCanvas;
