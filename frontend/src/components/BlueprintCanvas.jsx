@@ -71,9 +71,15 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   useEffect(() => { selectedElementRef.current = selectedElement; }, [selectedElement]);
 
-  const reportChanges = useCallback((hasPendingChanges) => {
-      if (setHasUnsavedChanges) setHasUnsavedChanges(hasPendingChanges);
+  // 🔥 FIX 1: Estabilizador para aislar setHasUnsavedChanges y romper el bucle infinito de recargas
+  const setHasUnsavedChangesRef = useRef(setHasUnsavedChanges);
+  useEffect(() => { 
+      setHasUnsavedChangesRef.current = setHasUnsavedChanges; 
   }, [setHasUnsavedChanges]);
+
+  const reportChanges = useCallback((hasPendingChanges) => {
+      if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(hasPendingChanges);
+  }, []);
 
   const {
     nodes, setNodes, edges, setEdges,
@@ -135,7 +141,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     setEdges((currentEdges) => currentEdges.map((edge) => ({
         ...edge, labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' }, labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9 }, markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? '#60a5fa' : '#2563eb' }, style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }
     })));
-  }, [isDarkMode, setNodes, setEdges]); // 🔥 FIX: Agregamos dependencias seguras
+  }, [isDarkMode, setNodes, setEdges]); 
 
   const onNodesChange = useCallback((changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
@@ -213,7 +219,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
           bpmn_shape: newStatus.bpmn_shape || 'task'
         }
       },
-      // 🔥 FIX CRÍTICO 4: Inyectamos estilos al nacer para que nunca sea transparente
       style: {
         backgroundColor: isDarkMode ? '#1f2937' : 'white',
         border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
@@ -226,22 +231,22 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     notify.success("Estado agregado en memoria. No olvides guardar.");
   };
 
-  const handleRenameElement = () => {
+  // 🔥 FIX 2: Interceptamos el evento para prevenir recargas y actualizamos los datos visuales y de UI
+  const handleRenameElement = (e) => {
+    if (e && e.preventDefault) e.preventDefault(); 
+
     if (!selectedElement || !renameValue || viewingOldVersion) return;
     setIsRenaming(true);
 
     if (selectedElement.type === 'status') {
-      // 1. Sincronizamos los datos actualizados
       const updatedRaw = { 
         ...selectedElement.data, 
         name: renameValue, 
         sla_hours: editSlaHours ? parseInt(editSlaHours) : null 
       };
       
-      // 2. Refrescamos el elemento seleccionado para evitar desincronización
       setSelectedElement({ ...selectedElement, data: updatedRaw });
 
-      // 3. Actualizamos el nodo visual
       setNodes((nds) => nds.map((n) => {
         if (n.id.toString() === selectedElement.data.id.toString()) {
           return { ...n, data: { ...n.data, raw_data: updatedRaw } };
@@ -281,21 +286,19 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     notify.success("Forma BPMN modificada en memoria.");
   };
 
+  // 🔥 FIX 3: Rastrear flechas conectadas para borrarlas en cascada en la BD
   const handleDeleteElement = () => {
     if (!selectedElement || viewingOldVersion) return;
     
     if (selectedElement.type === 'status') {
       const statusIdStr = selectedElement.data.id.toString();
       
-      // Mandamos a borrar el estado
       deletedStatusIdsRef.current.add(statusIdStr);
       
-      // 🔥 FIX CRÍTICO: Rastrear flechas conectadas y mandarlas a borrar también
       setEdges((eds) => {
         const edgesToKeep = [];
         eds.forEach((edge) => {
           if (edge.source.toString() === statusIdStr || edge.target.toString() === statusIdStr) {
-            // Si la flecha tocaba este estado, DEBEMOS eliminarla de la BD
             deletedTransitionIdsRef.current.add(edge.id.toString());
           } else {
             edgesToKeep.push(edge);
@@ -314,7 +317,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
     setSelectedElement(null);
     reportChanges(true);
-    notify.success("Elemento removido de la vista. Guarda para consolidar en la BD.");
+    notify.success("Elemento removido de la vista. Guarda para consolidar en BD.");
   };
 
   const handleSaveAction = async (e) => {
