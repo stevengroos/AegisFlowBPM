@@ -31,6 +31,9 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const [aiFile, setAiFile] = useState(null);
   const aiBlueprintFileInputRef = useRef(null);
 
+  // 🔥 NUEVO ESTADO: Rastrea modificaciones a nodos y flechas que ya existían en la Base de Datos
+  const [hasModifiedExisting, setHasModifiedExisting] = useState(false);
+
   useEffect(() => {
      if (isShapeModalOpen === 'ai_modal') {
         setIsAiModalOpen(true);
@@ -71,7 +74,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   useEffect(() => { selectedElementRef.current = selectedElement; }, [selectedElement]);
 
-  // 🔥 FIX 1: Estabilizador para aislar setHasUnsavedChanges y romper el bucle infinito de recargas
+  // Estabilizador para proteger la memoria
   const setHasUnsavedChangesRef = useRef(setHasUnsavedChanges);
   useEffect(() => { 
       setHasUnsavedChangesRef.current = setHasUnsavedChanges; 
@@ -98,7 +101,8 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const isEditingName = selectedElement && renameValue !== selectedElement.data.name;
   const isWritingNewStatus = newStatus.name.trim().length > 0;
   
-  const hasLocalChanges = hasTempItems || hasPendingDeletions || isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation;
+  // 🔥 FIX CRÍTICO: Añadimos 'hasModifiedExisting' a la ecuación lógica
+  const hasLocalChanges = hasTempItems || hasPendingDeletions || isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation || hasModifiedExisting;
 
   useEffect(() => { reportChanges(hasLocalChanges); }, [hasLocalChanges, reportChanges]);
 
@@ -156,6 +160,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const handleNodeDragStop = (event, node) => {
     if (viewingOldVersion) return; 
     setNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, position: node.position } : n));
+    setHasModifiedExisting(true); // 🔥 Marcamos cambio por movimiento
     reportChanges(true); 
   };
 
@@ -231,7 +236,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     notify.success("Estado agregado en memoria. No olvides guardar.");
   };
 
-  // 🔥 FIX 2: Interceptamos el evento para prevenir recargas y actualizamos los datos visuales y de UI
   const handleRenameElement = (e) => {
     if (e && e.preventDefault) e.preventDefault(); 
 
@@ -265,6 +269,7 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       }));
     }
 
+    setHasModifiedExisting(true); // 🔥 Forzamos al botón superior a mantenerse "Verde"
     reportChanges(true);
     setIsRenaming(false);
     notify.success("Propiedades actualizadas en memoria.");
@@ -282,11 +287,11 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     }));
 
     setIsShapeModalOpen(false);
+    setHasModifiedExisting(true); // 🔥 Marcamos cambio
     reportChanges(true);
     notify.success("Forma BPMN modificada en memoria.");
   };
 
-  // 🔥 FIX 3: Rastrear flechas conectadas para borrarlas en cascada en la BD
   const handleDeleteElement = () => {
     if (!selectedElement || viewingOldVersion) return;
     
@@ -395,7 +400,11 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const handleCloseAttempt = async () => {
     if (hasLocalChanges) {
         const isConfirmed = await confirm({ title: 'Cambios sin guardar', message: '¿Seguro que deseas descartarlos y salir?', confirmText: 'Descartar', variant: 'danger' });
-        if (isConfirmed) { reportChanges(false); closeCanvas(); }
+        if (isConfirmed) { 
+            setHasModifiedExisting(false); // Reseteamos si descarta
+            reportChanges(false); 
+            closeCanvas(); 
+        }
     } else { reportChanges(false); closeCanvas(); }
   };
 
@@ -433,7 +442,11 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       setIsValidationsListOpen={setIsValidationsListOpen}
       transitionActions={transitionActions} 
       transitionValidations={transitionValidations}
-      onSaveAllChanges={() => saveBlueprintChanges(() => fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef))}
+      // 🔥 Enviamos una función que resetea nuestro estado local DEPUÉS de guardar en DB
+      onSaveAllChanges={() => saveBlueprintChanges(() => {
+          setHasModifiedExisting(false);
+          fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+      })}
       hasUnsavedChanges={hasLocalChanges}
     />
 
