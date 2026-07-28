@@ -15,7 +15,7 @@ import BlueprintHeader from './BlueprintHeader';
 import BlueprintSidebar from './BlueprintSidebar';
 import { useBlueprintManager } from './useBlueprintManager';
 
-const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsavedChanges, reloadBlueprints }) => {
+const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, reloadBlueprints }) => {
   const { notify, confirm } = useNotification(); 
 
   const [isActionsListOpen, setIsActionsListOpen] = useState(false);
@@ -30,9 +30,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
   const [aiMode, setAiMode] = useState('text');
   const [aiFile, setAiFile] = useState(null);
   const aiBlueprintFileInputRef = useRef(null);
-
-  // 🔥 NUEVO ESTADO: Rastrea modificaciones a nodos y flechas que ya existían en la Base de Datos
-  const [hasModifiedExisting, setHasModifiedExisting] = useState(false);
 
   useEffect(() => {
      if (isShapeModalOpen === 'ai_modal') {
@@ -74,43 +71,16 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
 
   useEffect(() => { selectedElementRef.current = selectedElement; }, [selectedElement]);
 
-  // Estabilizador para proteger la memoria
-  const setHasUnsavedChangesRef = useRef(setHasUnsavedChanges);
-  useEffect(() => { 
-      setHasUnsavedChangesRef.current = setHasUnsavedChanges; 
-  }, [setHasUnsavedChanges]);
-
-  const reportChanges = useCallback((hasPendingChanges) => {
-      if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(hasPendingChanges);
-  }, []);
-
+  // Se extraen exclusivamente las utilidades de tiempo real
   const {
     nodes, setNodes, edges, setEdges,
-    deletedStatusIdsRef, deletedTransitionIdsRef,
     moduleFields, moduleSections, companyUsers, companyRoles, companyProfiles, allModules, allForms,
     versions, loadingVersions, transitionActions, transitionValidations,
     fetchBlueprintData, loadTransitionDetails, fetchVersions,
-    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint,
-    saveBlueprintChanges
+    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint
   } = useBlueprintManager({
-    moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints, setHasUnsavedChanges: reportChanges
+    moduleId, currentVersionId, selectedBlueprint, viewingOldVersion, notify, confirm, reloadBlueprints
   });
-
-  const hasTempItems = nodes.some(n => n.id.toString().startsWith('temp_')) || edges.some(e => e.id.toString().startsWith('temp_'));
-  const hasPendingDeletions = deletedStatusIdsRef.current?.size > 0 || deletedTransitionIdsRef.current?.size > 0;
-  const isEditingName = selectedElement && renameValue !== selectedElement.data.name;
-  const isWritingNewStatus = newStatus.name.trim().length > 0;
-  
-  // 🔥 FIX CRÍTICO: Añadimos 'hasModifiedExisting' a la ecuación lógica
-  const hasLocalChanges = hasTempItems || hasPendingDeletions || isEditingName || isWritingNewStatus || isAddingAction || isAddingValidation || hasModifiedExisting;
-
-  useEffect(() => { reportChanges(hasLocalChanges); }, [hasLocalChanges, reportChanges]);
-
-  useEffect(() => {
-    const handleBeforeUnload = (e) => { if (hasLocalChanges) { e.preventDefault(); e.returnValue = ''; } };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasLocalChanges]);
 
   useEffect(() => {
     const observer = new MutationObserver(() => setIsDarkMode(document.documentElement.classList.contains('dark')));
@@ -142,26 +112,38 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     setNodes((currentNodes) => currentNodes.map((node) => ({
         ...node, style: { ...node.style, backgroundColor: isDarkMode ? '#1f2937' : 'white', border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb' }
     })));
+    // eslint-disable-next-line
+  }, [isDarkMode]); 
+
+  useEffect(() => {
+    if (edges.length === 0) return;
     setEdges((currentEdges) => currentEdges.map((edge) => ({
         ...edge, labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' }, labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9 }, markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? '#60a5fa' : '#2563eb' }, style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }
     })));
-  }, [isDarkMode, setNodes, setEdges]); 
+    // eslint-disable-next-line
+  }, [isDarkMode]); 
 
   const onNodesChange = useCallback((changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
-    reportChanges(true);
-  }, [setNodes, reportChanges]);
+  }, [setNodes]);
 
   const onEdgesChange = useCallback((changes) => {
     setEdges((eds) => applyEdgeChanges(changes, eds));
-    reportChanges(true);
-  }, [setEdges, reportChanges]);
+  }, [setEdges]);
 
-  const handleNodeDragStop = (event, node) => {
+  // 🔥 TIEMPO REAL: Actualiza la posición al soltar el nodo en la BD
+  const handleNodeDragStop = async (event, node) => {
     if (viewingOldVersion) return; 
-    setNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, position: node.position } : n));
-    setHasModifiedExisting(true); // 🔥 Marcamos cambio por movimiento
-    reportChanges(true); 
+    try {
+      await api.put(`/api/v1/statuses/${node.id}`, {
+        position_x: Math.round(node.position.x),
+        position_y: Math.round(node.position.y)
+      });
+      setNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, position: node.position } : n));
+    } catch(err) {
+      notify.error("Error al guardar la posición del nodo en la BD.");
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    }
   };
 
   const onConnect = (connection) => {
@@ -170,159 +152,116 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
     setNewTransitionName('');
   };
 
-  const handleCreateTransition = (e) => {
+  // 🔥 TIEMPO REAL: Crea la transición de inmediato
+  const handleCreateTransition = async (e) => {
     e.preventDefault();
     if (!newTransitionName.trim() || !pendingConnection || viewingOldVersion) return;
     
-    const newEdgeId = `temp_${Date.now()}`;
-    const newEdge = {
-      id: newEdgeId,
-      source: pendingConnection.source,
-      target: pendingConnection.target,
-      label: newTransitionName,
-      data: {
-        raw_data: {
-          id: newEdgeId,
-          name: newTransitionName,
-          from_status_id: parseInt(pendingConnection.source),
-          to_status_id: parseInt(pendingConnection.target),
-          blueprint_id: parseInt(currentVersionId)
-        }
-      },
-      markerEnd: { type: 'arrowclosed', color: isDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
-      style: { stroke: isDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
-      animated: true,
-      labelStyle: { fill: isDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
-      labelBgStyle: { fill: isDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
-      labelBgPadding: [4, 4]
-    };
-
-    setEdges((eds) => [...eds, newEdge]);
-    setPendingConnection(null); 
-    setNewTransitionName('');
-    reportChanges(true);
-    notify.success("Transición agregada en memoria. No olvides guardar.");
+    try {
+      await api.post('/api/v1/transitions/', {
+        name: newTransitionName,
+        blueprint_id: parseInt(currentVersionId),
+        from_status_id: parseInt(pendingConnection.source),
+        to_status_id: parseInt(pendingConnection.target)
+      });
+      notify.success("Transición creada exitosamente.");
+      setPendingConnection(null); 
+      setNewTransitionName('');
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    } catch(err) {
+      notify.error(err.response?.data?.detail || "Error al crear la transición.");
+    }
   };
 
-  const handleCreateStatus = (e) => {
+  // 🔥 TIEMPO REAL: Crea el estado de inmediato
+  const handleCreateStatus = async (e) => {
     e.preventDefault();
     if (viewingOldVersion) return notify.warning("No puedes editar versiones antiguas.");
     if (!newStatus.name.trim()) return notify.warning("Escribe un nombre para el estado.");
     
-    const newNodeId = `temp_${Date.now()}`;
-    const newNode = {
-      id: newNodeId,
-      type: newStatus.bpmn_shape || 'task',
-      position: { x: (nodes.length % 4) * 250 + 50, y: Math.floor(nodes.length / 4) * 150 + 50 },
-      data: {
-        raw_data: {
-          id: newNodeId,
-          name: newStatus.name,
-          is_initial: newStatus.is_initial || nodes.length === 0,
-          sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null,
-          blueprint_id: parseInt(currentVersionId),
-          bpmn_shape: newStatus.bpmn_shape || 'task'
-        }
-      },
-      style: {
-        backgroundColor: isDarkMode ? '#1f2937' : 'white',
-        border: isDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
-      }
-    };
-
-    setNodes((nds) => [...nds, newNode]);
-    setNewStatus({ name: '', is_initial: false, sla_hours: '' });
-    reportChanges(true);
-    notify.success("Estado agregado en memoria. No olvides guardar.");
-  };
-
-  const handleRenameElement = (e) => {
-    if (e && e.preventDefault) e.preventDefault(); 
-
-    if (!selectedElement || !renameValue || viewingOldVersion) return;
-    setIsRenaming(true);
-
-    if (selectedElement.type === 'status') {
-      const updatedRaw = { 
-        ...selectedElement.data, 
-        name: renameValue, 
-        sla_hours: editSlaHours ? parseInt(editSlaHours) : null 
-      };
-      
-      setSelectedElement({ ...selectedElement, data: updatedRaw });
-
-      setNodes((nds) => nds.map((n) => {
-        if (n.id.toString() === selectedElement.data.id.toString()) {
-          return { ...n, data: { ...n.data, raw_data: updatedRaw } };
-        }
-        return n;
-      }));
-    } else {
-      const updatedRaw = { ...selectedElement.data, name: renameValue };
-      setSelectedElement({ ...selectedElement, data: updatedRaw });
-
-      setEdges((eds) => eds.map((e) => {
-        if (e.id.toString() === selectedElement.data.id.toString()) {
-          return { ...e, label: renameValue, data: { ...e.data, raw_data: updatedRaw } };
-        }
-        return e;
-      }));
+    try {
+      await api.post('/api/v1/statuses/', {
+        name: newStatus.name,
+        is_initial: newStatus.is_initial || nodes.length === 0,
+        blueprint_id: parseInt(currentVersionId),
+        sla_hours: newStatus.sla_hours ? parseInt(newStatus.sla_hours) : null,
+        bpmn_shape: newStatus.bpmn_shape || 'task',
+        position_x: (nodes.length % 4) * 250 + 50,
+        position_y: Math.floor(nodes.length / 4) * 150 + 50
+      });
+      notify.success("Estado creado exitosamente.");
+      setNewStatus({ name: '', is_initial: false, sla_hours: '' });
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    } catch(err) {
+      notify.error("Error al crear el estado.");
     }
-
-    setHasModifiedExisting(true); // 🔥 Forzamos al botón superior a mantenerse "Verde"
-    reportChanges(true);
-    setIsRenaming(false);
-    notify.success("Propiedades actualizadas en memoria.");
   };
 
-  const handleChangeShape = (newShape) => {
-    if (!selectedElement || viewingOldVersion || selectedElement.type !== 'status') return;
+  // 🔥 TIEMPO REAL: Modifica propiedades (Nombre y SLA) y guarda
+  const handleRenameElement = async (e) => {
+    if (e && e.preventDefault) e.preventDefault(); 
+    if (!selectedElement || !renameValue || viewingOldVersion) return;
     
-    setNodes((nds) => nds.map((n) => {
-      if (n.id.toString() === selectedElement.data.id.toString()) {
-        const updatedRaw = { ...n.data.raw_data, bpmn_shape: newShape };
-        return { ...n, type: newShape, data: { ...n.data, raw_data: updatedRaw } };
-      }
-      return n;
-    }));
-
-    setIsShapeModalOpen(false);
-    setHasModifiedExisting(true); // 🔥 Marcamos cambio
-    reportChanges(true);
-    notify.success("Forma BPMN modificada en memoria.");
+    setIsRenaming(true);
+    try {
+        if (selectedElement.type === 'status') {
+            await api.put(`/api/v1/statuses/${selectedElement.data.id}`, {
+               name: renameValue,
+               sla_hours: editSlaHours ? parseInt(editSlaHours) : null
+            });
+        } else {
+            await api.put(`/api/v1/transitions/${selectedElement.data.id}`, {
+               name: renameValue
+            });
+        }
+        notify.success("Propiedades actualizadas exitosamente.");
+        fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    } catch(err) {
+        notify.error("Error al actualizar las propiedades.");
+    } finally {
+        setIsRenaming(false);
+    }
   };
 
-  const handleDeleteElement = () => {
+  // 🔥 TIEMPO REAL: Modifica la forma y guarda
+  const handleChangeShape = async (newShape) => {
+    if (!selectedElement || viewingOldVersion || selectedElement.type !== 'status') return;
+    try {
+       await api.put(`/api/v1/statuses/${selectedElement.data.id}`, {
+           bpmn_shape: newShape
+       });
+       notify.success("Forma BPMN modificada.");
+       setIsShapeModalOpen(false);
+       fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    } catch(err) {
+       notify.error("Error al cambiar la forma.");
+    }
+  };
+
+  // 🔥 TIEMPO REAL: Elimina el elemento de la BD
+  const handleDeleteElement = async () => {
     if (!selectedElement || viewingOldVersion) return;
     
-    if (selectedElement.type === 'status') {
-      const statusIdStr = selectedElement.data.id.toString();
-      
-      deletedStatusIdsRef.current.add(statusIdStr);
-      
-      setEdges((eds) => {
-        const edgesToKeep = [];
-        eds.forEach((edge) => {
-          if (edge.source.toString() === statusIdStr || edge.target.toString() === statusIdStr) {
-            deletedTransitionIdsRef.current.add(edge.id.toString());
-          } else {
-            edgesToKeep.push(edge);
-          }
-        });
-        return edgesToKeep;
-      });
-      
-      setNodes((nds) => nds.filter((n) => n.id.toString() !== statusIdStr));
-      
-    } else {
-      const transIdStr = selectedElement.data.id.toString();
-      deletedTransitionIdsRef.current.add(transIdStr);
-      setEdges((eds) => eds.filter((e) => e.id.toString() !== transIdStr));
-    }
+    const isConfirmed = await confirm({ 
+        title: 'Eliminar Elemento', 
+        message: '¿Estás seguro de eliminar este elemento? Si es un estado, se eliminarán sus transiciones conectadas.', 
+        confirmText: 'Sí, eliminar', 
+        variant: 'danger' 
+    });
+    if (!isConfirmed) return;
 
-    setSelectedElement(null);
-    reportChanges(true);
-    notify.success("Elemento removido de la vista. Guarda para consolidar en BD.");
+    try {
+      if (selectedElement.type === 'status') {
+         await api.delete(`/api/v1/statuses/${selectedElement.data.id}`);
+      } else {
+         await api.delete(`/api/v1/transitions/${selectedElement.data.id}`);
+      }
+      notify.success("Elemento eliminado exitosamente.");
+      setSelectedElement(null);
+      fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
+    } catch(err) {
+      notify.error(err.response?.data?.detail || "Error al eliminar el elemento.");
+    }
   };
 
   const handleSaveAction = async (e) => {
@@ -397,15 +336,9 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
      if (selectedElement?.type === 'transition') setIsValidationsListOpen(true);
   };
 
+  // Como ya no hay memoria que rastrear, simplemente se cierra.
   const handleCloseAttempt = async () => {
-    if (hasLocalChanges) {
-        const isConfirmed = await confirm({ title: 'Cambios sin guardar', message: '¿Seguro que deseas descartarlos y salir?', confirmText: 'Descartar', variant: 'danger' });
-        if (isConfirmed) { 
-            setHasModifiedExisting(false); // Reseteamos si descarta
-            reportChanges(false); 
-            closeCanvas(); 
-        }
-    } else { reportChanges(false); closeCanvas(); }
+     closeCanvas(); 
   };
 
   const handleLoadVersion = (versionId, isCurrent) => {
@@ -442,12 +375,6 @@ const BlueprintCanvas = ({ selectedBlueprint, closeCanvas, moduleId, setHasUnsav
       setIsValidationsListOpen={setIsValidationsListOpen}
       transitionActions={transitionActions} 
       transitionValidations={transitionValidations}
-      // 🔥 Enviamos una función que resetea nuestro estado local DEPUÉS de guardar en DB
-      onSaveAllChanges={() => saveBlueprintChanges(() => {
-          setHasModifiedExisting(false);
-          fetchBlueprintData(setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef);
-      })}
-      hasUnsavedChanges={hasLocalChanges}
     />
 
     <div className="flex flex-1 overflow-hidden relative z-0">

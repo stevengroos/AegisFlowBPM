@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, GitMerge, RotateCcw, Shapes, Zap, Copy, History, DownloadCloud, UploadCloud, X, Loader2, ShieldAlert, Save } from 'lucide-react';
+import { ArrowLeft, GitMerge, RotateCcw, Shapes, Zap, Copy, History, DownloadCloud, UploadCloud, X, Loader2, ShieldAlert } from 'lucide-react';
 
 const BlueprintHeader = ({
   selectedBlueprint,
@@ -26,9 +26,7 @@ const BlueprintHeader = ({
   setIsActionsListOpen,
   setIsValidationsListOpen,
   transitionActions,
-  transitionValidations,
-  onSaveAllChanges, // 🔥 NUEVO: Función para guardar masivamente en memoria
-  hasUnsavedChanges // 🔥 NUEVO: Estado que indica si hay cambios pendientes
+  transitionValidations
 }) => {
 
   return (
@@ -36,7 +34,7 @@ const BlueprintHeader = ({
       
       {/* Título y Botón de Volver */}
       <div className="flex items-center gap-4">
-        <button onClick={handleCloseAttempt} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Volver y guardar cambios">
+        <button onClick={handleCloseAttempt} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Volver">
             <ArrowLeft size={18} />
         </button>
         <div>
@@ -71,22 +69,6 @@ const BlueprintHeader = ({
           </div>
         ) : (
           <div className="flex items-center gap-2">
-             
-             {/* 🔥 BOTÓN PRINCIPAL DE GUARDAR CAMBIOS (MEMORIA / BATCH SAVE) 🔥 */}
-             <button 
-                onClick={onSaveAllChanges} 
-                disabled={!hasUnsavedChanges}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-all ${
-                   hasUnsavedChanges 
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse active:scale-95 cursor-pointer' 
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 opacity-60 cursor-not-allowed'
-                }`}
-                title={hasUnsavedChanges ? "Tienes cambios pendientes por guardar" : "Todo guardado"}
-             >
-                <Save size={16} /> <span>{hasUnsavedChanges ? 'Guardar Cambios *' : 'Guardado'}</span>
-             </button>
-
-             <div className="h-5 w-[1px] bg-gray-200 dark:bg-gray-700 mx-1"></div>
 
              {selectedElement?.type === 'status' && !viewingOldVersion && (
                <button onClick={() => setIsShapeModalOpen(true)} className="p-2 text-purple-600 hover:text-purple-700 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold mr-1 border border-purple-200 dark:border-purple-800/50 shadow-sm" title="Cambiar Forma Visual">

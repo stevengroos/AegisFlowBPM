@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import api from '../api/axios';
 
 export const useBlueprintManager = ({ 
@@ -8,8 +8,7 @@ export const useBlueprintManager = ({
   viewingOldVersion, 
   notify, 
   confirm, 
-  reloadBlueprints,
-  setHasUnsavedChanges
+  reloadBlueprints
 }) => {
 
   const [nodes, setNodes] = useState([]);
@@ -18,9 +17,6 @@ export const useBlueprintManager = ({
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [transitionActions, setTransitionActions] = useState([]);
   const [transitionValidations, setTransitionValidations] = useState([]);
-
-  const deletedStatusIdsRef = useRef(new Set());
-  const deletedTransitionIdsRef = useRef(new Set());
   
   const [moduleFields, setModuleFields] = useState([]);
   const [moduleSections, setModuleSections] = useState([]);
@@ -74,10 +70,6 @@ export const useBlueprintManager = ({
     if (moduleId) fetchCatalogs();
   }, [moduleId, notify]);
 
-  // FIX: Rompemos el ciclo infinito aislando setHasUnsavedChanges
-  const setHasUnsavedChangesRef = useRef(setHasUnsavedChanges);
-  useEffect(() => { setHasUnsavedChangesRef.current = setHasUnsavedChanges; }, [setHasUnsavedChanges]);
-
   const fetchBlueprintData = useCallback(async (setSelectedElement, setRenameValue, setEditSlaHours, selectedElementRef) => {
     try {
       const [statusesRes, transRes] = await Promise.all([
@@ -87,19 +79,10 @@ export const useBlueprintManager = ({
 
       const currentDarkMode = document.documentElement.classList.contains('dark');
 
-      setNodes(currentNodes => {
-         const tempNodes = currentNodes.filter(n => n.id.toString().startsWith('temp_'));
-         
-         const activeStatuses = statusesRes.data.filter(status => 
-            !deletedStatusIdsRef.current.has(status.id) && 
-            !deletedStatusIdsRef.current.has(status.id.toString()) &&
-            !deletedStatusIdsRef.current.has(Number(status.id))
-         );
-         
-         const dbNodes = activeStatuses.map((status, index) => {
-           const existingNode = currentNodes.find(n => n.id === status.id.toString());
-           const xPos = status.position_x !== null ? status.position_x : (existingNode ? existingNode.position.x : (index % 4) * 250 + 50);
-           const yPos = status.position_y !== null ? status.position_y : (existingNode ? existingNode.position.y : Math.floor(index / 4) * 150 + 50);
+      setNodes(() => {
+         const dbNodes = statusesRes.data.map((status, index) => {
+           const xPos = status.position_x !== null ? status.position_x : (index % 4) * 250 + 50;
+           const yPos = status.position_y !== null ? status.position_y : Math.floor(index / 4) * 150 + 50;
 
            return {
              id: status.id.toString(),
@@ -112,19 +95,11 @@ export const useBlueprintManager = ({
              }
            };
          });
-         return [...dbNodes, ...tempNodes];
+         return dbNodes;
       });
 
-      setEdges(currentEdges => {
-         const tempEdges = currentEdges.filter(e => e.id.toString().startsWith('temp_'));
-         
-         const activeTransitions = transRes.data.filter(t => 
-            !deletedTransitionIdsRef.current.has(t.id) && 
-            !deletedTransitionIdsRef.current.has(t.id.toString()) &&
-            !deletedTransitionIdsRef.current.has(Number(t.id))
-         );
-
-         const dbEdges = activeTransitions.map(t => ({
+      setEdges(() => {
+         const dbEdges = transRes.data.map(t => ({
            id: t.id.toString(), source: t.from_status_id.toString(), target: t.to_status_id.toString(), label: t.name, data: { raw_data: t }, 
            labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
            labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
@@ -132,135 +107,30 @@ export const useBlueprintManager = ({
            markerEnd: { type: 'arrowclosed', color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
            style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 }, animated: true,
          }));
-         return [...dbEdges, ...tempEdges];
+         return dbEdges;
       });
 
-      if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(false);
-
-      const currentSelected = selectedElementRef.current;
+      const currentSelected = selectedElementRef?.current;
       if (currentSelected) {
          if (currentSelected.type === 'status') {
              const updatedStatus = statusesRes.data.find(s => s.id.toString() === currentSelected.data.id.toString());
              if (updatedStatus) {
-                 setSelectedElement({ type: 'status', data: updatedStatus });
-                 setRenameValue(updatedStatus.name);
-                 setEditSlaHours(updatedStatus.sla_hours || "");
-             } else { setSelectedElement(null); }
+                 if (setSelectedElement) setSelectedElement({ type: 'status', data: updatedStatus });
+                 if (setRenameValue) setRenameValue(updatedStatus.name);
+                 if (setEditSlaHours) setEditSlaHours(updatedStatus.sla_hours || "");
+             } else { if (setSelectedElement) setSelectedElement(null); }
          } else {
              const updatedTrans = transRes.data.find(t => t.id.toString() === currentSelected.data.id.toString());
              if (updatedTrans) {
-                 setSelectedElement({ type: 'transition', data: updatedTrans });
-                 setRenameValue(updatedTrans.name);
-             } else { setSelectedElement(null); }
+                 if (setSelectedElement) setSelectedElement({ type: 'transition', data: updatedTrans });
+                 if (setRenameValue) setRenameValue(updatedTrans.name);
+             } else { if (setSelectedElement) setSelectedElement(null); }
          }
       }
     } catch (error) { 
         notify.error("Error al cargar el flujo de trabajo.");
     }
   }, [currentVersionId, notify]);
-
-  const saveBlueprintChanges = async (fetchBlueprintDataCb) => {
-    if (viewingOldVersion) return;
-    try {
-      // Primero eliminamos las flechas (hijos)
-      const uniqueTransitionsToDelete = Array.from(new Set(Array.from(deletedTransitionIdsRef.current).map(id => id.toString())));
-      for (const transId of uniqueTransitionsToDelete) {
-        if (!transId.startsWith('temp_')) {
-            await api.delete(`/api/v1/transitions/${transId}`);
-        }
-      }
-
-      // Luego eliminamos los estados (padres)
-      const uniqueStatusesToDelete = Array.from(new Set(Array.from(deletedStatusIdsRef.current).map(id => id.toString())));
-      for (const statusId of uniqueStatusesToDelete) {
-        if (!statusId.startsWith('temp_')) {
-            await api.delete(`/api/v1/statuses/${statusId}`);
-        }
-      }
-
-      const tempIdToRealIdMap = {};
-
-      // Procesar Nodos
-      for (const node of nodes) {
-        const statusData = node.data.raw_data;
-        const payload = {
-          name: statusData.name,
-          is_initial: statusData.is_initial || false,
-          blueprint_id: parseInt(currentVersionId),
-          sla_hours: statusData.sla_hours ? parseInt(statusData.sla_hours) : null,
-          bpmn_shape: node.type || 'task',
-          position_x: Math.round(node.position.x),
-          position_y: Math.round(node.position.y)
-        };
-
-        if (node.id.toString().startsWith('temp_')) {
-          const res = await api.post('/api/v1/statuses/', payload);
-          tempIdToRealIdMap[node.id] = res.data.id.toString();
-        } else {
-          await api.put(`/api/v1/statuses/${node.id}`, payload);
-        }
-      }
-
-      // Procesar Conexiones y Reglas Anidadas
-      for (const edge of edges) {
-        const transData = edge.data.raw_data;
-        let sourceId = edge.source.toString();
-        let targetId = edge.target.toString();
-
-        if (sourceId.startsWith('temp_')) sourceId = tempIdToRealIdMap[sourceId];
-        if (targetId.startsWith('temp_')) targetId = tempIdToRealIdMap[targetId];
-
-        if (!sourceId || !targetId) continue; 
-
-        const payload = {
-          name: transData.name || 'Avanzar',
-          blueprint_id: parseInt(currentVersionId),
-          from_status_id: parseInt(sourceId),
-          to_status_id: parseInt(targetId)
-        };
-
-        let finalTransId = transData.id;
-
-        if (edge.id.toString().startsWith('temp_')) {
-          const resTrans = await api.post('/api/v1/transitions/', payload);
-          finalTransId = resTrans.data.id;
-          
-          if (transData.actions && transData.actions.length > 0) {
-              for (const action of transData.actions) {
-                  const actionPayload = { ...action };
-                  delete actionPayload.id; 
-                  delete actionPayload.transition_id; 
-                  await api.post(`/api/v1/transitions/${finalTransId}/actions`, actionPayload);
-              }
-          }
-          if (transData.validations && transData.validations.length > 0) {
-              for (const validation of transData.validations) {
-                  const valPayload = { ...validation };
-                  delete valPayload.id; 
-                  delete valPayload.transition_id;
-                  await api.post(`/api/v1/transitions/${finalTransId}/validations`, valPayload);
-              }
-          }
-
-        } else {
-          await api.put(`/api/v1/transitions/${edge.id}`, payload);
-        }
-      }
-
-      setNodes(nds => nds.filter(n => !n.id.toString().startsWith('temp_')));
-      setEdges(eds => eds.filter(e => !e.id.toString().startsWith('temp_')));
-      deletedStatusIdsRef.current.clear();
-      deletedTransitionIdsRef.current.clear();
-
-      notify.success("¡Flujo y automatizaciones guardados con éxito!");
-      if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(false);
-      
-      if (fetchBlueprintDataCb) fetchBlueprintDataCb();
-
-    } catch (error) {
-      notify.error(error.response?.data?.detail || "Error al guardar los cambios del flujo.");
-    }
-  };
 
   const loadTransitionDetails = async (transitionId) => {
     try {
@@ -312,17 +182,12 @@ export const useBlueprintManager = ({
        
        const exportTransitions = await Promise.all(edges.map(async (edge) => {
            const tData = { ...edge.data.raw_data };
-           if (!tData.id.toString().startsWith('temp_')) {
-               const [actRes, valRes] = await Promise.all([
-                   api.get(`/api/v1/transitions/${tData.id}/actions`),
-                   api.get(`/api/v1/transitions/${tData.id}/validations`)
-               ]);
-               tData.actions = actRes.data;
-               tData.validations = valRes.data;
-           } else {
-               tData.actions = [];
-               tData.validations = [];
-           }
+           const [actRes, valRes] = await Promise.all([
+               api.get(`/api/v1/transitions/${tData.id}/actions`),
+               api.get(`/api/v1/transitions/${tData.id}/validations`)
+           ]);
+           tData.actions = actRes.data;
+           tData.validations = valRes.data;
            return tData;
        }));
 
@@ -343,63 +208,57 @@ export const useBlueprintManager = ({
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        notify.info("Importando flujo directamente a la base de datos...");
         const importedData = JSON.parse(e.target.result);
-        const currentDarkMode = document.documentElement.classList.contains('dark');
-        
-        const oldToTempMap = {};
+        const oldToNewMap = {};
 
-        const newNodes = (importedData.statuses || []).map((status, index) => {
-          const tempId = `temp_${Date.now()}_node_${index}`;
-          oldToTempMap[status.id] = tempId; 
-          
-          return {
-            id: tempId,
-            data: { raw_data: { ...status, id: tempId } }, 
-            position: { x: status.position_x || 50, y: status.position_y || 50 },
-            type: status.bpmn_shape || 'task',
-            style: {
-               backgroundColor: currentDarkMode ? '#1f2937' : 'white',
-               border: currentDarkMode ? '2px solid #4b5563' : '2px solid #e5e7eb'
-            }
-          };
-        });
+        // 1. Guardar Nodos reales
+        for (const status of importedData.statuses || []) {
+           const payload = {
+              name: status.name,
+              is_initial: status.is_initial || false,
+              blueprint_id: parseInt(currentVersionId),
+              sla_hours: status.sla_hours ? parseInt(status.sla_hours) : null,
+              bpmn_shape: status.bpmn_shape || 'task',
+              position_x: status.position_x || 50,
+              position_y: status.position_y || 50
+           };
+           const res = await api.post('/api/v1/statuses/', payload);
+           oldToNewMap[status.id] = res.data.id;
+        }
 
-        const newEdges = (importedData.transitions || []).map((t, index) => {
-          const sourceTempId = oldToTempMap[t.from_status_id];
-          const targetTempId = oldToTempMap[t.to_status_id];
-          
-          if (!sourceTempId || !targetTempId) return null;
+        // 2. Guardar Transiciones reales y reglas anidadas
+        for (const t of importedData.transitions || []) {
+           const newSource = oldToNewMap[t.from_status_id];
+           const newTarget = oldToNewMap[t.to_status_id];
+           if(!newSource || !newTarget) continue;
 
-          const tempEdgeId = `temp_${Date.now()}_edge_${index}`;
-          
-          return {
-            id: tempEdgeId,
-            source: sourceTempId,
-            target: targetTempId,
-            label: t.name,
-            data: { 
-              raw_data: { 
-                ...t, 
-                id: tempEdgeId, 
-                from_status_id: sourceTempId, 
-                to_status_id: targetTempId 
-              } 
-            },
-            labelStyle: { fill: currentDarkMode ? '#f3f4f6' : '#374151', fontWeight: 800, fontSize: 11, fontFamily: 'monospace' },
-            labelBgStyle: { fill: currentDarkMode ? '#374151' : 'white', fillOpacity: 0.9, rx: 4, ry: 4 },
-            labelBgPadding: [4, 4],
-            markerEnd: { type: 'arrowclosed', color: currentDarkMode ? '#60a5fa' : '#2563eb', width: 20, height: 20 },
-            style: { stroke: currentDarkMode ? '#60a5fa' : '#2563eb', strokeWidth: 2.5 },
-            animated: true,
-          };
-        }).filter(Boolean); 
+           const payload = {
+              name: t.name || 'Avanzar',
+              blueprint_id: parseInt(currentVersionId),
+              from_status_id: newSource,
+              to_status_id: newTarget
+           };
+           const resTrans = await api.post('/api/v1/transitions/', payload);
 
-        setNodes(newNodes);
-        setEdges(newEdges); 
-        
-        if (setHasUnsavedChangesRef.current) setHasUnsavedChangesRef.current(true);
-        notify.success("¡Flujo importado en memoria con sus transiciones! Guarda para confirmar.");
-        
+           // Inyectar Reglas y Validaciones si las tiene
+           if (t.actions && t.actions.length > 0) {
+              for (const action of t.actions) {
+                  const actionPayload = { ...action };
+                  delete actionPayload.id; delete actionPayload.transition_id;
+                  await api.post(`/api/v1/transitions/${resTrans.data.id}/actions`, actionPayload);
+              }
+           }
+           if (t.validations && t.validations.length > 0) {
+              for (const val of t.validations) {
+                  const valPayload = { ...val };
+                  delete valPayload.id; delete valPayload.transition_id;
+                  await api.post(`/api/v1/transitions/${resTrans.data.id}/validations`, valPayload);
+              }
+           }
+        }
+        notify.success("¡Flujo importado en la Base de Datos!");
+        if (fetchBlueprintDataCb) fetchBlueprintDataCb();
       } catch (err) { 
         notify.error("Error al importar JSON. Formato inválido."); 
       }
@@ -410,10 +269,9 @@ export const useBlueprintManager = ({
 
   return {
     nodes, setNodes, edges, setEdges,
-    deletedStatusIdsRef, deletedTransitionIdsRef,
     moduleFields, moduleSections, companyUsers, companyRoles, companyProfiles, allModules, allForms,
     versions, loadingVersions, transitionActions, transitionValidations,
     fetchBlueprintData, loadTransitionDetails, fetchVersions,
-    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint, saveBlueprintChanges
+    handleRestoreVersion, handleCreateNewVersion, handleExportBlueprint, handleImportBlueprint
   };
 };
