@@ -13,9 +13,13 @@ import CaseComments from '../features/cases/CaseComments';
 import CaseExternalChat from '../features/cases/CaseExternalChat';
 
 // 🔥 IMPORTACIONES DE LIBRERÍAS DE 3ROS PARA LOS NUEVOS CAMPOS 🔥
-import PhoneInput from 'react-phone-input-2';
+import PhoneInputPkg from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
-import CurrencyInput from 'react-currency-input-field';
+import CurrencyInputPkg from 'react-currency-input-field';
+
+// 🔥 PENTEST FIX: Evitar "React Error 130: got object" en Vercel/Vite 🔥
+const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
+const CurrencyInput = CurrencyInputPkg.default || CurrencyInputPkg;
 
 const CaseDetail = () => {
   const { id } = useParams();
