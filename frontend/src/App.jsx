@@ -15,6 +15,9 @@ import { NotificationProvider } from './context/NotificationContext';
 // 🔥 NUEVO: IMPORTAMOS EL PROVEEDOR DEL CHAT 🔥
 import { SupportChatProvider } from './context/SupportChatContext'; 
 
+const StoreHome = lazy(() => import('./pages/StoreHome'));
+const StoreProductDetail = lazy(() => import('./pages/StoreProductDetail'));
+
 // 🚀 MEJORA DE RENDIMIENTO Y SEGURIDAD (Lazy Loading / Code Splitting)
 const Login = lazy(() => import('./features/auth/Login')); 
 
@@ -58,6 +61,9 @@ function App() {
 
                 {/* 🔥 NUEVO: RUTA PARA ACEPTAR INVITACIONES POR CORREO 🔥 */}
                 <Route path="/set-password" element={<SetPassword />} />
+                
+                <Route path="/c/:moduleId" element={<StoreHome />} />
+                <Route path="/p/:moduleId/:productId" element={<StoreProductDetail />} />
 
                 {/* RUTAS PRIVADAS (Requieren estar logueado y usan el MainLayout) */}
                 <Route path="/dashboard" element={
