@@ -500,9 +500,16 @@ def test_python_script(
     original_stdout = sys.stdout
     sys.stdout = stdout_trap
 
+    # 🔥 FIX: Lista blanca de funciones seguras permitidas en el Sandbox 🔥
+    safe_builtins = {
+        "print": print, "int": int, "float": float, "str": str,
+        "bool": bool, "len": len, "round": round, "abs": abs,
+        "sum": sum, "min": min, "max": max, "dict": dict, "list": list
+    }
+
     try:
         # 4. Ejecutamos el código
-        exec(req.function_code, {"__builtins__": {}}, local_env)
+        exec(req.function_code, {"__builtins__": safe_builtins}, local_env)
         
         # 5. Restauramos la consola del servidor inmediatamente
         sys.stdout = original_stdout

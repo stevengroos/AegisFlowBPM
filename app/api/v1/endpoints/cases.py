@@ -442,9 +442,17 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                 "current_date": datetime.now().strftime("%Y-%m-%d"),
                 "http": SafeHTTPClient()
             }
+            
+            # 🔥 FIX: Lista blanca de funciones seguras permitidas 🔥
+            safe_builtins = {
+                "print": print, "int": int, "float": float, "str": str,
+                "bool": bool, "len": len, "round": round, "abs": abs,
+                "sum": sum, "min": min, "max": max, "dict": dict, "list": list
+            }
+            
             try:
                 # Ejecutamos el script. Si el usuario modifica 'case_data', lo capturamos.
-                exec(rule.function_code, {"__builtins__": {}}, local_env)
+                exec(rule.function_code, {"__builtins__": safe_builtins}, local_env)
                 updated_data = local_env.get("case_data", updated_data)
                 data_changed = True
             except Exception as e:
@@ -1321,8 +1329,16 @@ def change_case_status(
                         "current_date": datetime.now().strftime("%Y-%m-%d"),
                         "http": SafeHTTPClient()
                     }
+                    
+                    # 🔥 FIX: Lista blanca de funciones seguras permitidas 🔥
+                    safe_builtins = {
+                        "print": print, "int": int, "float": float, "str": str,
+                        "bool": bool, "len": len, "round": round, "abs": abs,
+                        "sum": sum, "min": min, "max": max, "dict": dict, "list": list
+                    }
+                    
                     try:
-                        exec(act.function_code, {"__builtins__": {}}, local_env)
+                        exec(act.function_code, {"__builtins__": safe_builtins}, local_env)
                         updated_data = local_env.get("case_data", updated_data)
                     except Exception as e:
                         print(f"Error ejecutando Low-Code en transición: {e}")
