@@ -700,3 +700,23 @@ class CaseExternalMessage(Base):
     is_from_client = Column(Boolean, default=True) 
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+# =======================================================
+# 🔥 NUEVO: SEGUIDOR DE CAMPOS AUTO-NUMÉRICOS 🔥
+# =======================================================
+class AutoNumberSequence(Base):
+    """
+    Controla el conteo seguro para los campos de tipo 'auto_number'.
+    Garantiza que no haya duplicados si dos usuarios guardan al mismo tiempo.
+    """
+    __tablename__ = "auto_number_sequences"
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    
+    # Podemos llevar el conteo por módulo o por un nombre de prefijo específico
+    sequence_key = Column(String, nullable=False, index=True) 
+    current_value = Column(Integer, default=0, nullable=False)
+    
+    # Aseguramos que la llave de secuencia sea única por empresa
+    __table_args__ = (
+        UniqueConstraint('company_id', 'sequence_key', name='uix_company_sequence_key'),
+    )

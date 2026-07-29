@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom'; // Para el portal del SearchableSelect
 import api from '../api/axios';
-import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator, Phone, CircleDollarSign } from 'lucide-react';
+import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator, Phone, CircleDollarSign, Binary } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../context/NotificationContext';
 import FileUploadField from '../components/ui/FileUploadField';
@@ -437,6 +437,18 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
             <div className="relative">
                <Calculator className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={16} />
                <input type="text" disabled value={calculateVisualFormula(field.options, formData)} className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} placeholder="Calculado automáticamente" />
+            </div>
+
+          
+          ) : field.field_type === 'auto_number' ? (
+            <div className="relative">
+               <Binary className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
+               <input 
+                 type="text" 
+                 disabled 
+                 className={`${inputClasses} pl-9 bg-orange-50/30 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 font-bold border-orange-200 dark:border-orange-800/50 cursor-not-allowed`} 
+                 placeholder="Se generará al guardar..." 
+               />
             </div>
 
           ) : field.field_type === 'file' || field.field_type === 'image' ? (

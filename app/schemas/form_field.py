@@ -36,6 +36,11 @@ class CurrencyConfig(BaseModel):
 class PhoneConfig(BaseModel):
     default_country: str = Field("PY", max_length=3, description="Código ISO del país (ej. PY, MX, AR, US)")
     restrict_country: bool = Field(False, description="Si es True, el usuario no puede cambiar la bandera")
+    
+class AutoNumberConfig(BaseModel):
+    prefix: str = Field("", max_length=20, description="Prefijo (ej: FAC-, CASO-)")
+    starting_number: int = Field(1, ge=1, description="Número por el que empieza el conteo")
+    padding: int = Field(4, ge=1, le=10, description="Cantidad de ceros a rellenar (ej: 4 = 0001)")
 
 
 ## ==========================================
@@ -45,7 +50,7 @@ class FormFieldBase(BaseModel):
     label: str = Field(..., min_length=1, max_length=200, description="El nombre que ve el usuario (ej: 'Fecha de inicio')")
     
     # 🔥 CORRECCIÓN: Volvemos a incluir 'date' en la descripción 🔥
-    field_type: str = Field(..., max_length=50, description="Tipo: 'text', 'number', 'date', 'currency', 'phone', etc.")
+    field_type: str = Field(..., max_length=50, description="Tipo: 'text', 'number', 'date', 'currency', 'phone','email', 'auto_number', etc.")
     
     required: bool = False
     order: int = 0

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle, Phone, CircleDollarSign } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle, Phone, CircleDollarSign, Binary } from 'lucide-react';
 import { createPortal } from 'react-dom';
 // 🔥 Importaciones Arquitectura Limpia 🔥
 import { useNotification } from '../context/NotificationContext';
@@ -489,14 +489,18 @@ const CaseDetail = () => {
           ) : field.field_type === 'formula' ? (
              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5"><Calculator size={14}/> {value !== undefined ? value : '--'}</span>
           
-          /* 🔥 NUEVO: MODO LECTURA DE MONEDA 🔥 */
+          /* 🔥 NUEVO: MODO LECTURA DE AUTO NUMÉRICO 🔥 */
+          ) : field.field_type === 'auto_number' && value ? (
+             <span className="text-sm font-bold text-orange-600 dark:text-orange-400 flex items-center gap-1.5">
+               <Binary size={14} className="text-orange-500"/> {value}
+             </span>
+
           ) : field.field_type === 'currency' && value !== undefined && value !== "" && value !== null ? (
              <span className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                <CircleDollarSign size={14} className="text-amber-500"/>
                {field.options?.symbol_position === 'right' ? `${value} ${field.options?.symbol || '$'}` : `${field.options?.symbol || '$'} ${value}`}
              </span>
              
-          /* 🔥 NUEVO: MODO LECTURA DE TELÉFONO 🔥 */
           ) : field.field_type === 'phone' && value ? (
              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                <Phone size={14} className="text-teal-500"/> +{value}
@@ -548,7 +552,6 @@ const CaseDetail = () => {
           />
         )
 
-        /* 🔥 NUEVO: CAMPO DE TELÉFONO ENRIQUECIDO (MODO EDICIÓN) 🔥 */
         : field.field_type === 'phone' ? (
           <div className="react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
             <PhoneInput
@@ -565,7 +568,6 @@ const CaseDetail = () => {
           </div>
         )
 
-        /* 🔥 NUEVO: CAMPO DE MONEDA Y DECIMALES (MODO EDICIÓN) 🔥 */
         : field.field_type === 'currency' ? (
           <div className="relative">
             {field.options?.symbol_position === 'left' && (
@@ -609,6 +611,20 @@ const CaseDetail = () => {
              <input type="text" disabled value={calculateVisualFormula(field.options, editFormData)} className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} placeholder="Calculado automáticamente" />
           </div>
         )
+
+        /* 🔥 NUEVO: MODO EDICIÓN DE AUTO NUMÉRICO (Siempre deshabilitado) 🔥 */
+        : field.field_type === 'auto_number' ? (
+          <div className="relative">
+             <Binary className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
+             <input 
+               type="text" 
+               disabled 
+               value={value || ''}
+               className={`${inputClasses} pl-9 bg-orange-50/30 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 font-bold border-orange-200 dark:border-orange-800/50 cursor-not-allowed`} 
+               placeholder="Auto-Generado" 
+             />
+          </div>
+        )
         
         : field.field_type === 'file' || field.field_type === 'image' ? (
              <FileUploadField 
@@ -622,6 +638,8 @@ const CaseDetail = () => {
         )
         : field.field_type === 'url' ? <div className="relative"><Link2 className={`absolute left-3 top-1/2 -translate-y-1/2 ${isReadOnly ? 'hidden' : 'text-gray-400'}`} size={16} /><input type="url" required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={`${inputClasses} ${isReadOnly ? '' : 'pl-9'}`} placeholder="https://" /></div>
         : field.field_type === 'subform' ? <SubformTable field={field} value={value || []} onChange={val => setEditFormData({...editFormData, [fieldKey]: val})} relationData={relationData} isEditing={!isReadOnly} />
+        
+        /* 🔥 FIX: INYECTAR VALIDACIÓN HTML5 PARA 'email' 🔥 */
         : <input type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'email' ? 'email' : 'text'} required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses} />}
       </div>
     );
@@ -752,7 +770,7 @@ const CaseDetail = () => {
             </div>
 
             {(sections.length > 0 ? sections : [{ id: null, title: 'Información General', columns: 2 }]).map((section, sIdx) => {
-               const sFields = formFields.filter(f => f.section_id === section.id || (!f.section_id && section.id === null));
+               const sFields = fields.filter(f => f.section_id === section.id || (!f.section_id && section.id === null)).sort((a,b) => a.order - b.order);
                if (sFields.length === 0) return null;
                
                const gridClass = section.columns === 1 ? 'grid-cols-1' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';

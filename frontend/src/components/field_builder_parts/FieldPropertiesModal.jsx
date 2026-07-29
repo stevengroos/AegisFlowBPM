@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign } from 'lucide-react'; // 🔥 NUEVOS ÍCONOS AÑADIDOS
+import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign, Binary } from 'lucide-react'; // 🔥 NUEVO ÍCONO Binary AÑADIDO
 import { PALETTE_ITEMS } from './Palette';
 
 const FieldPropertiesModal = ({ 
@@ -57,7 +57,49 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 NUEVO: CONFIGURACIÓN DE TELÉFONO 🔥 */}
+           {/* 🔥 NUEVO: CONFIGURACIÓN DE AUTO NÚMERO (SECUENCIA) 🔥 */}
+           {editingField.field_type === 'auto_number' && (
+             <div className="bg-orange-50/50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/50 p-4 rounded-xl space-y-4">
+               <label className="block text-xs font-bold text-orange-700 dark:text-orange-400 uppercase mb-1.5 flex items-center gap-1">
+                 <Binary size={14}/> Secuencia Automática
+               </label>
+               <p className="text-[10px] text-gray-600 dark:text-gray-400 leading-tight">
+                 El sistema generará el número de forma automática al crear el registro. Este campo será de <span className="font-bold text-orange-500">Solo Lectura</span> en los formularios.
+               </p>
+               
+               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Prefijo</label>
+                   <input type="text" placeholder="Ej: FAC-" value={editingField.options?.prefix || ''} onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, prefix: e.target.value }})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500" />
+                 </div>
+                 
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Inicia En</label>
+                   <input type="number" min="1" placeholder="1" value={editingField.options?.starting_number || 1} onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, starting_number: parseInt(e.target.value) || 1 }})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500" />
+                 </div>
+
+                 <div>
+                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ceros Fijos</label>
+                   <select value={editingField.options?.padding || 4} onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, padding: parseInt(e.target.value) }})} className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500">
+                     <option value={1}>0 (Ej: 1)</option>
+                     <option value={2}>00 (Ej: 01)</option>
+                     <option value={3}>000 (Ej: 001)</option>
+                     <option value={4}>0000 (Ej: 0001)</option>
+                     <option value={5}>00000 (Ej: 00001)</option>
+                     <option value={6}>000000</option>
+                   </select>
+                 </div>
+               </div>
+
+               <div className="pt-2">
+                 <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-950 p-2 rounded-lg border border-gray-200 dark:border-gray-800 text-center">
+                   Ejemplo Final: <span className="font-bold text-orange-600 dark:text-orange-400">{editingField.options?.prefix || ''}{(editingField.options?.starting_number || 1).toString().padStart(editingField.options?.padding || 4, '0')}</span>
+                 </p>
+               </div>
+             </div>
+           )}
+
+           {/* CONFIGURACIÓN DE TELÉFONO */}
            {editingField.field_type === 'phone' && (
              <div className="bg-teal-50/50 dark:bg-teal-900/10 border border-teal-200 dark:border-teal-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-teal-700 dark:text-teal-400 uppercase mb-1.5 flex items-center gap-1">
@@ -91,7 +133,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 NUEVO: CONFIGURACIÓN DE MONEDA / DECIMALES 🔥 */}
+           {/* CONFIGURACIÓN DE MONEDA / DECIMALES */}
            {editingField.field_type === 'currency' && (
              <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-amber-700 dark:text-amber-400 uppercase mb-1.5 flex items-center gap-1">
@@ -136,7 +178,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 CORRECCIÓN: CONFIGURACIÓN RELACIONAL (LOOKUP) */}
+           {/* CONFIGURACIÓN RELACIONAL (LOOKUP) */}
            {editingField.field_type === 'relation' && (
              <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 p-4 rounded-xl">
                <label className="block text-xs font-bold text-blue-700 dark:text-blue-400 uppercase mb-1.5 flex items-center gap-1"><LinkIcon size={14}/> Módulo Destino (Lookup)</label>
@@ -235,8 +277,8 @@ const FieldPropertiesModal = ({
                          <div className="flex gap-2 items-center">
                            <input type="text" placeholder="Nombre Columna" value={col.label} onChange={e => updateSubformCol(idx, 'label', e.target.value)} className="flex-1 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required/>
                            <select value={col.type} onChange={e => updateSubformCol(idx, 'type', e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
-                              {/* 🔥 ACTUALIZADO: Filtramos 'subform', 'map' y otros súper campos que no deben ir en tablas */}
-                              {PALETTE_ITEMS.filter(p => !['subform', 'map', 'formula', 'user_relation'].includes(p.type)).map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
+                              {/* 🔥 Filtramos 'subform', 'map', 'formula', 'auto_number' que no deben ir en tablas */}
+                              {PALETTE_ITEMS.filter(p => !['subform', 'map', 'formula', 'user_relation', 'auto_number'].includes(p.type)).map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
                            </select>
                            <button type="button" onClick={() => removeSubformCol(idx)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
                          </div>
@@ -259,10 +301,14 @@ const FieldPropertiesModal = ({
                 <input type="checkbox" checked={editingField.is_primary || false} readOnly className="w-4 h-4 rounded text-amber-500 cursor-pointer" />
                 <div className="flex flex-col"><label className="text-sm font-bold text-amber-800 dark:text-amber-500 flex items-center gap-1.5 cursor-pointer"><Star size={16}/> Título Principal del Registro</label><span className="text-xs text-amber-600 dark:text-amber-600/70">Representará a todo el registro en el tablero Kanban.</span></div>
               </div>
-              <div className="flex items-center gap-3 px-2 cursor-pointer group" onClick={() => setEditingField({...editingField, required: !editingField.required})}>
-                <input type="checkbox" checked={editingField.required || false} readOnly className="w-4 h-4 rounded text-blue-600 cursor-pointer group-hover:ring-2 ring-blue-500/50" />
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Marcar este campo como Obligatorio</label>
-              </div>
+              
+              {/* Ocultamos la opción de hacerlo obligatorio si es auto numérico, porque el sistema lo llena solo */}
+              {editingField.field_type !== 'auto_number' && (
+                <div className="flex items-center gap-3 px-2 cursor-pointer group" onClick={() => setEditingField({...editingField, required: !editingField.required})}>
+                  <input type="checkbox" checked={editingField.required || false} readOnly className="w-4 h-4 rounded text-blue-600 cursor-pointer group-hover:ring-2 ring-blue-500/50" />
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Marcar este campo como Obligatorio</label>
+                </div>
+              )}
            </div>
 
         </form>

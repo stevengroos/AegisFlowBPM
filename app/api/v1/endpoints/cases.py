@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any
-from pydantic import BaseModel 
+from pydantic import BaseModel, EmailStr, ValidationError, TypeAdapter
 from datetime import datetime, timedelta, timezone 
 from sqlalchemy.sql import func
 import traceback 
@@ -76,6 +76,56 @@ def calculate_formulas(db: Session, form_id: int, data_dict: dict) -> dict:
             data_dict[field.api_name or field.label] = 0
 
     return data_dict
+
+
+
+# =======================================================
+# 🔥 NUEVO: GENERADOR SEGURO DE AUTO-NÚMEROS 🔥
+# =======================================================
+def generate_auto_number(db: Session, company_id: int, field: models.FormField) -> str:
+    """
+    Genera el siguiente número de secuencia de forma atómica.
+    """
+    # Usamos el form_id y el api_name como clave única para esta secuencia
+    seq_key = f"form_{field.form_id}_{field.api_name}"
+    
+    # 1. Buscamos o creamos el tracker de secuencia para esta empresa
+    # Usamos with_for_update() para bloquear la fila (ROW LOCK) y evitar que 
+    # dos usuarios obtengan el mismo número si guardan al mismo milisegundo.
+    sequence = db.query(models.AutoNumberSequence).filter(
+        models.AutoNumberSequence.company_id == company_id,
+        models.AutoNumberSequence.sequence_key == seq_key
+    ).with_for_update().first()
+    
+    options = field.options or {}
+    if isinstance(options, str):
+        import json
+        try: options = json.loads(options)
+        except: options = {}
+        
+    prefix = options.get("prefix", "")
+    padding = int(options.get("padding", 4))
+    
+    if not sequence:
+        # Si es el primer registro, empezamos por el starting_number - 1
+        starting_number = int(options.get("starting_number", 1))
+        sequence = models.AutoNumberSequence(
+            company_id=company_id,
+            sequence_key=seq_key,
+            current_value=starting_number - 1
+        )
+        db.add(sequence)
+        db.flush() # Guardamos temporalmente en la transacción
+
+    # 2. Incrementamos atómicamente
+    sequence.current_value += 1
+    db.flush()
+    
+    # 3. Formateamos el resultado final (Ej: FAC-0005)
+    # zfill rellena con ceros a la izquierda según el padding
+    number_str = str(sequence.current_value).zfill(padding)
+    return f"{prefix}{number_str}"
+
 
 # =======================================================
 # 🔥 PENTEST FIX: GUARDAESPALDAS PARA LOW-CODE (SSRF PROTECTION) 🔥
@@ -591,15 +641,46 @@ def create_case(
     field_rules = security_utils.get_field_level_security(db, current_user, case_in.module_id)
     safe_new_data = {}
     
+    form_fields = db.query(models.FormField).filter(
+        models.FormField.form_id == case_in.form_id
+    ).all()
+    fields_dict = {(f.api_name or f.label): f for f in form_fields}
+    
+    # 1. Validamos los datos que envió el usuario
     for key, val in case_in.data.items():
         rule = field_rules.get(key, "editable")
         if rule in ["hidden", "readonly"]:
             continue # 🛡️ No pueden inyectar datos en campos bloqueados al crear
+            
+        # 🔥 NUEVO: VALIDACIÓN ESTRICTA DE CORREOS 🔥
+        current_field = fields_dict.get(key)
+        if current_field and current_field.field_type == "email" and val:
+            try:
+                # TypeAdapter valida que el string cumpla con el estándar de correo
+                # y automáticamente lo pasa a minúsculas y elimina espacios.
+                val = TypeAdapter(EmailStr).validate_python(val)
+            except ValidationError:
+                raise HTTPException(status_code=422, detail=f"El valor ingresado en '{current_field.label}' no es un correo electrónico válido.")
+
+        # 🛡️ Evitar inyección manual de un autonumérico desde el cliente
+        if current_field and current_field.field_type == "auto_number":
+            continue 
+
         safe_new_data[key] = val
         
+    # 2. Generar automáticamente los campos Auto-Incremental
+    for field in form_fields:
+        if field.field_type == "auto_number":
+            # Si la regla de seguridad del campo lo permite (no está oculto)
+            if field_rules.get(field.api_name or field.label, "editable") != "hidden":
+                # Inyectamos el número generado de forma segura
+                key_name = field.api_name or field.label
+                safe_new_data[key_name] = generate_auto_number(db, current_user.company_id, field)
+        
+    # 3. Calculamos las fórmulas
     safe_new_data = calculate_formulas(db, case_in.form_id, safe_new_data)
     case_in.data = safe_new_data
-
+    
     new_case = models.Case(
         company_id=current_user.company_id,
         created_by=current_user.id,

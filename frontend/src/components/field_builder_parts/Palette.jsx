@@ -1,14 +1,16 @@
 import React from 'react';
-import { Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, LinkIcon, MapPin, Calculator, Link2, Users, Phone, CircleDollarSign } from 'lucide-react';
+import { Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, LinkIcon, MapPin, Calculator, Link2, Users, Phone, CircleDollarSign, Mail, Binary } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 
-// 🔥 AÑADIMOS LOS NUEVOS CAMPOS (Phone, Currency) 🔥
+// 🔥 AÑADIMOS LOS NUEVOS CAMPOS (Email, Auto Number) junto a los anteriores 🔥
 export const PALETTE_ITEMS = [
   { type: 'text', icon: <Type size={16}/>, label: 'Texto Corto' },
   { type: 'textarea', icon: <AlignLeft size={16}/>, label: 'Texto Largo' },
   { type: 'number', icon: <Hash size={16}/>, label: 'Número Entero' },
   { type: 'currency', icon: <CircleDollarSign size={16} className="text-amber-500"/>, label: 'Moneda / Decimal' },
   { type: 'phone', icon: <Phone size={16} className="text-teal-500"/>, label: 'Teléfono' },
+  { type: 'email', icon: <Mail size={16} className="text-sky-500"/>, label: 'Correo Electrónico' },
+  { type: 'auto_number', icon: <Binary size={16} className="text-orange-500"/>, label: 'Auto Numérico (Secuencia)' },
   { type: 'date', icon: <Calendar size={16}/>, label: 'Fecha' },
   { type: 'select', icon: <List size={16}/>, label: 'Desplegable' },
   { type: 'checkbox', icon: <CheckSquare size={16}/>, label: 'Casilla (Sí/No)' },
