@@ -9,7 +9,7 @@ import requests
 from app.core.encryption import encrypt_secret, decrypt_secret
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-# 🔥 IMPORTAMOS LOS NUEVOS SCHEMAS DE CATEGORÍAS 🔥
+
 from app.schemas.module import (
     ModuleCreate, ModuleUpdate, ModuleResponse,
     ModuleCategoryCreate, ModuleCategoryUpdate, ModuleCategoryResponse
@@ -148,8 +148,6 @@ def create_module(
 ):
     check_settings_permission(db, current_user, "manage_modules")
     
-    # 🔥 NUEVA VALIDACIÓN INTELIGENTE 🔥
-    # Buscamos si ya existe un módulo con el mismo nombre en el mismo destino
     existing_query = db.query(models.Module).filter(
         models.Module.company_id == current_user.company_id,
         models.Module.name == module.name
@@ -202,10 +200,16 @@ def get_modules(
     if not profile or not profile.permissions:
         return []
         
+    # 🔥 SOLUCIÓN DEL BUG: BYPASS PARA ADMINISTRADORES DE MÓDULOS 🔥
+    # Si el usuario tiene el permiso maestro de configuración "manage_modules", ve TODO
+    can_manage_modules = profile.permissions.get("settings", {}).get("manage_modules", False)
+    if can_manage_modules:
+        return all_modules
+        
     allowed_modules = []
     for mod in all_modules:
         mod_perms = profile.permissions.get("modules", {}).get(str(mod.id), {})
-        if mod_perms.get("view"):
+        if mod_perms.get("view") or mod_perms.get("view_same_rank"):
             allowed_modules.append(mod)
             
     return allowed_modules
@@ -258,8 +262,12 @@ def get_module(
         if not profile or not profile.permissions: 
             raise HTTPException(status_code=403, detail="Acceso denegado")
             
-        if not profile.permissions.get("modules", {}).get(str(module_id), {}).get("view"):
-            raise HTTPException(status_code=403, detail="No tienes permiso para ver este módulo")
+        # 🔥 SOLUCIÓN DEL BUG: BYPASS PARA ADMINISTRADORES DE MÓDULOS 🔥
+        can_manage_modules = profile.permissions.get("settings", {}).get("manage_modules", False)
+        
+        if not can_manage_modules:
+            if not profile.permissions.get("modules", {}).get(str(module_id), {}).get("view"):
+                raise HTTPException(status_code=403, detail="No tienes permiso para ver este módulo")
             
     return db_module
 
@@ -283,14 +291,13 @@ def update_module(
     
     update_data = module_data.dict(exclude_unset=True) 
     
-    # 🔥 VALIDACIÓN AL EDITAR O MOVER 🔥
     new_name = update_data.get("name", db_module.name)
     new_category_id = update_data.get("category_id", db_module.category_id)
     
     existing_query = db.query(models.Module).filter(
         models.Module.company_id == current_user.company_id,
         models.Module.name == new_name,
-        models.Module.id != module_id # Excluimos al propio módulo que estamos editando
+        models.Module.id != module_id 
     )
     
     if new_category_id is not None:
@@ -358,15 +365,15 @@ def delete_module(
 # ==========================================
 
 class IntegrationUpdate(BaseModel):
-    environment: str # 'sandbox' o 'production'
-    token: Optional[str] = None # Es opcional porque el usuario podría querer solo apagar el interruptor sin reescribir el token
+    environment: str 
+    token: Optional[str] = None 
     is_active: bool
 
 class IntegrationResponse(BaseModel):
     provider_name: str
     environment: str
     is_active: bool
-    has_token: bool # Le dice al frontend: "Sí, ya hay un token guardado"
+    has_token: bool 
 
 @router.get("/{module_id}/integrations/{provider_name}", response_model=IntegrationResponse)
 def get_module_integration(
@@ -383,7 +390,6 @@ def get_module_integration(
         models.ModuleIntegration.provider_name == provider_name
     ).first()
 
-    # Si la empresa nunca ha configurado esta integración, devolvemos valores por defecto
     if not integration:
         return {
             "provider_name": provider_name,
@@ -396,7 +402,7 @@ def get_module_integration(
         "provider_name": integration.provider_name,
         "environment": integration.environment,
         "is_active": integration.is_active,
-        "has_token": bool(integration.encrypted_token) # Ocultamos el token por seguridad
+        "has_token": bool(integration.encrypted_token) 
     }
 
 @router.put("/{module_id}/integrations/{provider_name}", response_model=IntegrationResponse)
@@ -410,12 +416,11 @@ def update_module_integration(
 ):
     check_settings_permission(db, current_user, "manage_modules")
 
-    # 🔥 NUEVA REGLA: VERIFICAR QUE EL API KEY NO SE REPITA EN OTROS MÓDULOS 🔥
     if data.token:
         otras_integraciones = db.query(models.ModuleIntegration).filter(
             models.ModuleIntegration.company_id == current_user.company_id,
             models.ModuleIntegration.provider_name == provider_name,
-            models.ModuleIntegration.module_id != module_id # Excluimos el módulo actual
+            models.ModuleIntegration.module_id != module_id 
         ).all()
         
         for integ in otras_integraciones:
@@ -434,7 +439,6 @@ def update_module_integration(
     ).first()
 
     if not integration:
-        # Si no existía, la creamos y encriptamos el token
         integration = models.ModuleIntegration(
             company_id=current_user.company_id,
             module_id=module_id,
@@ -445,7 +449,6 @@ def update_module_integration(
         )
         db.add(integration)
     else:
-        # Si ya existía, la actualizamos
         integration.environment = data.environment
         integration.is_active = data.is_active
         if data.token: 
@@ -472,7 +475,6 @@ def get_signaturit_templates(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Paso 1: Trae la lista completa de plantillas usando V3 (Soporta hasta 100 de golpe)"""
     check_settings_permission(db, current_user, "manage_modules")
     
     integration = db.query(models.ModuleIntegration).filter(
@@ -489,7 +491,6 @@ def get_signaturit_templates(
     
     try:
         headers = {"Authorization": f"Bearer {token}"}
-        # 🔥 Usamos V3 con limit=100 para traer toda la lista
         response = requests.get(f"{base_url}/v3/templates.json?limit=100", headers=headers, timeout=10, verify=False)
         
         if not response.ok:
@@ -507,7 +508,6 @@ def get_signaturit_template_details(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Paso 2: Trae los widgets buscando la plantilla en la paginación de V4"""
     check_settings_permission(db, current_user, "manage_modules")
     
     integration = db.query(models.ModuleIntegration).filter(
@@ -522,8 +522,6 @@ def get_signaturit_template_details(
     try:
         headers = {"Authorization": f"Bearer {token}"}
         
-        # 🔥 EL BUSCADOR INTELIGENTE (Paginación V4)
-        # Hojemos el "libro" de plantillas de 10 en 10 hasta encontrar la que el usuario clickeó.
         page = 1
         while True:
             response = requests.get(f"{base_url}/v4/templates?limit=10&page={page}", headers=headers, timeout=10, verify=False)
@@ -533,38 +531,31 @@ def get_signaturit_template_details(
             
             templates_page = response.json()
             
-            # Si la página viene vacía, ya revisamos todas y no la encontramos
             if not templates_page:
                 raise HTTPException(status_code=404, detail="Plantilla no encontrada en Signaturit.")
                 
-            # Buscamos la plantilla en esta página específica
             for t in templates_page:
                 if t.get('id') == template_id:
-                    return t # ¡Bingo! La encontramos y ya trae los "widgets" adentro
+                    return t 
                     
-            # Si no estaba aquí, pasamos a la siguiente página (Signaturit permite max 10 por página)
             page += 1
             
-            # Cortafuegos de seguridad: Si llega a la página 30 (300 plantillas), detenemos para evitar bucles infinitos
             if page > 30:
                 raise HTTPException(status_code=400, detail="Límite de búsqueda excedido.")
                 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=400, detail=f"Fallo de red: {str(e)}")
     
-# 1. Creamos el esquema para recibir la URL desde el frontend
 class WebhookSetupPayload(BaseModel):
     app_url: str
 
-# 2. Actualizamos el endpoint
 @router.post("/{module_id}/integrations/signaturit/webhook/setup")
 def setup_signaturit_webhook(
     module_id: int,
-    payload: WebhookSetupPayload, # 🔥 Recibimos la URL por aquí
+    payload: WebhookSetupPayload, 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Configura automáticamente el Webhook usando la URL provista por el frontend."""
     check_settings_permission(db, current_user, "manage_modules")
     
     integration = db.query(models.ModuleIntegration).filter(
@@ -579,7 +570,6 @@ def setup_signaturit_webhook(
     token = decrypt_secret(integration.encrypted_token).strip()
     base_url = "https://api.sandbox.signaturit.com" if integration.environment == "sandbox" else "https://api.signaturit.com"
     
-    # 🔥 Limpiamos la URL por si el usuario le puso una barra al final y armamos el destino
     clean_url = payload.app_url.strip().rstrip("/")
     webhook_target = f"{clean_url}/api/v1/webhooks/signaturit"
     
@@ -615,10 +605,6 @@ def update_mobile_config(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Actualiza la configuración de publicación B2C (Headless) del módulo.
-    """
-    # Verificamos que sea administrador (ajusta esto si usas security_utils)
     if not current_user.is_superadmin:
         profile = db.query(models.Profile).filter(models.Profile.id == current_user.profile_id).first()
         if not profile or not profile.permissions.get("settings", {}).get("manage_modules"):
