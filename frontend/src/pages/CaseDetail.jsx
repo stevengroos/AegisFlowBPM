@@ -574,24 +574,46 @@ const CaseDetail = () => {
 
         : field.field_type === 'currency' ? (
           <div className="relative">
-            {field.options?.symbol_position === 'left' && (
-               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
-            )}
-            <CurrencyInput
-              id={`currency-${fieldKey}`}
-              name={fieldKey}
-              value={value || ''}
-              decimalsLimit={field.options?.decimal_places ?? 2}
-              decimalSeparator={field.options?.decimal_separator || ','}
-              groupSeparator={field.options?.thousand_separator || '.'}
-              onValueChange={(val) => setEditFormData({...editFormData, [fieldKey]: val || ''})}
-              className={`${inputClasses} ${field.options?.symbol_position === 'left' ? 'pl-8' : ''} ${field.options?.symbol_position === 'right' ? 'pr-8' : ''}`}
-              placeholder="0.00"
-              disabled={isReadOnly}
-            />
-            {field.options?.symbol_position === 'right' && (
-               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
-            )}
+            {(() => {
+                // 🔥 ANTI-CRASH SUPREMO: Parseamos las opciones de forma ultra-segura
+                let parsedOpts = {};
+                try {
+                    parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {});
+                } catch(e) {
+                    parsedOpts = {};
+                }
+
+                const symPos = parsedOpts.symbol_position || 'left';
+                const sym = parsedOpts.symbol || '$';
+                
+                let decSep = parsedOpts.decimal_separator || ',';
+                let grpSep = parsedOpts.thousand_separator || '.';
+
+                // Escudo final: Si son exactamente iguales, forzamos el estándar
+                if (decSep === grpSep) {
+                    decSep = ',';
+                    grpSep = '.';
+                }
+
+                return (
+                  <>
+                    {symPos === 'left' && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold z-10">{sym}</span>}
+                    <CurrencyInput
+                      id={`currency-${fieldKey}`}
+                      name={fieldKey}
+                      value={value || ''}
+                      decimalsLimit={parsedOpts.decimal_places ?? 2}
+                      decimalSeparator={decSep}
+                      groupSeparator={grpSep}
+                      onValueChange={(val) => setEditFormData({...editFormData, [fieldKey]: val || ''})}
+                      className={`${inputClasses} ${symPos === 'left' ? 'pl-8' : ''} ${symPos === 'right' ? 'pr-8' : ''}`}
+                      placeholder="0.00"
+                      disabled={isReadOnly}
+                    />
+                    {symPos === 'right' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold z-10">{sym}</span>}
+                  </>
+                );
+            })()}
           </div>
         )
 
