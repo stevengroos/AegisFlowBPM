@@ -125,6 +125,10 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
   
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [editingField, setEditingField] = useState(null);
+  
+  // 🔥 FIX BUGS: ESTADO PARA REVERTIR CAMPOS NUEVOS CANCELADOS 🔥
+  const [isNewField, setIsNewField] = useState(false); 
+
   const [isSectionModalOpen, setIsSectionModalOpen] = useState(false);
   const [editingSection, setEditingSection] = useState(null);
   
@@ -260,17 +264,34 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
     const targetSectionId = specificSectionId || localSections[0].id;
     const foundLabel = PALETTE_ITEMS.find(i => i.type === typeStr)?.label || 'Nuevo Campo';
     const newF = { id: `temp-field-${Date.now()}`, label: foundLabel, field_type: typeStr, section_id: targetSectionId, order: localFields.length, required: false, is_primary: false, show_in_create: true, options: '', subform_config: [] };
+    
+    // Inyectamos de forma optimista
     setLocalFields([...localFields, newF]);
     setEditingField({ ...newF, target_module_id: newF.target_module_id || newF.options?.target_module_id || '', options: newF.field_type === 'select' && Array.isArray(newF.options) ? newF.options.join(', ') : (newF.options || '') });
+    
+    // 🔥 SOLUCIÓN DEL BUG: Marcamos que estamos creando un campo nuevo
+    setIsNewField(true); 
     setIsFieldModalOpen(true);
-    markAsChanged(); 
   };
 
   const handleSaveFieldEdit = (e) => {
     e.preventDefault();
     setLocalFields(prev => prev.map(f => f.id === editingField.id ? editingField : f));
+    
+    // Al guardar limpiamos el estado de campo nuevo
     setIsFieldModalOpen(false); 
+    setIsNewField(false);
     markAsChanged(); 
+  };
+
+  // 🔥 SOLUCIÓN DEL BUG: Rollback si cancelan
+  const handleCancelFieldModal = () => {
+    if (isNewField && editingField) {
+       // Revertimos la inyección optimista
+       setLocalFields(prev => prev.filter(f => f.id !== editingField.id));
+    }
+    setIsNewField(false);
+    setIsFieldModalOpen(false);
   };
 
   const handleDeleteFieldLocal = async (id) => {
@@ -311,11 +332,9 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
                if (f.target_module_id) finalOpts = { target_module_id: parseInt(f.target_module_id) };
                else if (f.options?.target_module_id) finalOpts = f.options; 
            } 
-           // 🔥 NUEVO BLOQUE 🔥
            else if (f.field_type === 'user_relation') {
                finalOpts = typeof f.options === 'object' ? f.options : {};
            } 
-           // 🔥 FIN DEL NUEVO BLOQUE 🔥
            else if (f.field_type === 'select' && typeof f.options === 'string') {
                finalOpts = f.options.split(',').map(opt => opt.trim()).filter(opt => opt !== '');
            }
@@ -351,11 +370,9 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
              if (f.target_module_id) finalOpts = { target_module_id: parseInt(f.target_module_id) };
              else if (f.options?.target_module_id) finalOpts = f.options; 
          } 
-         // 🔥 NUEVO BLOQUE PARA USER_RELATION 🔥
          else if (f.field_type === 'user_relation') {
              finalOpts = typeof f.options === 'object' ? f.options : {};
          } 
-         // 🔥 FIN DEL NUEVO BLOQUE 🔥
          else if (f.field_type === 'select' && typeof f.options === 'string') {
              finalOpts = f.options.split(',').map(opt => opt.trim()).filter(opt => opt !== '');
          }
@@ -522,14 +539,26 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
             <div className="max-w-4xl mx-auto pb-32">
                 <SortableContext items={localSections.map(s => `section-${s.id}`)} strategy={verticalListSortingStrategy}>
                   {localSections.sort((a,b) => a.order - b.order).map(section => (
-                    <SortableSection key={section.id} section={section} fields={localFields} onEditField={(f) => { setEditingField({ ...f, target_module_id: f.target_module_id || f.options?.target_module_id || '', options: f.field_type === 'select' && Array.isArray(f.options) ? f.options.join(', ') : (f.options || '') }); setIsFieldModalOpen(true); }} onDeleteField={handleDeleteFieldLocal} onEditSection={(s) => { setEditingSection(s); setIsSectionModalOpen(true); }} onDeleteSection={handleDeleteSectionLocal} />
+                    <SortableSection 
+                      key={section.id} 
+                      section={section} 
+                      fields={localFields} 
+                      onEditField={(f) => { 
+                         // Si editan un campo existente, nos aseguramos de que isNewField sea false
+                         setIsNewField(false);
+                         setEditingField({ ...f, target_module_id: f.target_module_id || f.options?.target_module_id || '', options: f.field_type === 'select' && Array.isArray(f.options) ? f.options.join(', ') : (f.options || '') }); 
+                         setIsFieldModalOpen(true); 
+                      }} 
+                      onDeleteField={handleDeleteFieldLocal} 
+                      onEditSection={(s) => { setEditingSection(s); setIsSectionModalOpen(true); }} 
+                      onDeleteSection={handleDeleteSectionLocal} 
+                    />
                   ))}
                 </SortableContext>
             </div>
           </div>
         </div>
 
-        {/* 🔥 EL OVERLAY DE LEVITACIÓN Y FANTASMA 🔥 */}
         <DragOverlay dropAnimation={null}>
           {activePaletteItem ? (
             <div className="flex items-center gap-3 p-3 bg-blue-600 text-white rounded-xl shadow-2xl font-bold opacity-90 scale-105 rotate-2 cursor-grabbing">
@@ -543,16 +572,16 @@ const FieldCanvas = ({ moduleId, selectedForm, onCloseCanvas, fetchFields, setHa
         </DragOverlay>
       </DndContext>
 
-      {/* 🔥 MODAL DE PROPIEDADES IMPORTADO DESDE EL NUEVO COMPONENTE 🔥 */}
+      {/* 🔥 MODAL DE PROPIEDADES CON NUEVA FUNCIÓN DE CERRADO 🔥 */}
       <FieldPropertiesModal 
         isOpen={isFieldModalOpen} 
-        onClose={() => setIsFieldModalOpen(false)} 
+        onClose={handleCancelFieldModal} 
         editingField={editingField} 
         setEditingField={setEditingField} 
         onSave={handleSaveFieldEdit} 
         modulesList={modulesList}
-        rolesList={rolesList}       // 🔥 NUEVO
-        profilesList={profilesList} // 🔥 NUEVO
+        rolesList={rolesList}       
+        profilesList={profilesList} 
         localFields={localFields}
       />
 
