@@ -395,37 +395,46 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
          
           ) : field.field_type === 'currency' ? (
             <div className="relative">
-              {field.options?.symbol_position === 'left' && (
-                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
-              )}
               {(() => {
-                // 🔥 ANTI-CRASH: Leemos la base de datos
-                let decSep = field.options?.decimal_separator || ',';
-                let grpSep = field.options?.thousand_separator || '.';
+                // 🔥 ANTI-CRASH SUPREMO: Parseamos las opciones de forma ultra-segura
+                let parsedOpts = {};
+                try {
+                    parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {});
+                } catch(e) {
+                    parsedOpts = {};
+                }
+
+                const symPos = parsedOpts.symbol_position || 'left';
+                const sym = parsedOpts.symbol || '$';
                 
-                // 🔥 PENTEST FIX: Si el admin configuró ambos iguales por error, los forzamos a ser diferentes
+                // Extraemos asegurando que si vienen vacíos, sean , y .
+                let decSep = parsedOpts.decimal_separator || ',';
+                let grpSep = parsedOpts.thousand_separator || '.';
+
+                // Escudo final: Si son exactamente iguales, forzamos el estándar
                 if (decSep === grpSep) {
-                   decSep = ',';
-                   grpSep = '.';
+                    decSep = ',';
+                    grpSep = '.';
                 }
 
                 return (
-                  <CurrencyInput
-                    id={`currency-${fieldKey}`}
-                    name={fieldKey}
-                    value={formData[fieldKey] || ''}
-                    decimalsLimit={field.options?.decimal_places ?? 2}
-                    decimalSeparator={decSep}
-                    groupSeparator={grpSep}
-                    onValueChange={(value) => setFormData({...formData, [fieldKey]: value || ''})}
-                    className={`${inputClasses} ${field.options?.symbol_position === 'left' ? 'pl-9' : ''} ${field.options?.symbol_position === 'right' ? 'pr-9' : ''}`}
-                    placeholder="0.00"
-                  />
+                  <>
+                    {symPos === 'left' && <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold z-10">{sym}</span>}
+                    <CurrencyInput
+                      id={`currency-${fieldKey}`}
+                      name={fieldKey}
+                      value={formData[fieldKey] || ''}
+                      decimalsLimit={parsedOpts.decimal_places ?? 2}
+                      decimalSeparator={decSep}
+                      groupSeparator={grpSep}
+                      onValueChange={(value) => setFormData({...formData, [fieldKey]: value || ''})}
+                      className={`${inputClasses} ${symPos === 'left' ? 'pl-9' : ''} ${symPos === 'right' ? 'pr-9' : ''}`}
+                      placeholder="0.00"
+                    />
+                    {symPos === 'right' && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold z-10">{sym}</span>}
+                  </>
                 );
               })()}
-              {field.options?.symbol_position === 'right' && (
-                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
-              )}
             </div>
 
           ) : field.field_type === 'textarea' ? (
