@@ -120,7 +120,7 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
   const isNumberField = (type) => ['number', 'decimal', 'currency', 'formula', 'int'].includes(type?.toLowerCase());
   const isImageField = (type) => ['image', 'file'].includes(type?.toLowerCase());
   const isLongTextField = (type) => ['textarea', 'long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
-  const isLongTextField = (type) => ['long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
+  //const isLongTextField = (type) => ['long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
 
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-fuchsia-500" size={32} /></div>;
 
