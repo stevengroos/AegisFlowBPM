@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
-import { Smartphone, Store, LinkIcon, Save, Loader2, Image, Type, Hash, Layers, Trash2, Globe } from 'lucide-react';
+import { Smartphone, Store, LinkIcon, Save, Loader2, Image, Type, Hash, Layers, Trash2, Globe, MessageCircle, Palette, AlignLeft } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
 
 const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
@@ -12,12 +12,15 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
   const [fields, setFields] = useState([]);
   const [forms, setForms] = useState([]);
 
+  // 🔥 NUEVO: Añadidos whatsapp_number, theme_color, category y description
   const [config, setConfig] = useState({
     is_published: false,
     publish_form_id: '', 
-    custom_domain: '', // 🔥 NUEVO: Dominio personalizado
+    custom_domain: '', 
+    whatsapp_number: '', 
+    theme_color: '#3b82f6',
     cover_image: '', 
-    mapping: { title: '', price: '', image: '', tags: '', stock: '' } 
+    mapping: { title: '', price: '', image: '', tags: '', stock: '', category: '', description: '' } 
   });
 
   const fetchData = useCallback(async (signal) => {
@@ -43,14 +46,18 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
       setConfig({
         is_published: savedConfig.is_published || false,
         publish_form_id: savedConfig.publish_form_id || '',
-        custom_domain: savedConfig.custom_domain || '', // 🔥 NUEVO
+        custom_domain: savedConfig.custom_domain || '',
+        whatsapp_number: savedConfig.whatsapp_number || '', // Carga de DB
+        theme_color: savedConfig.theme_color || '#3b82f6',  // Carga de DB
         cover_image: savedConfig.cover_image || '',
         mapping: {
            title: savedConfig.mapping?.title || '',
            price: savedConfig.mapping?.price || '',
            image: savedConfig.mapping?.image || '',
            tags: savedConfig.mapping?.tags || '',
-           stock: savedConfig.mapping?.stock || ''
+           stock: savedConfig.mapping?.stock || '',
+           category: savedConfig.mapping?.category || '',       // Carga de DB
+           description: savedConfig.mapping?.description || ''  // Carga de DB
         }
       });
       
@@ -106,6 +113,12 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
     }
   };
 
+  // 🔥 MEJORA DE FILTROS: Permitimos text, string, varchar, etc.
+  const isTextField = (type) => ['text', 'string', 'varchar', 'long_text', 'select'].includes(type?.toLowerCase());
+  const isNumberField = (type) => ['number', 'decimal', 'currency', 'formula', 'int'].includes(type?.toLowerCase());
+  const isImageField = (type) => ['image', 'file'].includes(type?.toLowerCase());
+  const isLongTextField = (type) => ['long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
+
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-fuchsia-500" size={32} /></div>;
 
   return (
@@ -129,7 +142,7 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
 
       <div className="space-y-8">
         
-        {/* SWITCH DE PUBLICACIÓN Y DOMINIO */}
+        {/* SWITCH DE PUBLICACIÓN, DOMINIO Y WHATSAPP */}
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
            <div className="flex items-center justify-between mb-4">
                <div>
@@ -150,88 +163,84 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
            </div>
 
            {config.is_published && (
-              <div className="pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-300 space-y-6">
-
-
-                  {/* 🔥 NUEVO: ENLACE PÚBLICO GENERADO AUTOMÁTICAMENTE 🔥 */}
+              <div className="pt-6 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-300 space-y-6">
+                  
+                  {/* ENLACE PÚBLICO */}
                   <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 p-4 rounded-xl">
                       <label className="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-widest mb-2">
                           <LinkIcon size={14}/> Enlace Público del Catálogo
                       </label>
                       <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            readOnly 
-                            value={`${window.location.origin}/c/${moduleId}`} 
-                            className="flex-1 px-4 py-2 bg-white dark:bg-gray-950 border border-blue-200 dark:border-blue-800 rounded-lg outline-none text-sm text-gray-700 dark:text-gray-300 font-mono select-all"
-                          />
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(`${window.location.origin}/c/${moduleId}`);
-                              notify.success("¡Enlace copiado al portapapeles!");
-                            }}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm"
-                          >
-                            Copiar
-                          </button>
+                          <input type="text" readOnly value={`${window.location.origin}/c/${moduleId}`} className="flex-1 px-4 py-2 bg-white dark:bg-gray-950 border border-blue-200 dark:border-blue-800 rounded-lg outline-none text-sm font-mono select-all" />
+                          <button type="button" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/c/${moduleId}`); notify.success("¡Enlace copiado!"); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-sm">Copiar</button>
                       </div>
-                      <p className="text-[10px] text-blue-600/70 dark:text-blue-400/70 mt-2">
-                        Comparte este enlace con tus clientes. No requiere inicio de sesión.
-                      </p>
                   </div>
 
-                  {/* DOMINIO PERSONALIZADO (El que ya teníamos) */}
-                  <div>
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-                          <Globe size={14}/> Vincular Dominio Propio (Avanzado)
-                      </label>
-                      <input 
-                        type="url" 
-                        placeholder="Ej: https://tienda.miempresa.com" 
-                        value={config.custom_domain} 
-                        onChange={(e) => markAsChanged({...config, custom_domain: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-fuchsia-500 text-sm text-gray-900 dark:text-white font-mono"
-                      />
-                  </div>
-                  {/* 🔥 NUEVO BLOQUE: DOMINIO PERSONALIZADO 🔥 */}
-                  <div>
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-                          <Globe size={14}/> Dominio Personalizado (CORS)
-                      </label>
-                      <input 
-                        type="url" 
-                        placeholder="Ej: https://tienda.miempresa.com" 
-                        value={config.custom_domain} 
-                        onChange={(e) => markAsChanged({...config, custom_domain: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-fuchsia-500 text-sm text-gray-900 dark:text-white font-mono"
-                      />
-                      <p className="text-xs text-gray-500 mt-2">Permite que el sistema acepte peticiones públicas desde este dominio específico.</p>
-                  </div>
-
-                  {/* IMAGEN DE PORTADA */}
-                  <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-                          <Image size={14}/> Imagen de Portada del Catálogo
-                      </label>
-                      <div className="flex items-center gap-4">
-                          {config.cover_image ? (
-                              <div className="relative group">
-                                  <img src={config.cover_image} alt="Portada" className="w-32 h-20 object-cover rounded-lg border border-gray-200 shadow-sm" />
-                                  <button onClick={() => markAsChanged({ ...config, cover_image: '' })} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <Trash2 size={14}/>
-                                  </button>
-                              </div>
-                          ) : (
-                              <div className="w-32 h-20 bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg flex items-center justify-center">
-                                  <Image className="text-gray-400" size={24}/>
-                              </div>
-                          )}
-                          
-                          <label className="cursor-pointer bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
-                              Seleccionar Imagen
-                              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* WHATSAPP PARAMETRIZABLE */}
+                      <div>
+                          <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                              <MessageCircle size={14}/> Número de WhatsApp (Ventas)
                           </label>
+                          <input 
+                            type="tel" 
+                            placeholder="Ej: 595983464526" 
+                            value={config.whatsapp_number} 
+                            onChange={(e) => markAsChanged({...config, whatsapp_number: e.target.value.replace(/\D/g, '')})}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-fuchsia-500 text-sm"
+                          />
+                      </div>
+
+                      {/* DOMINIO PERSONALIZADO */}
+                      <div>
+                          <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                              <Globe size={14}/> Dominio Propio (Opcional)
+                          </label>
+                          <input 
+                            type="url" 
+                            placeholder="Ej: https://mitienda.com" 
+                            value={config.custom_domain} 
+                            onChange={(e) => markAsChanged({...config, custom_domain: e.target.value})}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-fuchsia-500 text-sm font-mono"
+                          />
+                      </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-6 items-end pt-2">
+                      {/* COLOR DEL TEMA */}
+                      <div>
+                          <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                              <Palette size={14}/> Color del Tema
+                          </label>
+                          <div className="flex items-center gap-3">
+                              <input 
+                                type="color" 
+                                value={config.theme_color} 
+                                onChange={(e) => markAsChanged({...config, theme_color: e.target.value})}
+                                className="w-12 h-12 p-1 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer"
+                              />
+                              <span className="text-sm font-mono text-gray-500">{config.theme_color.toUpperCase()}</span>
+                          </div>
+                      </div>
+
+                      {/* IMAGEN DE PORTADA */}
+                      <div>
+                          <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                              <Image size={14}/> Logo / Portada del Catálogo
+                          </label>
+                          <div className="flex items-center gap-4">
+                              {config.cover_image ? (
+                                  <div className="relative group">
+                                      <img src={config.cover_image} alt="Portada" className="w-24 h-12 object-contain rounded-lg border border-gray-200 bg-white" />
+                                      <button onClick={() => markAsChanged({ ...config, cover_image: '' })} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14}/></button>
+                                  </div>
+                              ) : (
+                                  <div className="w-24 h-12 bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg flex items-center justify-center"><Image className="text-gray-400" size={20}/></div>
+                              )}
+                              <label className="cursor-pointer bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                                  Subir Logo <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                              </label>
+                          </div>
                       </div>
                   </div>
               </div>
@@ -241,61 +250,69 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
         {config.is_published && (
            <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-8 animate-in fade-in duration-500">
               
-              {/* CONFIGURACIÓN DE CAMPOS */}
+              {/* CONFIGURACIÓN DE MAPEO (Izquierda) */}
               <div className="bg-white dark:bg-gray-900 rounded-2xl border border-fuchsia-200 dark:border-fuchsia-900/50 shadow-sm p-6 space-y-8">
                  
-                 {/* BLOQUE DE CREACIÓN */}
-                 <div>
-                    <h3 className="font-bold text-fuchsia-900 dark:text-fuchsia-400 flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-800 pb-3">
-                        <Layers size={18}/> Formulario de Carga (Opcional)
-                    </h3>
-                    <div>
-                       <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Formulario a llenar desde la Web</label>
-                       <select value={config.publish_form_id} onChange={e => markAsChanged({ ...config, publish_form_id: e.target.value })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
-                          <option value="">Ninguno (Solo Lectura)...</option>
-                          {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                       </select>
-                       <p className="text-xs text-gray-500 mt-2">Si configuras un formulario, la web permitirá a los clientes crear nuevos registros (Ej: Pizarra de Demandas).</p>
-                    </div>
-                 </div>
-
-                 {/* BLOQUE DE MAPEO VISUAL */}
                  <div>
                     <h3 className="font-bold text-fuchsia-900 dark:text-fuchsia-400 flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-800 pb-3">
                         <LinkIcon size={18}/> Mapeo de Elementos Visuales
                     </h3>
                     
                     <div className="space-y-5">
+                        <div className="grid grid-cols-2 gap-4">
+                            {/* TÍTULO */}
+                            <div>
+                               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><Type size={14}/> Título del Producto</label>
+                               <select value={config.mapping.title} onChange={e => markAsChanged({ ...config, mapping: { ...config.mapping, title: e.target.value } })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
+                                  <option value="">Selecciona el campo...</option>
+                                  {fields.filter(f => isTextField(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                               </select>
+                            </div>
+
+                            {/* CATEGORÍA */}
+                            <div>
+                               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><Layers size={14}/> Categoría / Marca</label>
+                               <select value={config.mapping.category} onChange={e => markAsChanged({ ...config, mapping: { ...config.mapping, category: e.target.value } })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
+                                  <option value="">Ninguna...</option>
+                                  {fields.filter(f => isTextField(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                               </select>
+                            </div>
+                        </div>
+
+                        {/* DESCRIPCIÓN */}
                         <div>
-                           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><Type size={14}/> Título Principal de la Tarjeta</label>
-                           <select value={config.mapping.title} onChange={e => markAsChanged({ ...config, mapping: { ...config.mapping, title: e.target.value } })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
-                              <option value="">Selecciona el campo...</option>
-                              {fields.filter(f => ['text', 'select'].includes(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><AlignLeft size={14}/> Descripción Larga</label>
+                           <select value={config.mapping.description} onChange={e => markAsChanged({ ...config, mapping: { ...config.mapping, description: e.target.value } })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
+                              <option value="">Sin descripción...</option>
+                              {fields.filter(f => isLongTextField(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
                            </select>
                         </div>
 
+                        {/* IMAGEN */}
                         <div>
-                           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><Image size={14}/> Imagen de Producto / Portada</label>
+                           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><Image size={14}/> Imagen de Portada</label>
                            <select value={config.mapping.image} onChange={e => markAsChanged({ ...config, mapping: { ...config.mapping, image: e.target.value } })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
                               <option value="">Ninguna imagen...</option>
-                              {fields.filter(f => ['image', 'file'].includes(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                              {fields.filter(f => isImageField(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
                            </select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
+                           {/* PRECIO */}
                            <div>
                               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><Hash size={14}/> Precio de Venta</label>
                               <select value={config.mapping.price} onChange={e => markAsChanged({ ...config, mapping: { ...config.mapping, price: e.target.value } })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
                                  <option value="">Ninguno...</option>
-                                 {fields.filter(f => ['number', 'formula', 'currency'].includes(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                                 {fields.filter(f => isNumberField(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
                               </select>
                            </div>
 
+                           {/* STOCK */}
                            <div>
                               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2"><Layers size={14}/> Inventario (Stock)</label>
                               <select value={config.mapping.stock} onChange={e => markAsChanged({ ...config, mapping: { ...config.mapping, stock: e.target.value } })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-fuchsia-500">
                                  <option value="">No controlar stock...</option>
-                                 {fields.filter(f => ['number', 'currency'].includes(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
+                                 {fields.filter(f => isNumberField(f.field_type)).map(f => <option key={f.id} value={f.api_name || f.label}>{f.label}</option>)}
                               </select>
                            </div>
                         </div>
@@ -303,25 +320,35 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
                  </div>
               </div>
 
-              {/* PREVISUALIZADOR (WIRE FRAME) */}
+              {/* WIREFRAME (Derecha) */}
               <div className="hidden md:block">
                  <div className="sticky top-8">
                     <h3 className="font-bold text-gray-500 uppercase tracking-widest text-[10px] mb-3 text-center">Así se verá en la Web</h3>
                     <div className="w-64 mx-auto bg-gray-50 dark:bg-gray-950 rounded-[2rem] border-[6px] border-gray-800 dark:border-gray-700 h-[450px] shadow-2xl relative overflow-hidden flex flex-col">
-                       <div className="absolute top-0 inset-x-0 h-5 bg-gray-800 dark:bg-gray-700 rounded-b-xl mx-auto w-1/3"></div>
+                       <div className="absolute top-0 inset-x-0 h-5 bg-gray-800 dark:bg-gray-700 rounded-b-xl mx-auto w-1/3 z-20"></div>
                        
-                       <div className="p-4 pt-8 flex-1">
-                          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden border border-gray-100 dark:border-gray-700">
-                             <div className="h-32 bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400 overflow-hidden relative">
+                       {/* Cabecera Móvil Falsa */}
+                       <div className="h-14 w-full flex items-center justify-center shadow-sm relative z-10" style={{ backgroundColor: config.theme_color }}>
+                          {config.cover_image ? (
+                             <img src={config.cover_image} alt="Logo" className="max-h-6 object-contain" />
+                          ) : (
+                             <span className="text-white font-bold text-xs">Mi Tienda</span>
+                          )}
+                       </div>
+
+                       <div className="p-4 pt-6 flex-1 bg-white dark:bg-gray-900">
+                          <div className="rounded-2xl shadow-md overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
+                             <div className="h-32 bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400">
                                 {config.mapping.image ? <Image size={24}/> : <span className="text-[10px]">Sin Imagen</span>}
                              </div>
                              <div className="p-3 space-y-2 relative">
+                                <div className="text-[8px] font-bold text-gray-400 uppercase">{config.mapping.category ? "Categoría" : ""}</div>
                                 <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                                <div className="h-3 bg-gray-100 dark:bg-gray-600 rounded w-1/2"></div>
+                                <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded w-full mt-2"></div>
                                 
-                                <div className="mt-3 flex justify-between items-end">
+                                <div className="mt-3 flex justify-between items-end pt-2">
                                    {config.mapping.stock ? <span className="text-[9px] font-bold text-gray-400 uppercase">Stock OK</span> : <span/>}
-                                   {config.mapping.price && <span className="bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400 px-2 py-1 rounded text-[10px] font-bold">$$ Dato</span>}
+                                   {config.mapping.price && <span className="px-2 py-1 rounded text-[10px] font-bold text-white" style={{ backgroundColor: config.theme_color }}>$$ Dato</span>}
                                 </div>
                              </div>
                           </div>
@@ -332,7 +359,6 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
 
            </div>
         )}
-
       </div>
     </div>
   );

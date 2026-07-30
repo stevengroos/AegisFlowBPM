@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, ShoppingCart, MessageCircle, AlertTriangle, Loader2, CreditCard, ChevronRight, CheckCircle2, ShieldCheck, X, Store, ImageIcon } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, MessageCircle, AlertTriangle, Loader2, ChevronRight, CheckCircle2, X, Store, ImageIcon } from 'lucide-react';
 
 export default function StoreProductDetail() {
   const { moduleId, productId } = useParams();
   const navigate = useNavigate();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  const numeroWhatsApp = "595983464526"; // Cambia esto por tu número real
 
   // --- ESTADOS ---
   const [producto, setProducto] = useState(null);
-  const [storeInfo, setStoreInfo] = useState({ name: 'Cargando...', themeColor: '#3b82f6' });
+  const [storeInfo, setStoreInfo] = useState({ 
+    name: 'Cargando...', 
+    themeColor: '#3b82f6',
+    whatsappNumber: '',
+    coverImage: ''
+  });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
@@ -35,7 +39,9 @@ export default function StoreProductDetail() {
         const res = await axios.get(`${API_URL}/api/v1/storefront/catalog/${moduleId}`);
         setStoreInfo({
           name: res.data.module_name || 'Catálogo',
-          themeColor: res.data.theme_color || '#3b82f6'
+          themeColor: res.data.theme_color || '#3b82f6',
+          whatsappNumber: res.data.whatsapp_number || '', // Carga de DB
+          coverImage: res.data.cover_image || ''          // Carga de DB
         });
         
         // Buscamos el producto específico dentro del catálogo devuelto
@@ -74,19 +80,26 @@ export default function StoreProductDetail() {
 
   const comprarPorWhatsApp = () => {
     if (!producto) return;
+
+    if (!storeInfo.whatsappNumber) {
+      alert("El administrador de la tienda aún no ha configurado un número de WhatsApp para recibir pedidos.");
+      return;
+    }
+
     const precioContadoStr = `Gs. ${precioBase.toLocaleString('es-PY')}`;
     const cuotaStr = `Gs. ${calcularCuotaIndividual().toLocaleString('es-PY')}`;
     const mensaje = modalidad === 'financiado' 
       ? `Hola, estoy interesado en el producto *${nombreProductoFinal}* del catálogo *${storeInfo.name}* (Contado: ${precioContadoStr}). \n\nQuiero solicitar el plan de financiación de *${cuotasElegidas} cuotas* de *${cuotaStr}* al mes. ¿Me pasan los requisitos?`
       : `Hola, quiero adquirir el producto *${nombreProductoFinal}* del catálogo *${storeInfo.name}* al contado por el valor de *${precioContadoStr}*. \n\n¿Tienen stock disponible para entrega o retiro inmediato?`;
-    window.open(`https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(mensaje.trim())}`, '_blank');
+    
+    window.open(`https://wa.me/${storeInfo.whatsappNumber}?text=${encodeURIComponent(mensaje.trim())}`, '_blank');
   };
 
   const agregarAlCarrito = () => {
     setCarrito(prev => {
-      const existe = prev.find(item => item.id === producto.id && item.color_name === varianteSeleccionada?.color_name);
+      const existe = prev.find(item => item.id === producto.id && item.color_name === varianteSeleccionada?.color_name && item.modalidadElegida === modalidad && item.cuotasElegidas === cuotasElegidas);
       if (existe) {
-         return prev.map(item => (item.id === producto.id && item.color_name === varianteSeleccionada?.color_name) ? { ...item, cantidad: item.cantidad + 1 } : item);
+         return prev.map(item => (item.id === producto.id && item.color_name === varianteSeleccionada?.color_name && item.modalidadElegida === modalidad && item.cuotasElegidas === cuotasElegidas) ? { ...item, cantidad: item.cantidad + 1 } : item);
       }
       return [...prev, { 
          ...producto, 
@@ -116,6 +129,12 @@ export default function StoreProductDetail() {
 
   const enviarCarritoCompletoPorWhatsApp = () => {
     if (carrito.length === 0) return;
+
+    if (!storeInfo.whatsappNumber) {
+      alert("El administrador de la tienda aún no ha configurado un número de WhatsApp para recibir pedidos.");
+      return;
+    }
+
     let mensaje = `Hola, quiero realizar el siguiente pedido del catálogo *${storeInfo.name}*:\n\n`;
     let total = 0;
     
@@ -127,7 +146,7 @@ export default function StoreProductDetail() {
     
     mensaje += `\n*TOTAL ESTIMADO: Gs. ${total.toLocaleString('es-PY')}*\n`;
     mensaje += `\n¿Tienen disponibilidad de estos artículos para coordinar el pago y envío?`;
-    window.open(`https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(mensaje)}`, '_blank');
+    window.open(`https://wa.me/${storeInfo.whatsappNumber}?text=${encodeURIComponent(mensaje)}`, '_blank');
   };
 
   const formatearDescripcion = (desc) => {
@@ -146,9 +165,14 @@ export default function StoreProductDetail() {
       <header className="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/c/${moduleId}`)}>
-             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md" style={{ backgroundColor: storeInfo.themeColor }}>
-               <Store size={20} />
-             </div>
+             {/* Logo de portada o icono */}
+             {storeInfo.coverImage ? (
+                <img src={storeInfo.coverImage} alt={storeInfo.name} className="h-10 object-contain" />
+             ) : (
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md" style={{ backgroundColor: storeInfo.themeColor }}>
+                  <Store size={20} />
+                </div>
+             )}
              <h1 className="text-xl md:text-2xl font-black tracking-tight truncate hidden sm:block">{storeInfo.name}</h1>
           </div>
 
@@ -199,6 +223,13 @@ export default function StoreProductDetail() {
 
           {/* INFORMACIÓN Y COMPRA */}
           <div className="flex flex-col">
+            {/* Categoría Dinámica */}
+            {producto.category && (
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 block">
+                {producto.category}
+              </span>
+            )}
+            
             <h1 className="text-3xl md:text-4xl font-black leading-tight mb-4">{producto.title}</h1>
             
             {/* VARIANTES */}

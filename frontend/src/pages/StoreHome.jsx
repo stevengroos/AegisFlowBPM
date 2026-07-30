@@ -4,14 +4,18 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Search, ShoppingCart, Filter, X, MessageCircle, AlertCircle, Loader2, ImageIcon, ChevronLeft, ChevronRight, Store } from 'lucide-react';
 
 export default function StoreHome() {
-  const { moduleId } = useParams(); // 🔥 Extraemos el ID del módulo desde la URL (/c/15)
+  const { moduleId } = useParams();
   const navigate = useNavigate();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  const numeroWhatsApp = "595983464526"; // Cambia esto por tu número real
 
   // --- ESTADOS DE LA TIENDA ---
   const [products, setProducts] = useState([]);
-  const [storeInfo, setStoreInfo] = useState({ name: 'Cargando Catálogo...', themeColor: '#3b82f6' });
+  const [storeInfo, setStoreInfo] = useState({ 
+    name: 'Cargando Catálogo...', 
+    themeColor: '#3b82f6',
+    whatsappNumber: '',
+    coverImage: ''
+  });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
@@ -49,7 +53,9 @@ export default function StoreHome() {
         setProducts(res.data.products || []);
         setStoreInfo({
           name: res.data.module_name || 'Catálogo',
-          themeColor: res.data.theme_color || '#3b82f6'
+          themeColor: res.data.theme_color || '#3b82f6',
+          whatsappNumber: res.data.whatsapp_number || '', // Cargamos el WhatsApp de la DB
+          coverImage: res.data.cover_image || '' // Cargamos la portada
         });
       } catch (err) {
         setError(err.response?.data?.detail || 'El catálogo no está disponible o es privado.');
@@ -83,6 +89,13 @@ export default function StoreHome() {
 
   const enviarCarritoCompletoPorWhatsApp = () => {
     if (carrito.length === 0) return;
+    
+    // Si el usuario no configuró número, mostramos una alerta
+    if (!storeInfo.whatsappNumber) {
+      alert("El administrador de la tienda aún no ha configurado un número de WhatsApp para pedidos.");
+      return;
+    }
+
     let mensaje = `Hola, quiero realizar el siguiente pedido del catálogo *${storeInfo.name}*:\n\n`;
     let total = 0;
     
@@ -94,7 +107,8 @@ export default function StoreHome() {
     
     mensaje += `\n*TOTAL ESTIMADO: Gs. ${total.toLocaleString('es-PY')}*\n`;
     mensaje += `\n¿Tienen disponibilidad de estos artículos para coordinar el pago y envío?`;
-    window.open(`https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(mensaje)}`, '_blank');
+    
+    window.open(`https://wa.me/${storeInfo.whatsappNumber}?text=${encodeURIComponent(mensaje)}`, '_blank');
   };
 
   const agregarAlCarritoRápido = (producto) => {
@@ -154,10 +168,15 @@ export default function StoreHome() {
       <header className="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md" style={{ backgroundColor: storeInfo.themeColor }}>
-               <Store size={20} />
-             </div>
-             <h1 className="text-xl md:text-2xl font-black tracking-tight truncate max-w-[200px] md:max-w-md">{storeInfo.name}</h1>
+             {/* Mostramos el logo personalizado o el icono de tienda por defecto */}
+             {storeInfo.coverImage ? (
+                <img src={storeInfo.coverImage} alt={storeInfo.name} className="h-10 object-contain" />
+             ) : (
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md" style={{ backgroundColor: storeInfo.themeColor }}>
+                  <Store size={20} />
+                </div>
+             )}
+             <h1 className="text-xl md:text-2xl font-black tracking-tight truncate max-w-[200px] md:max-w-md hidden sm:block">{storeInfo.name}</h1>
           </div>
           
           <div className="hidden md:flex flex-1 max-w-xl mx-8 relative">
@@ -253,7 +272,7 @@ export default function StoreHome() {
                 {productosVisibles.map((p) => (
                   <div key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm border border-gray-200 dark:border-gray-800 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col group relative">
                     
-                    {/* Botón rápido de agregar al carrito (Opcional) */}
+                    {/* Botón rápido de agregar al carrito */}
                     <button 
                       onClick={() => agregarAlCarritoRápido(p)}
                       disabled={p.stock === 0}
@@ -275,6 +294,11 @@ export default function StoreHome() {
                       )}
                     </div>
                     <div className="p-5 flex flex-col flex-1">
+                      {/* Categoría Dinámica */}
+                      {p.category && (
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{p.category}</span>
+                      )}
+                      
                       <h3 className="font-bold text-lg leading-tight mb-2 line-clamp-2 cursor-pointer hover:underline" onClick={() => navigate(`/p/${moduleId}/${p.id}`)}>{p.title}</h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 flex-1 line-clamp-2">{obtenerTextoPlano(p.description)}</p>
                       
