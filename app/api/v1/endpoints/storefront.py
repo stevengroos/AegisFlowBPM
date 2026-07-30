@@ -64,7 +64,8 @@ def get_public_catalog(
         })
 
     return {
-        "module_name": module.name,
+        "store_title": config.get("store_title", module.name),
+        #"module_name": module.name,
         "custom_domain": config.get("custom_domain", ""),
         "theme_color": config.get("theme_color", "#3b82f6"),
         "whatsapp_number": config.get("whatsapp_number", ""), # 🔥 NUEVO

@@ -15,6 +15,7 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
   // 🔥 NUEVO: Añadidos whatsapp_number, theme_color, category y description
   const [config, setConfig] = useState({
     is_published: false,
+    store_title: '',
     publish_form_id: '', 
     custom_domain: '', 
     whatsapp_number: '', 
@@ -45,6 +46,7 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
       const savedConfig = modRes.data.mobile_config || {};
       setConfig({
         is_published: savedConfig.is_published || false,
+        store_title: savedConfig.store_title || '',
         publish_form_id: savedConfig.publish_form_id || '',
         custom_domain: savedConfig.custom_domain || '',
         whatsapp_number: savedConfig.whatsapp_number || '', // Carga de DB
@@ -117,6 +119,7 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
   const isTextField = (type) => ['text', 'string', 'varchar', 'long_text', 'select'].includes(type?.toLowerCase());
   const isNumberField = (type) => ['number', 'decimal', 'currency', 'formula', 'int'].includes(type?.toLowerCase());
   const isImageField = (type) => ['image', 'file'].includes(type?.toLowerCase());
+  const isLongTextField = (type) => ['textarea', 'long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
   const isLongTextField = (type) => ['long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
 
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-fuchsia-500" size={32} /></div>;
@@ -177,6 +180,19 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     {/* 🔥 NUEVO: NOMBRE DE LA TIENDA 🔥 */}
+                      <div>
+                          <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                              <Type size={14}/> Nombre de la Tienda Web
+                          </label>
+                          <input 
+                            type="text" 
+                            placeholder="Ej: Mi Súper Tienda" 
+                            value={config.store_title} 
+                            onChange={(e) => markAsChanged({...config, store_title: e.target.value})}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-fuchsia-500 text-sm"
+                          />
+                      </div>
                       {/* WHATSAPP PARAMETRIZABLE */}
                       <div>
                           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">

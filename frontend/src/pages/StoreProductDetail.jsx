@@ -11,7 +11,7 @@ export default function StoreProductDetail() {
   // --- ESTADOS ---
   const [producto, setProducto] = useState(null);
   const [storeInfo, setStoreInfo] = useState({ 
-    name: 'Cargando...', 
+    title: 'Cargando...', // 🔥 ACTUALIZADO: Ahora usa title
     themeColor: '#3b82f6',
     whatsappNumber: '',
     coverImage: ''
@@ -65,11 +65,11 @@ export default function StoreProductDetail() {
         } catch (e) {}
       }
 
-      // 2. Fetch silencioso a la API para asegurar que el stock o el precio no hayan cambiado en los últimos minutos
+      // 2. Fetch silencioso a la API para asegurar que el stock o el precio no hayan cambiado
       try {
         const res = await axios.get(`${API_URL}/api/v1/storefront/catalog/${moduleId}`);
         const newStoreInfo = {
-          name: res.data.module_name || 'Catálogo',
+          title: res.data.store_title || res.data.module_name || 'Catálogo', // 🔥 Lee el título dinámico
           themeColor: res.data.theme_color || '#3b82f6',
           whatsappNumber: res.data.whatsapp_number || '', 
           coverImage: res.data.cover_image || ''          
@@ -123,8 +123,8 @@ export default function StoreProductDetail() {
     const precioContadoStr = `Gs. ${precioBase.toLocaleString('es-PY')}`;
     const cuotaStr = `Gs. ${calcularCuotaIndividual().toLocaleString('es-PY')}`;
     const mensaje = modalidad === 'financiado' 
-      ? `Hola, estoy interesado en el producto *${nombreProductoFinal}* del catálogo *${storeInfo.name}* (Contado: ${precioContadoStr}). \n\nQuiero solicitar el plan de financiación de *${cuotasElegidas} cuotas* de *${cuotaStr}* al mes. ¿Me pasan los requisitos?`
-      : `Hola, quiero adquirir el producto *${nombreProductoFinal}* del catálogo *${storeInfo.name}* al contado por el valor de *${precioContadoStr}*. \n\n¿Tienen stock disponible para entrega o retiro inmediato?`;
+      ? `Hola, estoy interesado en el producto *${nombreProductoFinal}* del catálogo *${storeInfo.title}* (Contado: ${precioContadoStr}). \n\nQuiero solicitar el plan de financiación de *${cuotasElegidas} cuotas* de *${cuotaStr}* al mes. ¿Me pasan los requisitos?`
+      : `Hola, quiero adquirir el producto *${nombreProductoFinal}* del catálogo *${storeInfo.title}* al contado por el valor de *${precioContadoStr}*. \n\n¿Tienen stock disponible para entrega o retiro inmediato?`;
     
     window.open(`https://wa.me/${storeInfo.whatsappNumber}?text=${encodeURIComponent(mensaje.trim())}`, '_blank');
   };
@@ -169,7 +169,7 @@ export default function StoreProductDetail() {
       return;
     }
 
-    let mensaje = `Hola, quiero realizar el siguiente pedido del catálogo *${storeInfo.name}*:\n\n`;
+    let mensaje = `Hola, quiero realizar el siguiente pedido del catálogo *${storeInfo.title}*:\n\n`;
     let total = 0;
     
     carrito.forEach(item => {
@@ -200,14 +200,15 @@ export default function StoreProductDetail() {
       <header className="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/c/${moduleId}`)}>
+             {/* Logo de portada o icono */}
              {storeInfo.coverImage ? (
-                <img src={storeInfo.coverImage} alt={storeInfo.name} className="h-10 object-contain" />
+                <img src={storeInfo.coverImage} alt={storeInfo.title} className="h-10 object-contain" />
              ) : (
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md shrink-0" style={{ backgroundColor: storeInfo.themeColor }}>
                   <Store size={20} />
                 </div>
              )}
-             <h1 className="text-xl md:text-2xl font-black tracking-tight truncate max-w-[150px] sm:max-w-xs md:max-w-md">{storeInfo.name}</h1>
+             <h1 className="text-xl md:text-2xl font-black tracking-tight truncate max-w-[150px] sm:max-w-xs md:max-w-md hidden sm:block">{storeInfo.title}</h1>
           </div>
 
           <div className="flex items-center gap-3">
@@ -261,6 +262,7 @@ export default function StoreProductDetail() {
 
           {/* INFORMACIÓN Y COMPRA */}
           <div className="flex flex-col">
+            {/* Categoría Dinámica */}
             {producto.category && (
               <span className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 block">
                 {producto.category}

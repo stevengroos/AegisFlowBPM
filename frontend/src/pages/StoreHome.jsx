@@ -11,7 +11,7 @@ export default function StoreHome() {
   // --- ESTADOS DE LA TIENDA Y CACHÉ ---
   const [products, setProducts] = useState([]);
   const [storeInfo, setStoreInfo] = useState({ 
-    name: 'Cargando Catálogo...', 
+    title: 'Cargando Catálogo...', // 🔥 ACTUALIZADO: Ahora es title
     themeColor: '#3b82f6',
     whatsappNumber: '',
     coverImage: ''
@@ -25,15 +25,16 @@ export default function StoreHome() {
   // --- FILTROS, MÓVIL Y DEBOUNCE ---
   const [filtroTexto, setFiltroTexto] = useState('');
   const [filtroDebounced, setFiltroDebounced] = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState(''); // 🔥 NUEVO: Filtro de Categoría
   const [precioMin, setPrecioMin] = useState('');
   const [precioMax, setPrecioMax] = useState('');
   const [soloConStock, setSoloConStock] = useState(false);
   const [ordenPrecio, setOrdenPrecio] = useState(''); 
-  const [mostrarFiltrosMovil, setMostrarFiltrosMovil] = useState(false); // 🔥 NUEVO: Para versión móvil
+  const [mostrarFiltrosMovil, setMostrarFiltrosMovil] = useState(false); 
 
   // --- PAGINACIÓN Y CARRITO ---
   const [paginaActual, setPaginaActual] = useState(1);
-  const productosPorPagina = 24; // 🔥 ACTUALIZADO: 24 Artículos por página
+  const productosPorPagina = 24; 
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const [carrito, setCarrito] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`carrito_tienda_${moduleId}`)) || []; } catch (e) { return []; }
@@ -79,7 +80,7 @@ export default function StoreHome() {
         const res = await axios.get(`${API_URL}/api/v1/storefront/catalog/${moduleId}`);
         const newProducts = res.data.products || [];
         const newStoreInfo = {
-          name: res.data.module_name || 'Catálogo',
+          title: res.data.store_title || res.data.module_name || 'Catálogo', // 🔥 Lee el título dinámico
           themeColor: res.data.theme_color || '#3b82f6',
           whatsappNumber: res.data.whatsapp_number || '', 
           coverImage: res.data.cover_image || ''          
@@ -100,7 +101,7 @@ export default function StoreHome() {
   }, [moduleId, API_URL]);
 
   useEffect(() => localStorage.setItem(`carrito_tienda_${moduleId}`, JSON.stringify(carrito)), [carrito, moduleId]);
-  useEffect(() => setPaginaActual(1), [filtroDebounced, precioMin, precioMax, soloConStock, ordenPrecio]);
+  useEffect(() => setPaginaActual(1), [filtroDebounced, categoriaFiltro, precioMin, precioMax, soloConStock, ordenPrecio]);
 
   // --- FUNCIONES DEL CARRITO ---
   const modificarCantidad = (idUnico, cambio) => {
@@ -122,7 +123,7 @@ export default function StoreHome() {
       return;
     }
 
-    let mensaje = `Hola, quiero realizar el siguiente pedido del catálogo *${storeInfo.name}*:\n\n`;
+    let mensaje = `Hola, quiero realizar el siguiente pedido del catálogo *${storeInfo.title}*:\n\n`;
     let total = 0;
     carrito.forEach(item => {
       const subtotal = item.price * item.cantidad;
@@ -143,10 +144,14 @@ export default function StoreHome() {
   };
 
   // --- LÓGICA DE FILTRADO ---
+  const categoriasUnicas = [...new Set(products.map(p => p.category).filter(Boolean))]; // 🔥 Obtenemos categorías únicas
+
   const productosFiltrados = products.filter((p) => {
     const texto = filtroDebounced.toLowerCase();
     const tituloValido = p.title ? p.title.toLowerCase().includes(texto) : false;
-    return tituloValido &&
+    const catValida = categoriaFiltro === '' || p.category === categoriaFiltro; // 🔥 Filtro de categoría
+
+    return tituloValido && catValida &&
            (precioMin === '' || p.price >= parseFloat(precioMin)) &&
            (precioMax === '' || p.price <= parseFloat(precioMax)) &&
            (!soloConStock || p.stock > 0);
@@ -162,8 +167,8 @@ export default function StoreHome() {
   const productosVisibles = productosOrdenados.slice((paginaActual - 1) * productosPorPagina, paginaActual * productosPorPagina);
 
   const limpiarFiltros = () => { 
-    setPrecioMin(''); setPrecioMax(''); setSoloConStock(false); setOrdenPrecio(''); setFiltroTexto(''); 
-    setMostrarFiltrosMovil(false); // Cierra modal en móvil al limpiar
+    setPrecioMin(''); setPrecioMax(''); setSoloConStock(false); setOrdenPrecio(''); setFiltroTexto(''); setCategoriaFiltro(''); 
+    setMostrarFiltrosMovil(false); 
   };
   const obtenerTextoPlano = (html) => html ? new DOMParser().parseFromString(html, "text/html").body.textContent || "" : "Sin descripción.";
 
@@ -183,7 +188,7 @@ export default function StoreHome() {
       {cargando && (
         <div className="fixed inset-0 bg-white dark:bg-gray-950 z-[9999] flex flex-col items-center justify-center">
           <Loader2 className="animate-spin w-12 h-12 mb-4" style={{ color: storeInfo.themeColor }} />
-          <p className="font-bold tracking-widest uppercase text-sm text-gray-500">Cargando {storeInfo.name}...</p>
+          <p className="font-bold tracking-widest uppercase text-sm text-gray-500">Cargando {storeInfo.title}...</p>
         </div>
       )}
 
@@ -192,13 +197,13 @@ export default function StoreHome() {
         <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
              {storeInfo.coverImage ? (
-                <img src={storeInfo.coverImage} alt={storeInfo.name} className="h-10 object-contain" />
+                <img src={storeInfo.coverImage} alt={storeInfo.title} className="h-10 object-contain" />
              ) : (
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md shrink-0" style={{ backgroundColor: storeInfo.themeColor }}>
                   <Store size={20} />
                 </div>
              )}
-             <h1 className="text-xl md:text-2xl font-black tracking-tight truncate max-w-[200px] md:max-w-md hidden sm:block">{storeInfo.name}</h1>
+             <h1 className="text-xl md:text-2xl font-black tracking-tight truncate max-w-[200px] md:max-w-md hidden sm:block">{storeInfo.title}</h1>
           </div>
           
           <div className="hidden md:flex flex-1 max-w-xl mx-8 relative">
@@ -214,7 +219,6 @@ export default function StoreHome() {
           </div>
 
           <div className="flex items-center gap-3">
-             {/* 🔥 NUEVO: Botón Modo Oscuro 🔥 */}
              <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-600 dark:text-gray-300">
                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
              </button>
@@ -230,7 +234,7 @@ export default function StoreHome() {
           </div>
         </div>
 
-        {/* 🔥 ACTUALIZADO: Buscador y Botón de Filtros para Móviles 🔥 */}
+        {/* Buscador y Botón de Filtros para Móviles */}
         <div className="md:hidden px-4 pb-4 flex gap-2">
             <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -245,7 +249,7 @@ export default function StoreHome() {
       {/* CONTENIDO PRINCIPAL */}
       <div className="flex flex-col md:flex-row gap-8 p-4 md:p-8 max-w-7xl mx-auto relative">
         
-        {/* 🔥 ACTUALIZADO: SIDEBAR FILTROS (Modal en móvil, Sidebar en Desktop) 🔥 */}
+        {/* SIDEBAR FILTROS (Modal en móvil, Sidebar en Desktop) */}
         <aside className={`
             fixed inset-0 z-[100] bg-white dark:bg-gray-900 p-6 overflow-y-auto transition-transform transform duration-300
             ${mostrarFiltrosMovil ? 'translate-x-0' : '-translate-x-full'} 
@@ -259,6 +263,20 @@ export default function StoreHome() {
           </div>
           
           <div className="space-y-6">
+            
+            {/* 🔥 NUEVO: SELECTOR DE CATEGORÍA 🔥 */}
+            {categoriasUnicas.length > 0 && (
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Categoría</label>
+                <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className="w-full p-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-sm">
+                  <option value="">Todas las categorías</option>
+                  {categoriasUnicas.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Ordenar Precios</label>
               <select value={ordenPrecio} onChange={e => setOrdenPrecio(e.target.value)} className="w-full p-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-sm">
@@ -285,7 +303,6 @@ export default function StoreHome() {
               <X size={16}/> Limpiar Filtros
             </button>
             
-            {/* Botón extra solo en móvil para aplicar filtros y cerrar modal */}
             <button onClick={() => setMostrarFiltrosMovil(false)} className="md:hidden w-full py-3 text-white font-bold rounded-xl transition-all shadow-md" style={{ backgroundColor: storeInfo.themeColor }}>
               Ver Resultados ({productosFiltrados.length})
             </button>
@@ -316,7 +333,6 @@ export default function StoreHome() {
 
                     <div className="h-48 sm:h-56 bg-gray-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden cursor-pointer p-4" onClick={() => navigate(`/p/${moduleId}/${p.id}`)}>
                       {p.image_url ? (
-                        /* 🔥 LAZY LOADING APLICADO A LA IMAGEN 🔥 */
                         <img src={p.image_url} alt={p.title} loading="lazy" className="max-w-full max-h-full object-contain mix-blend-multiply dark:mix-blend-normal group-hover:scale-105 transition-transform duration-500" />
                       ) : (
                         <ImageIcon size={48} className="text-gray-300 dark:text-gray-700" />
