@@ -398,17 +398,31 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
               {field.options?.symbol_position === 'left' && (
                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
               )}
-              <CurrencyInput
-                id={`currency-${fieldKey}`}
-                name={fieldKey}
-                value={formData[fieldKey] || ''}
-                decimalsLimit={field.options?.decimal_places ?? 2}
-                decimalSeparator={field.options?.decimal_separator || ','}
-                groupSeparator={field.options?.thousand_separator || '.'}
-                onValueChange={(value) => setFormData({...formData, [fieldKey]: value || ''})}
-                className={`${inputClasses} ${field.options?.symbol_position === 'left' ? 'pl-9' : ''} ${field.options?.symbol_position === 'right' ? 'pr-9' : ''}`}
-                placeholder="0.00"
-              />
+              {(() => {
+                // 🔥 ANTI-CRASH: Leemos la base de datos
+                let decSep = field.options?.decimal_separator || ',';
+                let grpSep = field.options?.thousand_separator || '.';
+                
+                // 🔥 PENTEST FIX: Si el admin configuró ambos iguales por error, los forzamos a ser diferentes
+                if (decSep === grpSep) {
+                   decSep = ',';
+                   grpSep = '.';
+                }
+
+                return (
+                  <CurrencyInput
+                    id={`currency-${fieldKey}`}
+                    name={fieldKey}
+                    value={formData[fieldKey] || ''}
+                    decimalsLimit={field.options?.decimal_places ?? 2}
+                    decimalSeparator={decSep}
+                    groupSeparator={grpSep}
+                    onValueChange={(value) => setFormData({...formData, [fieldKey]: value || ''})}
+                    className={`${inputClasses} ${field.options?.symbol_position === 'left' ? 'pl-9' : ''} ${field.options?.symbol_position === 'right' ? 'pr-9' : ''}`}
+                    placeholder="0.00"
+                  />
+                );
+              })()}
               {field.options?.symbol_position === 'right' && (
                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">{field.options?.symbol || '$'}</span>
               )}
