@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Search, ShoppingCart, Filter, X, MessageCircle, AlertCircle, Loader2, ImageIcon, ChevronLeft, ChevronRight, Store } from 'lucide-react';
+import { Search, ShoppingCart, Filter, X, MessageCircle, AlertCircle, Loader2, ImageIcon, ChevronLeft, ChevronRight, Store, Moon, Sun, SlidersHorizontal } from 'lucide-react';
 
 export default function StoreHome() {
   const { moduleId } = useParams();
   const navigate = useNavigate();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-  // --- ESTADOS DE LA TIENDA ---
+  // --- ESTADOS DE LA TIENDA Y CACHÉ ---
   const [products, setProducts] = useState([]);
   const [storeInfo, setStoreInfo] = useState({ 
     name: 'Cargando Catálogo...', 
@@ -19,46 +19,79 @@ export default function StoreHome() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
-  // --- FILTROS Y DEBOUNCE ---
+  // --- MODO OSCURO (Independiente para el cliente B2C) ---
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
+
+  // --- FILTROS, MÓVIL Y DEBOUNCE ---
   const [filtroTexto, setFiltroTexto] = useState('');
   const [filtroDebounced, setFiltroDebounced] = useState('');
   const [precioMin, setPrecioMin] = useState('');
   const [precioMax, setPrecioMax] = useState('');
   const [soloConStock, setSoloConStock] = useState(false);
   const [ordenPrecio, setOrdenPrecio] = useState(''); 
+  const [mostrarFiltrosMovil, setMostrarFiltrosMovil] = useState(false); // 🔥 NUEVO: Para versión móvil
 
   // --- PAGINACIÓN Y CARRITO ---
   const [paginaActual, setPaginaActual] = useState(1);
-  const productosPorPagina = 12; 
+  const productosPorPagina = 24; // 🔥 ACTUALIZADO: 24 Artículos por página
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const [carrito, setCarrito] = useState(() => {
-    try {
-      const carritoGuardado = localStorage.getItem(`carrito_tienda_${moduleId}`);
-      return carritoGuardado ? JSON.parse(carritoGuardado) : [];
-    } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem(`carrito_tienda_${moduleId}`)) || []; } catch (e) { return []; }
   });
 
   // --- EFECTOS ---
+
+  // Efecto del Modo Oscuro
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
   // Debounce para el buscador (Anti-lag)
   useEffect(() => {
     const timer = setTimeout(() => setFiltroDebounced(filtroTexto), 300);
     return () => clearTimeout(timer);
   }, [filtroTexto]);
 
-  // Carga del catálogo desde el nuevo Endpoint Público Headless
+  // 🔥 EFECTO SWR (Caché + Carga en Segundo Plano) 🔥
   useEffect(() => {
     const fetchCatalog = async () => {
+      const cacheKey = `store_catalog_${moduleId}`;
+      const cachedData = sessionStorage.getItem(cacheKey);
+
+      // Si tenemos caché, lo mostramos INMEDIATAMENTE
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData);
+          setProducts(parsed.products);
+          setStoreInfo(parsed.storeInfo);
+          setCargando(false);
+        } catch (e) {}
+      }
+
+      // Luego, buscamos silenciosamente en la API para traer novedades
       try {
         const res = await axios.get(`${API_URL}/api/v1/storefront/catalog/${moduleId}`);
-        setProducts(res.data.products || []);
-        setStoreInfo({
+        const newProducts = res.data.products || [];
+        const newStoreInfo = {
           name: res.data.module_name || 'Catálogo',
           themeColor: res.data.theme_color || '#3b82f6',
-          whatsappNumber: res.data.whatsapp_number || '', // Cargamos el WhatsApp de la DB
-          coverImage: res.data.cover_image || '' // Cargamos la portada
-        });
+          whatsappNumber: res.data.whatsapp_number || '', 
+          coverImage: res.data.cover_image || ''          
+        };
+
+        setProducts(newProducts);
+        setStoreInfo(newStoreInfo);
+        
+        // Guardamos el nuevo resultado en caché
+        sessionStorage.setItem(cacheKey, JSON.stringify({ products: newProducts, storeInfo: newStoreInfo }));
       } catch (err) {
-        setError(err.response?.data?.detail || 'El catálogo no está disponible o es privado.');
+        if (!cachedData) setError(err.response?.data?.detail || 'El catálogo no está disponible o es privado.');
       } finally {
         setCargando(false);
       }
@@ -66,12 +99,7 @@ export default function StoreHome() {
     fetchCatalog();
   }, [moduleId, API_URL]);
 
-  // Guardar carrito en LocalStorage
-  useEffect(() => {
-    localStorage.setItem(`carrito_tienda_${moduleId}`, JSON.stringify(carrito));
-  }, [carrito, moduleId]);
-
-  // Reset de página al filtrar
+  useEffect(() => localStorage.setItem(`carrito_tienda_${moduleId}`, JSON.stringify(carrito)), [carrito, moduleId]);
   useEffect(() => setPaginaActual(1), [filtroDebounced, precioMin, precioMax, soloConStock, ordenPrecio]);
 
   // --- FUNCIONES DEL CARRITO ---
@@ -89,34 +117,26 @@ export default function StoreHome() {
 
   const enviarCarritoCompletoPorWhatsApp = () => {
     if (carrito.length === 0) return;
-    
-    // Si el usuario no configuró número, mostramos una alerta
     if (!storeInfo.whatsappNumber) {
-      alert("El administrador de la tienda aún no ha configurado un número de WhatsApp para pedidos.");
+      alert("El administrador de la tienda aún no ha configurado un número de WhatsApp para recibir pedidos.");
       return;
     }
 
     let mensaje = `Hola, quiero realizar el siguiente pedido del catálogo *${storeInfo.name}*:\n\n`;
     let total = 0;
-    
     carrito.forEach(item => {
       const subtotal = item.price * item.cantidad;
       total += subtotal;
       mensaje += `▪️ ${item.cantidad}x *${item.title}* -> Gs. ${subtotal.toLocaleString('es-PY')}\n`;
     });
-    
-    mensaje += `\n*TOTAL ESTIMADO: Gs. ${total.toLocaleString('es-PY')}*\n`;
-    mensaje += `\n¿Tienen disponibilidad de estos artículos para coordinar el pago y envío?`;
-    
+    mensaje += `\n*TOTAL ESTIMADO: Gs. ${total.toLocaleString('es-PY')}*\n\n¿Tienen disponibilidad de estos artículos para coordinar el pago y envío?`;
     window.open(`https://wa.me/${storeInfo.whatsappNumber}?text=${encodeURIComponent(mensaje)}`, '_blank');
   };
 
   const agregarAlCarritoRápido = (producto) => {
     setCarrito(prev => {
       const existe = prev.find(item => item.id === producto.id);
-      if (existe) {
-        return prev.map(item => item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item);
-      }
+      if (existe) return prev.map(item => item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item);
       return [...prev, { ...producto, cantidad: 1 }];
     });
     setMostrarCarrito(true);
@@ -141,10 +161,13 @@ export default function StoreHome() {
   const totalPaginas = Math.ceil(productosOrdenados.length / productosPorPagina);
   const productosVisibles = productosOrdenados.slice((paginaActual - 1) * productosPorPagina, paginaActual * productosPorPagina);
 
-  const limpiarFiltros = () => { setPrecioMin(''); setPrecioMax(''); setSoloConStock(false); setOrdenPrecio(''); setFiltroTexto(''); };
+  const limpiarFiltros = () => { 
+    setPrecioMin(''); setPrecioMax(''); setSoloConStock(false); setOrdenPrecio(''); setFiltroTexto(''); 
+    setMostrarFiltrosMovil(false); // Cierra modal en móvil al limpiar
+  };
   const obtenerTextoPlano = (html) => html ? new DOMParser().parseFromString(html, "text/html").body.textContent || "" : "Sin descripción.";
 
-  // --- RENDERIZADO DE ERRORES Y CARGA ---
+  // --- RENDERIZADO ---
   if (error) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200">
       <AlertCircle size={64} className="text-red-500 mb-4" />
@@ -167,12 +190,11 @@ export default function StoreHome() {
       {/* NAVBAR DE LA TIENDA PÚBLICA */}
       <header className="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-             {/* Mostramos el logo personalizado o el icono de tienda por defecto */}
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
              {storeInfo.coverImage ? (
                 <img src={storeInfo.coverImage} alt={storeInfo.name} className="h-10 object-contain" />
              ) : (
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md" style={{ backgroundColor: storeInfo.themeColor }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md shrink-0" style={{ backgroundColor: storeInfo.themeColor }}>
                   <Store size={20} />
                 </div>
              )}
@@ -191,39 +213,50 @@ export default function StoreHome() {
             />
           </div>
 
-          <button 
-            onClick={() => setMostrarCarrito(true)}
-            className="relative p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-          >
-            <ShoppingCart size={22} />
-            {carrito.length > 0 && (
-              <span className="absolute -top-1 -right-1 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: storeInfo.themeColor }}>
-                {carrito.reduce((acc, item) => acc + item.cantidad, 0)}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-3">
+             {/* 🔥 NUEVO: Botón Modo Oscuro 🔥 */}
+             <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-600 dark:text-gray-300">
+               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+             </button>
+
+             <button onClick={() => setMostrarCarrito(true)} className="relative p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors">
+               <ShoppingCart size={22} className="text-gray-700 dark:text-gray-200" />
+               {carrito.length > 0 && (
+                 <span className="absolute -top-1 -right-1 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: storeInfo.themeColor }}>
+                   {carrito.reduce((acc, item) => acc + item.cantidad, 0)}
+                 </span>
+               )}
+             </button>
+          </div>
         </div>
-        {/* Buscador móvil */}
-        <div className="md:hidden px-4 pb-4">
-            <div className="relative">
+
+        {/* 🔥 ACTUALIZADO: Buscador y Botón de Filtros para Móviles 🔥 */}
+        <div className="md:hidden px-4 pb-4 flex gap-2">
+            <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                type="text" 
-                placeholder="Buscar..." 
-                value={filtroTexto}
-                onChange={(e) => setFiltroTexto(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-gray-100 dark:bg-gray-800 border-transparent rounded-xl outline-none text-sm"
-                />
+                <input type="text" placeholder="Buscar..." value={filtroTexto} onChange={(e) => setFiltroTexto(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-100 dark:bg-gray-800 border-transparent rounded-xl outline-none text-sm" />
             </div>
+            <button onClick={() => setMostrarFiltrosMovil(true)} className="p-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-xl flex items-center justify-center shrink-0">
+               <SlidersHorizontal size={20} />
+            </button>
         </div>
       </header>
 
       {/* CONTENIDO PRINCIPAL */}
-      <div className="flex flex-col md:flex-row gap-8 p-4 md:p-8 max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row gap-8 p-4 md:p-8 max-w-7xl mx-auto relative">
         
-        {/* SIDEBAR FILTROS */}
-        <aside className="w-full md:w-72 bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 h-fit md:sticky md:top-28 shrink-0">
-          <h2 className="text-lg font-bold mb-6 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 pb-4"><Filter size={18}/> Filtros</h2>
+        {/* 🔥 ACTUALIZADO: SIDEBAR FILTROS (Modal en móvil, Sidebar en Desktop) 🔥 */}
+        <aside className={`
+            fixed inset-0 z-[100] bg-white dark:bg-gray-900 p-6 overflow-y-auto transition-transform transform duration-300
+            ${mostrarFiltrosMovil ? 'translate-x-0' : '-translate-x-full'} 
+            md:relative md:translate-x-0 md:z-auto md:w-72 md:rounded-2xl md:shadow-sm md:border border-gray-200 dark:border-gray-800 md:h-fit md:sticky md:top-28 shrink-0
+        `}>
+          <div className="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-800 pb-4">
+             <h2 className="text-lg font-bold flex items-center gap-2"><Filter size={18}/> Filtros</h2>
+             <button className="md:hidden p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" onClick={() => setMostrarFiltrosMovil(false)}>
+               <X size={18}/>
+             </button>
+          </div>
           
           <div className="space-y-6">
             <div>
@@ -251,6 +284,11 @@ export default function StoreHome() {
             <button onClick={limpiarFiltros} className="w-full py-3 bg-gray-200 dark:bg-gray-800 hover:bg-red-100 hover:text-red-600 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
               <X size={16}/> Limpiar Filtros
             </button>
+            
+            {/* Botón extra solo en móvil para aplicar filtros y cerrar modal */}
+            <button onClick={() => setMostrarFiltrosMovil(false)} className="md:hidden w-full py-3 text-white font-bold rounded-xl transition-all shadow-md" style={{ backgroundColor: storeInfo.themeColor }}>
+              Ver Resultados ({productosFiltrados.length})
+            </button>
           </div>
         </aside>
 
@@ -268,37 +306,24 @@ export default function StoreHome() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {productosVisibles.map((p) => (
                   <div key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm border border-gray-200 dark:border-gray-800 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col group relative">
                     
-                    {/* Botón rápido de agregar al carrito */}
-                    <button 
-                      onClick={() => agregarAlCarritoRápido(p)}
-                      disabled={p.stock === 0}
-                      className="absolute top-4 right-4 w-10 h-10 bg-white/90 dark:bg-gray-900/90 backdrop-blur rounded-full flex items-center justify-center shadow-md z-10 opacity-0 group-hover:opacity-100 transition-opacity disabled:hidden hover:scale-110"
-                      style={{ color: storeInfo.themeColor }}
-                      title="Agregar al carrito"
-                    >
+                    <button onClick={() => agregarAlCarritoRápido(p)} disabled={p.stock === 0} className="absolute top-4 right-4 w-10 h-10 bg-white/90 dark:bg-gray-900/90 backdrop-blur rounded-full flex items-center justify-center shadow-md z-10 opacity-0 group-hover:opacity-100 transition-opacity disabled:hidden hover:scale-110" style={{ color: storeInfo.themeColor }} title="Agregar al carrito">
                       <ShoppingCart size={18} />
                     </button>
 
-                    <div 
-                      className="h-56 bg-gray-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden cursor-pointer"
-                      onClick={() => navigate(`/p/${moduleId}/${p.id}`)}
-                    >
+                    <div className="h-48 sm:h-56 bg-gray-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden cursor-pointer p-4" onClick={() => navigate(`/p/${moduleId}/${p.id}`)}>
                       {p.image_url ? (
-                        <img src={p.image_url} alt={p.title} className="max-w-full max-h-full object-contain mix-blend-multiply dark:mix-blend-normal group-hover:scale-105 transition-transform duration-500 p-4" />
+                        /* 🔥 LAZY LOADING APLICADO A LA IMAGEN 🔥 */
+                        <img src={p.image_url} alt={p.title} loading="lazy" className="max-w-full max-h-full object-contain mix-blend-multiply dark:mix-blend-normal group-hover:scale-105 transition-transform duration-500" />
                       ) : (
                         <ImageIcon size={48} className="text-gray-300 dark:text-gray-700" />
                       )}
                     </div>
                     <div className="p-5 flex flex-col flex-1">
-                      {/* Categoría Dinámica */}
-                      {p.category && (
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{p.category}</span>
-                      )}
-                      
+                      {p.category && <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 line-clamp-1">{p.category}</span>}
                       <h3 className="font-bold text-lg leading-tight mb-2 line-clamp-2 cursor-pointer hover:underline" onClick={() => navigate(`/p/${moduleId}/${p.id}`)}>{p.title}</h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 flex-1 line-clamp-2">{obtenerTextoPlano(p.description)}</p>
                       
@@ -313,10 +338,7 @@ export default function StoreHome() {
                         {p.stock > 0 ? `✓ ${p.stock} Disponibles` : '✗ Agotado'}
                       </div>
 
-                      <button 
-                        onClick={() => navigate(`/p/${moduleId}/${p.id}`)} 
-                        className="w-full py-2.5 rounded-xl font-bold text-sm transition-all text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
-                      >
+                      <button onClick={() => navigate(`/p/${moduleId}/${p.id}`)} className="w-full py-2.5 rounded-xl font-bold text-sm transition-all text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">
                         Ver Detalles
                       </button>
                     </div>
@@ -327,13 +349,13 @@ export default function StoreHome() {
               {/* PAGINACIÓN */}
               {totalPaginas > 1 && (
                 <div className="flex justify-center items-center gap-2 mt-10">
-                  <button onClick={() => setPaginaActual(p => Math.max(p - 1, 1))} disabled={paginaActual === 1} className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50"><ChevronLeft size={20}/></button>
+                  <button onClick={() => { setPaginaActual(p => Math.max(p - 1, 1)); window.scrollTo({top: 0, behavior: 'smooth'}); }} disabled={paginaActual === 1} className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50"><ChevronLeft size={20}/></button>
                   {Array.from({ length: totalPaginas }, (_, i) => (
-                    <button key={i} onClick={() => setPaginaActual(i + 1)} className={`w-10 h-10 rounded-lg font-bold border transition-colors ${paginaActual === i + 1 ? 'text-white border-transparent' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`} style={paginaActual === i + 1 ? { backgroundColor: storeInfo.themeColor } : {}}>
+                    <button key={i} onClick={() => { setPaginaActual(i + 1); window.scrollTo({top: 0, behavior: 'smooth'}); }} className={`w-10 h-10 rounded-lg font-bold border transition-colors ${paginaActual === i + 1 ? 'text-white border-transparent' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`} style={paginaActual === i + 1 ? { backgroundColor: storeInfo.themeColor } : {}}>
                       {i + 1}
                     </button>
                   ))}
-                  <button onClick={() => setPaginaActual(p => Math.min(p + 1, totalPaginas))} disabled={paginaActual === totalPaginas} className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50"><ChevronRight size={20}/></button>
+                  <button onClick={() => { setPaginaActual(p => Math.min(p + 1, totalPaginas)); window.scrollTo({top: 0, behavior: 'smooth'}); }} disabled={paginaActual === totalPaginas} className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50"><ChevronRight size={20}/></button>
                 </div>
               )}
             </>
