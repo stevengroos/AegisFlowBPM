@@ -12,7 +12,7 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
   const [fields, setFields] = useState([]);
   const [forms, setForms] = useState([]);
 
-  // 🔥 NUEVO: Añadidos whatsapp_number, theme_color, category y description
+  // 🔥 NUEVO: Añadidos mapped_variants y mapped_gallery
   const [config, setConfig] = useState({
     is_published: false,
     store_title: '',
@@ -21,6 +21,8 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
     whatsapp_number: '', 
     theme_color: '#3b82f6',
     cover_image: '', 
+    mapped_variants: '', // 🔥 NUEVO
+    mapped_gallery: '',  // 🔥 NUEVO
     mapping: { title: '', price: '', image: '', tags: '', stock: '', category: '', description: '' } 
   });
 
@@ -49,17 +51,19 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
         store_title: savedConfig.store_title || '',
         publish_form_id: savedConfig.publish_form_id || '',
         custom_domain: savedConfig.custom_domain || '',
-        whatsapp_number: savedConfig.whatsapp_number || '', // Carga de DB
-        theme_color: savedConfig.theme_color || '#3b82f6',  // Carga de DB
+        whatsapp_number: savedConfig.whatsapp_number || '', 
+        theme_color: savedConfig.theme_color || '#3b82f6',  
         cover_image: savedConfig.cover_image || '',
+        mapped_variants: savedConfig.mapped_variants || '', // 🔥 NUEVO
+        mapped_gallery: savedConfig.mapped_gallery || '',   // 🔥 NUEVO
         mapping: {
            title: savedConfig.mapping?.title || '',
            price: savedConfig.mapping?.price || '',
            image: savedConfig.mapping?.image || '',
            tags: savedConfig.mapping?.tags || '',
            stock: savedConfig.mapping?.stock || '',
-           category: savedConfig.mapping?.category || '',       // Carga de DB
-           description: savedConfig.mapping?.description || ''  // Carga de DB
+           category: savedConfig.mapping?.category || '',       
+           description: savedConfig.mapping?.description || ''  
         }
       });
       
@@ -115,12 +119,11 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
     }
   };
 
-  // 🔥 MEJORA DE FILTROS: Permitimos text, string, varchar, etc.
   const isTextField = (type) => ['text', 'string', 'varchar', 'long_text', 'select'].includes(type?.toLowerCase());
   const isNumberField = (type) => ['number', 'decimal', 'currency', 'formula', 'int'].includes(type?.toLowerCase());
   const isImageField = (type) => ['image', 'file'].includes(type?.toLowerCase());
   const isLongTextField = (type) => ['textarea', 'long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
-  //const isLongTextField = (type) => ['long_text', 'rich_text', 'text', 'string'].includes(type?.toLowerCase());
+  const isSubformField = (type) => type?.toLowerCase() === 'subform'; // 🔥 NUEVO
 
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-fuchsia-500" size={32} /></div>;
 
@@ -180,7 +183,7 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                     {/* 🔥 NUEVO: NOMBRE DE LA TIENDA 🔥 */}
+                     {/* NOMBRE DE LA TIENDA */}
                       <div>
                           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
                               <Type size={14}/> Nombre de la Tienda Web
@@ -332,6 +335,41 @@ const ChannelBuilder = ({ moduleId, setHasUnsavedChanges }) => {
                               </select>
                            </div>
                         </div>
+
+                        {/* 🔥 NUEVO: MAPEO DE SUBFORMULARIOS (VARIANTES Y GALERÍA) 🔥 */}
+                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                           <div>
+                               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
+                                   <Layers size={14}/> Variantes (Opcional)
+                               </label>
+                               <select 
+                                 value={config.mapped_variants || ''} 
+                                 onChange={(e) => markAsChanged({...config, mapped_variants: e.target.value})}
+                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-fuchsia-500 text-sm"
+                               >
+                                  <option value="">-- No usar variantes --</option>
+                                  {fields.filter(f => isSubformField(f.field_type)).map(f => (
+                                     <option key={f.id} value={f.api_name || f.label}>{f.label}</option>
+                                  ))}
+                               </select>
+                           </div>
+                           <div>
+                               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
+                                   <Image size={14}/> Galería Extra (Opcional)
+                               </label>
+                               <select 
+                                 value={config.mapped_gallery || ''} 
+                                 onChange={(e) => markAsChanged({...config, mapped_gallery: e.target.value})}
+                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-fuchsia-500 text-sm"
+                               >
+                                  <option value="">-- No usar galería --</option>
+                                  {fields.filter(f => isSubformField(f.field_type)).map(f => (
+                                     <option key={f.id} value={f.api_name || f.label}>{f.label}</option>
+                                  ))}
+                               </select>
+                           </div>
+                        </div>
+
                     </div>
                  </div>
               </div>

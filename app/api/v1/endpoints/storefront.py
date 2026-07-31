@@ -70,5 +70,7 @@ def get_public_catalog(
         "theme_color": config.get("theme_color", "#3b82f6"),
         "whatsapp_number": config.get("whatsapp_number", ""), # 🔥 NUEVO
         "cover_image": config.get("cover_image", ""),         # 🔥 NUEVO
+        "mapped_variants": config.get("mapped_variants", ""), # 🔥 ASEGÚRATE DE AGREGAR ESTO
+        "mapped_gallery": config.get("mapped_gallery", ""),
         "products": catalog_items
     }

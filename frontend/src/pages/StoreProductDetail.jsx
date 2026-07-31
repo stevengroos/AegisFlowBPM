@@ -11,10 +11,12 @@ export default function StoreProductDetail() {
   // --- ESTADOS ---
   const [producto, setProducto] = useState(null);
   const [storeInfo, setStoreInfo] = useState({ 
-    title: 'Cargando...', // 🔥 ACTUALIZADO: Ahora usa title
+    title: 'Cargando...', 
     themeColor: '#3b82f6',
     whatsappNumber: '',
-    coverImage: ''
+    coverImage: '',
+    mapped_variants: '', // 🔥 NUEVO
+    mapped_gallery: ''   // 🔥 NUEVO
   });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -69,10 +71,12 @@ export default function StoreProductDetail() {
       try {
         const res = await axios.get(`${API_URL}/api/v1/storefront/catalog/${moduleId}`);
         const newStoreInfo = {
-          title: res.data.store_title || res.data.module_name || 'Catálogo', // 🔥 Lee el título dinámico
+          title: res.data.store_title || res.data.module_name || 'Catálogo', 
           themeColor: res.data.theme_color || '#3b82f6',
           whatsappNumber: res.data.whatsapp_number || '', 
-          coverImage: res.data.cover_image || ''          
+          coverImage: res.data.cover_image || '',
+          mapped_variants: res.data.mapped_variants || '', // 🔥 GUARDAMOS EL MAPEO
+          mapped_gallery: res.data.mapped_gallery || ''    // 🔥 GUARDAMOS EL MAPEO     
         };
         setStoreInfo(newStoreInfo);
         
@@ -95,15 +99,35 @@ export default function StoreProductDetail() {
 
   useEffect(() => localStorage.setItem(`carrito_tienda_${moduleId}`, JSON.stringify(carrito)), [carrito, moduleId]);
 
-  // --- MATEMÁTICA Y LÓGICA ---
+  // =========================================================================
+  // 🔥 EXTRACCIÓN DINÁMICA DE TABLAS (VARIANTES Y GALERÍA) 🔥
+  // =========================================================================
   const precioBase = producto ? Number(producto.price) || 0 : 0;
   
-  const variants = producto?.raw_data?.variants || [];
-  const gallery = producto?.raw_data?.gallery || [];
+  // 🔥 LEEMOS EL MAPEO EXACTO DEL CHANNEL BUILDER 🔥
+  const variantsApiName = storeInfo.mapped_variants;
+  const galleryApiName = storeInfo.mapped_gallery;
+
+  // Extraemos las tablas usando el nombre mapeado, con un respaldo de nombres comunes por si acaso
+  const variants = (variantsApiName ? producto?.raw_data?.[variantsApiName] : (producto?.raw_data?.opciones_de_colores_variantes || producto?.raw_data?.variantes || producto?.raw_data?.variants)) || [];
+  const gallery = (galleryApiName ? producto?.raw_data?.[galleryApiName] : (producto?.raw_data?.galeria_de_imagenes || producto?.raw_data?.galeria || producto?.raw_data?.gallery)) || [];
+
+  // Funciones Helper para encontrar las columnas sin importar cómo las nombraste en el panel
+  const getVariantImage = (v) => v?.['Imagen'] || v?.['Foto'] || v?.['image_url'];
+  const getVariantColor = (v) => v?.['Color'] || v?.['Variante'] || v?.['Opcion'] || v?.['Nombre'] || v?.['color_name'] || 'Opción sin nombre';
+  const getVariantStock = (v) => {
+    const stock = v?.['Stock'] !== undefined ? v['Stock'] : (v?.['Cantidad'] !== undefined ? v['Cantidad'] : v?.['stock']);
+    return Number(stock) || 0;
+  };
+  const getGalleryImage = (g) => g?.['Imagen'] || g?.['Foto'] || g?.['image_url'];
+
+  // =========================================================================
   
-  let imagenMostrar = varianteSeleccionada?.image_url || imagenGaleriaSeleccionada || producto?.image_url;
-  const stockMostrar = varianteSeleccionada ? varianteSeleccionada.stock : (producto?.stock || 0);
-  const nombreProductoFinal = varianteSeleccionada ? `${producto?.title} - ${varianteSeleccionada.color_name}` : producto?.title;
+  const currentVariantImage = varianteSeleccionada ? getVariantImage(varianteSeleccionada) : null;
+  let imagenMostrar = currentVariantImage || imagenGaleriaSeleccionada || producto?.image_url;
+  
+  const stockMostrar = varianteSeleccionada ? getVariantStock(varianteSeleccionada) : (producto?.stock || 0);
+  const nombreProductoFinal = varianteSeleccionada ? `${producto?.title} - ${getVariantColor(varianteSeleccionada)}` : producto?.title;
   
   const calcularCuotaIndividual = () => {
     if (!producto) return 0;
@@ -131,9 +155,10 @@ export default function StoreProductDetail() {
 
   const agregarAlCarrito = () => {
     setCarrito(prev => {
-      const existe = prev.find(item => item.id === producto.id && item.color_name === varianteSeleccionada?.color_name && item.modalidadElegida === modalidad && item.cuotasElegidas === cuotasElegidas);
+      const vColor = varianteSeleccionada ? getVariantColor(varianteSeleccionada) : null;
+      const existe = prev.find(item => item.id === producto.id && item.color_name === vColor && item.modalidadElegida === modalidad && item.cuotasElegidas === cuotasElegidas);
       if (existe) {
-         return prev.map(item => (item.id === producto.id && item.color_name === varianteSeleccionada?.color_name && item.modalidadElegida === modalidad && item.cuotasElegidas === cuotasElegidas) ? { ...item, cantidad: item.cantidad + 1 } : item);
+         return prev.map(item => (item.id === producto.id && item.color_name === vColor && item.modalidadElegida === modalidad && item.cuotasElegidas === cuotasElegidas) ? { ...item, cantidad: item.cantidad + 1 } : item);
       }
       return [...prev, { 
          ...producto, 
@@ -142,7 +167,7 @@ export default function StoreProductDetail() {
          modalidadElegida: modalidad, 
          cuotasElegidas: modalidad === 'financiado' ? cuotasElegidas : null, 
          valorCuotaCalculado: modalidad === 'financiado' ? calcularCuotaIndividual() : 0, 
-         color_name: varianteSeleccionada?.color_name || null, 
+         color_name: vColor, 
          image_url: imagenMostrar 
       }];
     });
@@ -239,23 +264,39 @@ export default function StoreProductDetail() {
           <div className="flex flex-col gap-4">
             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-4 sm:p-8 border border-gray-100 dark:border-gray-800 flex items-center justify-center aspect-square md:aspect-[4/3] overflow-hidden">
               {imagenMostrar ? (
-                 /* 🔥 LAZY LOADING APLICADO AQUÍ 🔥 */
                  <img src={imagenMostrar} alt={producto.title} loading="lazy" className="max-w-full max-h-full object-contain mix-blend-multiply dark:mix-blend-normal" />
               ) : (
                  <ImageIcon size={64} className="text-gray-300 dark:text-gray-700" />
               )}
             </div>
 
-            {gallery.length > 0 && (
+            {/* CARRUSEL SI HAY GALERÍA O VARIANTES CON FOTOS */}
+            {(gallery.length > 0 || variants.some(v => getVariantImage(v))) && (
               <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
                 <button onClick={() => { setImagenGaleriaSeleccionada(null); setVarianteSeleccionada(null); }} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white dark:bg-gray-800 border-2 overflow-hidden flex-shrink-0 p-2 transition-all ${(!varianteSeleccionada && !imagenGaleriaSeleccionada) ? 'border-gray-500' : 'border-gray-200 dark:border-gray-700'}`} style={(!varianteSeleccionada && !imagenGaleriaSeleccionada) ? {borderColor: storeInfo.themeColor} : {}}>
                   <img src={producto.image_url} alt="Portada" loading="lazy" className="w-full h-full object-contain" />
                 </button>
-                {gallery.map((img, i) => (
-                  <button key={i} onClick={() => { setImagenGaleriaSeleccionada(img.image_url); setVarianteSeleccionada(null); }} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white dark:bg-gray-800 border-2 overflow-hidden flex-shrink-0 p-2 transition-all ${imagenGaleriaSeleccionada === img.image_url ? 'border-gray-500' : 'border-gray-200 dark:border-gray-700'}`} style={imagenGaleriaSeleccionada === img.image_url ? {borderColor: storeInfo.themeColor} : {}}>
-                    <img src={img.image_url} alt="Galeria" loading="lazy" className="w-full h-full object-contain" />
-                  </button>
-                ))}
+                
+                {variants.filter(v => getVariantImage(v)).map((v, i) => {
+                  const imgUrl = getVariantImage(v);
+                  const isSelected = varianteSeleccionada === v;
+                  return (
+                    <button key={`var-img-${i}`} onClick={() => { setImagenGaleriaSeleccionada(null); setVarianteSeleccionada(v); }} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white dark:bg-gray-800 border-2 overflow-hidden flex-shrink-0 p-2 transition-all ${isSelected ? 'border-gray-500' : 'border-gray-200 dark:border-gray-700'}`} style={isSelected ? {borderColor: storeInfo.themeColor} : {}}>
+                      <img src={imgUrl} alt={getVariantColor(v)} loading="lazy" className="w-full h-full object-contain" />
+                    </button>
+                  )
+                })}
+
+                {gallery.map((img, i) => {
+                  const imgUrl = getGalleryImage(img);
+                  if(!imgUrl) return null;
+                  const isSelected = imagenGaleriaSeleccionada === imgUrl;
+                  return (
+                    <button key={`gal-${i}`} onClick={() => { setImagenGaleriaSeleccionada(imgUrl); setVarianteSeleccionada(null); }} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white dark:bg-gray-800 border-2 overflow-hidden flex-shrink-0 p-2 transition-all ${isSelected ? 'border-gray-500' : 'border-gray-200 dark:border-gray-700'}`} style={isSelected ? {borderColor: storeInfo.themeColor} : {}}>
+                      <img src={imgUrl} alt="Galeria" loading="lazy" className="w-full h-full object-contain" />
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -271,7 +312,7 @@ export default function StoreProductDetail() {
             
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-black leading-tight mb-4">{producto.title}</h1>
             
-            {/* VARIANTES */}
+            {/* VARIANTES DINÁMICAS (Botones) */}
             {variants.length > 0 && (
               <div className="mb-6">
                 <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 block">Opciones disponibles</span>
@@ -279,16 +320,19 @@ export default function StoreProductDetail() {
                   <button onClick={() => { setVarianteSeleccionada(null); setImagenGaleriaSeleccionada(null); }} className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-sm font-bold border transition-all ${varianteSeleccionada === null ? 'text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'}`} style={varianteSeleccionada === null ? {backgroundColor: storeInfo.themeColor, borderColor: storeInfo.themeColor} : {}}>
                     Original
                   </button>
-                  {variants.map((v, i) => (
-                    <button key={i} onClick={() => { setVarianteSeleccionada(v); setImagenGaleriaSeleccionada(null); }} className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-sm font-bold border transition-all ${varianteSeleccionada?.id === v.id ? 'text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'}`} style={varianteSeleccionada?.id === v.id ? {backgroundColor: storeInfo.themeColor, borderColor: storeInfo.themeColor} : {}}>
-                      {v.color_name}
-                    </button>
-                  ))}
+                  {variants.map((v, i) => {
+                    const isSelected = varianteSeleccionada === v;
+                    return (
+                      <button key={i} onClick={() => { setVarianteSeleccionada(v); setImagenGaleriaSeleccionada(null); }} className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-sm font-bold border transition-all ${isSelected ? 'text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'}`} style={isSelected ? {backgroundColor: storeInfo.themeColor, borderColor: storeInfo.themeColor} : {}}>
+                        {getVariantColor(v)}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
             
-            {/* STOCK */}
+            {/* STOCK (Se adapta si eliges un color) */}
             <div className="mb-6 flex flex-wrap gap-3">
               <div className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-bold ${stockMostrar > 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800/50'}`}>
                 {stockMostrar > 0 ? <><CheckCircle2 size={16}/> {stockMostrar} Disponibles</> : <><AlertTriangle size={16}/> Agotado temporalmente</>}
