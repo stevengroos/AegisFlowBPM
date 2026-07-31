@@ -160,12 +160,10 @@ async def update_external_record(
     except:
         raise HTTPException(status_code=400, detail="El cuerpo debe ser un JSON válido.")
 
-    # Hacer un 'Merge' para no sobreescribir campos que no vengan en el payload
     current_data = dict(case.data)
     current_data.update(payload)
     case.data = current_data
 
-    # Disparamos las reglas de negocio (Automatizaciones) al actualizar
     system_user_id = webhook.created_by or 0
     process_global_rules(db, case, system_user_id, "ON_UPDATE", background_tasks=background_tasks)
 
@@ -267,10 +265,6 @@ def get_webhook_json_example(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Lee la estructura del Formulario vinculado a este webhook y 
-    genera un JSON de ejemplo para mostrarle al desarrollador en el Frontend.
-    """
     webhook = db.query(models.WebhookEndpoint).filter(
         models.WebhookEndpoint.id == webhook_id,
         models.WebhookEndpoint.company_id == current_user.company_id
@@ -290,7 +284,6 @@ def get_webhook_json_example(
         key = f.api_name or f.label
         if not key: continue
 
-        # Asignar un valor falso dependiendo del tipo de campo
         if f.field_type in ['number', 'currency']:
             example_payload[key] = 1500.50
         elif f.field_type == 'checkbox':
@@ -302,7 +295,6 @@ def get_webhook_json_example(
         elif f.field_type in ['file', 'image', 'url']:
             example_payload[key] = "https://ejemplo.com/archivo.pdf"
         elif f.field_type == 'subform':
-            # Intentar generar un objeto anidado para tablas
             sub_obj = {}
             if f.subform_config and isinstance(f.subform_config, list):
                 for col in f.subform_config:
@@ -399,3 +391,106 @@ async def signaturit_webhook(
 
     db.commit()
     return {"status": "success", "message": "Webhook procesado correctamente"}
+
+# =======================================================
+# 🔥 4. EL OÍDO DE CHATWOOT (OMNICANALIDAD CRM) 🔥
+# =======================================================
+@router.post("/chatwoot/{module_id}")
+async def chatwoot_webhook(
+    module_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Recibe eventos desde Chatwoot (WhatsApp, Instagram, etc) y crea Casos en AegisFlow.
+    Esta URL debes pegarla en la configuración de Integraciones de tu cuenta de Chatwoot.
+    Ej: https://tu-api.com/api/v1/webhooks/chatwoot/15
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON inválido.")
+
+    # 1. Verificamos que la integración de Chatwoot esté activa para este módulo
+    integration = db.query(models.ModuleIntegration).filter(
+        models.ModuleIntegration.module_id == module_id,
+        models.ModuleIntegration.provider_name == 'chatwoot',
+        models.ModuleIntegration.is_active == True
+    ).first()
+
+    if not integration:
+        return {"status": "ignored", "message": "La integración de Chatwoot está inactiva o no configurada para este módulo."}
+
+    event = payload.get("event")
+    message_type = payload.get("message_type")
+
+    # Solo nos interesan los mensajes entrantes (del cliente) para crear el caso
+    if event == "message_created" and message_type == "incoming":
+        conversation = payload.get("conversation", {})
+        sender = payload.get("sender", {})
+        
+        conv_id = conversation.get("id")
+        content = payload.get("content", "")
+        
+        # 2. Escudo Anti-Duplicados: Buscamos si ya existe un caso abierto para esta conversación
+        # Utilizamos PostgreSQL puro para buscar dentro del JSON 'data'
+        existing_case = db.query(models.Case).filter(
+            models.Case.module_id == module_id,
+            models.Case.company_id == integration.company_id,
+            models.Case.data.op("->>")("chatwoot_conversation_id") == str(conv_id)
+        ).first()
+
+        if existing_case:
+            # Si el ticket ya existe, ignoramos la creación de uno nuevo.
+            # (En el futuro, podríamos inyectar este mensaje en el historial del caso)
+            return {"status": "ignored", "message": "Ya existe un caso activo para esta conversación."}
+
+        # 3. Buscamos el estado inicial del Blueprint para inyectar el caso
+        blueprint = db.query(models.Blueprint).filter(
+            models.Blueprint.company_id == integration.company_id,
+            models.Blueprint.module_id == module_id,
+            models.Blueprint.is_active == True
+        ).first()
+
+        initial_status_id = None
+        if blueprint:
+            status = db.query(models.Status).filter(
+                models.Status.blueprint_id == blueprint.id, 
+                models.Status.is_initial == True
+            ).first()
+            if status:
+                initial_status_id = status.id
+
+        # 4. Formatear los datos extraídos de Chatwoot
+        # Extraemos el teléfono, el nombre y por qué canal nos escribió
+        case_data = {
+            "chatwoot_conversation_id": str(conv_id),
+            "mensaje_original": content,
+            "nombre_cliente": sender.get("name", "Cliente Desconocido"),
+            "email_cliente": sender.get("email", ""),
+            "telefono_cliente": sender.get("phone_number", ""),
+            "canal_origen": conversation.get("channel", "Desconocido") # ej. "Channel::Whatsapp"
+        }
+
+        # 5. Crear el Caso en la Base de Datos
+        new_case = models.Case(
+            company_id=integration.company_id,
+            created_by=0, # 0 indica que fue creado por el Sistema/API
+            module_id=module_id,
+            form_id=None, # Como viene de una API, no requiere atarse a un formulario estrictamente
+            status_id=initial_status_id,
+            data=case_data,
+            ui_rules={}
+        )
+
+        # 6. Disparar reglas globales (Automatizaciones)
+        # Esto permite que AegisFlow envíe un email al equipo de ventas diciendo "Hay un nuevo WhatsApp"
+        process_global_rules(db, new_case, 0, "ON_CREATE", background_tasks=background_tasks)
+
+        db.add(new_case)
+        db.commit()
+        
+        return {"status": "success", "message": "Caso de Chatwoot creado exitosamente.", "case_id": new_case.id}
+
+    return {"status": "ignored", "message": "Evento no procesable para la creación de un caso."}

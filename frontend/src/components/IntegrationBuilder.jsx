@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { useNotification } from '../context/NotificationContext';
-import { ArrowLeft, Save, Loader2, Plug, CheckCircle2, ShieldAlert, Key, Zap } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Plug, CheckCircle2, ShieldAlert, Key, Zap, MessageSquare } from 'lucide-react';
 
 // Lista maestra de integraciones disponibles en el sistema
 const AVAILABLE_INTEGRATIONS = [
@@ -9,10 +9,18 @@ const AVAILABLE_INTEGRATIONS = [
     id: 'signaturit',
     name: 'Signaturit',
     description: 'Firmas digitales legalmente vinculantes. Envía contratos y documentos directamente desde tus flujos.',
-    icon: '✍️', // Aquí podrías poner un logo PNG en el futuro
-    color: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400'
+    icon: '✍️',
+    color: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400',
+    btnColor: 'bg-emerald-600 hover:bg-emerald-700'
+  },
+  {
+    id: 'chatwoot',
+    name: 'Chatwoot',
+    description: 'Bandeja omnicanal de soporte. Recibe WhatsApp, Instagram y chats web directamente vinculados a este módulo.',
+    icon: <MessageSquare size={28} />, 
+    color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400',
+    btnColor: 'bg-blue-600 hover:bg-blue-700'
   }
-  // En el futuro puedes añadir { id: 'slack', name: 'Slack' }, etc.
 ];
 
 const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
@@ -20,13 +28,20 @@ const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
   const [view, setView] = useState('list'); // 'list' | 'config'
   const [selectedApp, setSelectedApp] = useState(null);
   
-  // Estados para la configuración
+  // Estados Generales
   const [configData, setConfigData] = useState({ is_active: false, environment: 'sandbox', token: '' });
   const [hasTokenSaved, setHasTokenSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  
+  // Estados para Webhook Signaturit
   const [settingUpWebhook, setSettingUpWebhook] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
+
+  // 🔥 Estados específicos para Chatwoot 🔥
+  const [cwUrl, setCwUrl] = useState('https://app.chatwoot.com');
+  const [cwAccountId, setCwAccountId] = useState('');
+  const [cwToken, setCwToken] = useState('');
 
   const handleSetupWebhook = async () => {
     if (!webhookUrl.trim()) return notify.warning("Por favor ingresa la URL pública de tu servidor (ej: https://tudominio.com)");
@@ -34,7 +49,6 @@ const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
 
     setSettingUpWebhook(true);
     try {
-      // 🔥 Mandamos la URL en el body
       const res = await api.post(`/api/v1/modules/${moduleId}/integrations/signaturit/webhook/setup`, {
          app_url: webhookUrl
       });
@@ -50,12 +64,18 @@ const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
   useEffect(() => {
     if (view === 'config' && selectedApp) {
       setLoading(true);
+      
+      // Limpiar estados de Chatwoot al entrar
+      setCwUrl('https://app.chatwoot.com');
+      setCwAccountId('');
+      setCwToken('');
+
       api.get(`/api/v1/modules/${moduleId}/integrations/${selectedApp.id}`)
         .then(res => {
           setConfigData({
             is_active: res.data.is_active,
-            environment: res.data.environment,
-            token: '' // El token nunca viene del back por seguridad
+            environment: res.data.environment || 'production',
+            token: '' 
           });
           setHasTokenSaved(res.data.has_token);
         })
@@ -79,21 +99,55 @@ const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
 
   const handleSaveConfig = async (e) => {
     e.preventDefault();
-    if (configData.is_active && !hasTokenSaved && !configData.token.trim()) {
-       return notify.warning("Debes proporcionar un API Key (Token) para activar la integración.");
+    let finalData = { ...configData };
+
+    // Validaciones para Signaturit
+    if (selectedApp.id === 'signaturit') {
+        if (configData.is_active && !hasTokenSaved && !configData.token.trim()) {
+           return notify.warning("Debes proporcionar un API Key (Token) para activar la integración.");
+        }
+    }
+
+    // 🔥 Validaciones y Empaquetado para Chatwoot 🔥
+    if (selectedApp.id === 'chatwoot') {
+        const isUpdating = cwUrl.trim() || cwAccountId.trim() || cwToken.trim();
+        
+        // Si intenta actualizar un campo, debe llenar los 3 para construir el JSON correctamente
+        if (isUpdating && (!cwUrl.trim() || !cwAccountId.trim() || !cwToken.trim())) {
+            return notify.warning("Para actualizar la conexión de Chatwoot debes completar los 3 campos (URL, Account ID y Token).");
+        }
+        
+        if (configData.is_active && !hasTokenSaved && !isUpdating) {
+            return notify.warning("Debes configurar la URL, el Account ID y el Access Token para activar Chatwoot.");
+        }
+
+        if (isUpdating) {
+            // Empaquetamos los 3 datos en un string JSON para que el backend lo encripte como si fuera un solo token
+            finalData.token = JSON.stringify({ 
+                base_url: cwUrl.trim(), 
+                account_id: cwAccountId.trim(), 
+                api_token: cwToken.trim() 
+            });
+            finalData.environment = 'production'; // Chatwoot no usa sandbox interno
+        }
     }
 
     setSaving(true);
     try {
-      const res = await api.put(`/api/v1/modules/${moduleId}/integrations/${selectedApp.id}`, configData);
+      const res = await api.put(`/api/v1/modules/${moduleId}/integrations/${selectedApp.id}`, finalData);
       
       setHasTokenSaved(res.data.has_token);
-      setConfigData(prev => ({ ...prev, token: '' })); // Limpiamos el input por seguridad
-      if (setHasUnsavedChanges) setHasUnsavedChanges(false);
+      setConfigData(prev => ({ ...prev, token: '' })); 
       
+      // Limpiamos los campos visuales de Chatwoot
+      setCwUrl('https://app.chatwoot.com');
+      setCwAccountId('');
+      setCwToken('');
+
+      if (setHasUnsavedChanges) setHasUnsavedChanges(false);
       notify.success(`Configuración de ${selectedApp.name} guardada exitosamente.`);
     } catch (error) {
-      notify.error("Error al guardar la integración. Verifica tus permisos.");
+      notify.error(error.response?.data?.detail || "Error al guardar la integración. Verifica tus permisos.");
     } finally {
       setSaving(false);
     }
@@ -109,17 +163,17 @@ const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
             </button>
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span className="text-2xl">{selectedApp.icon}</span> Configurar {selectedApp.name}
+                <span className="text-2xl flex items-center">{selectedApp.icon}</span> Configurar {selectedApp.name}
               </h2>
             </div>
           </div>
-          <button onClick={handleSaveConfig} disabled={saving || loading} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-50">
+          <button onClick={handleSaveConfig} disabled={saving || loading} className={`px-6 py-2.5 text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-50 ${selectedApp.btnColor}`}>
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Guardar Conexión
           </button>
         </div>
 
         {loading ? (
-           <div className="flex-1 flex justify-center items-center"><Loader2 className="animate-spin text-emerald-500" size={32}/></div>
+           <div className="flex-1 flex justify-center items-center"><Loader2 className="animate-spin text-gray-500" size={32}/></div>
         ) : (
           <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
             <div className="max-w-2xl mx-auto space-y-6">
@@ -132,72 +186,123 @@ const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
                      </div>
                      <label className="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" className="sr-only peer" checked={configData.is_active} onChange={(e) => { setConfigData({...configData, is_active: e.target.checked}); if(setHasUnsavedChanges) setHasUnsavedChanges(true); }} />
-                        <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
+                        <div className={`w-14 h-7 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 ${selectedApp.id === 'chatwoot' ? 'peer-checked:bg-blue-500' : 'peer-checked:bg-emerald-500'}`}></div>
                      </label>
                   </div>
 
-                  <div className="space-y-5 border-t border-gray-100 dark:border-gray-800 pt-6">
-                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Entorno (Environment)</label>
-                        <select value={configData.environment} onChange={(e) => { setConfigData({...configData, environment: e.target.value}); if(setHasUnsavedChanges) setHasUnsavedChanges(true); }} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-emerald-500 font-medium text-sm text-gray-900 dark:text-white">
-                           <option value="sandbox">🧪 Sandbox (Entorno de Pruebas Seguras)</option>
-                           <option value="production">🚀 Producción (Firma con Valor Legal)</option>
-                        </select>
-                        <p className="text-xs text-gray-500 mt-2">Utiliza Sandbox mientras estás configurando tus plantillas y flujos. Cambia a Producción cuando estés listo para operar.</p>
-                     </div>
+                  {/* ======================================================== */}
+                  {/* CONFIGURACIÓN EXCLUSIVA PARA SIGNATURIT                  */}
+                  {/* ======================================================== */}
+                  {selectedApp.id === 'signaturit' && (
+                      <div className="space-y-5 border-t border-gray-100 dark:border-gray-800 pt-6">
+                         <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Entorno (Environment)</label>
+                            <select value={configData.environment} onChange={(e) => { setConfigData({...configData, environment: e.target.value}); if(setHasUnsavedChanges) setHasUnsavedChanges(true); }} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-emerald-500 font-medium text-sm text-gray-900 dark:text-white">
+                               <option value="sandbox">🧪 Sandbox (Entorno de Pruebas Seguras)</option>
+                               <option value="production">🚀 Producción (Firma con Valor Legal)</option>
+                            </select>
+                            <p className="text-xs text-gray-500 mt-2">Utiliza Sandbox mientras estás configurando tus plantillas y flujos. Cambia a Producción cuando estés listo para operar.</p>
+                         </div>
 
-                     <div>
-                        <label className="flex justify-between items-center mb-2">
-                           <span className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Key size={14}/> Access Token (API Key)</span>
-                           {hasTokenSaved && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-md flex items-center gap-1"><CheckCircle2 size={12}/> Token Configurado</span>}
-                        </label>
-                        <input 
-                           type="password" 
-                           placeholder={hasTokenSaved ? "•••••••••••••••••••••••••••••••• (Guardado y Encriptado)" : "Pega aquí tu token de Signaturit"} 
-                           value={configData.token} 
-                           onChange={(e) => { setConfigData({...configData, token: e.target.value}); if(setHasUnsavedChanges) setHasUnsavedChanges(true); }} 
-                           className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border rounded-xl outline-none text-sm font-mono transition-all ${hasTokenSaved && !configData.token ? 'border-emerald-200 dark:border-emerald-800 focus:border-emerald-500' : 'border-gray-200 dark:border-gray-700 focus:border-emerald-500'}`} 
-                        />
-                        <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1"><ShieldAlert size={12}/> Por seguridad ISO-27001, tu token se guarda fuertemente encriptado y nunca se muestra de vuelta.</p>
-                     </div>
-                     {/* 🔥 SECCIÓN DE WEBHOOK AUTOMÁTICO 🔥 */}
-                     {hasTokenSaved && (
-                        <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
-                           <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/50 rounded-2xl p-6 flex flex-col gap-4">
-                              <div className="flex items-center gap-3">
-                                 <div className="bg-emerald-100 dark:bg-emerald-900/50 p-2 rounded-lg text-emerald-600 dark:text-emerald-400">
-                                    <Zap size={20} />
-                                 </div>
-                                 <div>
-                                    <h4 className="font-bold text-emerald-900 dark:text-emerald-400">Eventos en Tiempo Real</h4>
-                                    <p className="text-xs text-emerald-700/70 dark:text-emerald-500/60 mt-0.5">
-                                       Ingresa la URL pública de tu servidor (tu dominio o Ngrok) para que Signaturit te notifique las firmas.
-                                    </p>
-                                 </div>
-                              </div>
-                              
-                              <div className="flex flex-col md:flex-row items-stretch gap-3 mt-2">
-                                 <input 
-                                    type="url" 
-                                    placeholder="ej: https://a1b2-34-56-78.ngrok-free.app" 
-                                    value={webhookUrl}
-                                    onChange={(e) => setWebhookUrl(e.target.value)}
-                                    className="flex-1 px-4 py-2 bg-white dark:bg-gray-950 border border-emerald-200 dark:border-emerald-800/50 rounded-xl outline-none focus:border-emerald-500 text-sm font-mono text-gray-900 dark:text-white"
-                                 />
-                                 <button 
-                                    type="button"
-                                    onClick={handleSetupWebhook}
-                                    disabled={settingUpWebhook}
-                                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shrink-0"
-                                 >
-                                    {settingUpWebhook ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                                    {settingUpWebhook ? 'Configurando...' : 'Activar Webhook'}
-                                 </button>
-                              </div>
-                           </div>
-                        </div>
-                     )}
-                  </div>
+                         <div>
+                            <label className="flex justify-between items-center mb-2">
+                               <span className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Key size={14}/> Access Token (API Key)</span>
+                               {hasTokenSaved && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-md flex items-center gap-1"><CheckCircle2 size={12}/> Token Configurado</span>}
+                            </label>
+                            <input 
+                               type="password" 
+                               placeholder={hasTokenSaved ? "•••••••••••••••••••••••••••••••• (Guardado y Encriptado)" : "Pega aquí tu token de Signaturit"} 
+                               value={configData.token} 
+                               onChange={(e) => { setConfigData({...configData, token: e.target.value}); if(setHasUnsavedChanges) setHasUnsavedChanges(true); }} 
+                               className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border rounded-xl outline-none text-sm font-mono transition-all ${hasTokenSaved && !configData.token ? 'border-emerald-200 dark:border-emerald-800 focus:border-emerald-500' : 'border-gray-200 dark:border-gray-700 focus:border-emerald-500'}`} 
+                            />
+                            <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1"><ShieldAlert size={12}/> Por seguridad ISO-27001, tu token se guarda fuertemente encriptado y nunca se muestra de vuelta.</p>
+                         </div>
+                         
+                         {hasTokenSaved && (
+                            <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
+                               <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/50 rounded-2xl p-6 flex flex-col gap-4">
+                                  <div className="flex items-center gap-3">
+                                     <div className="bg-emerald-100 dark:bg-emerald-900/50 p-2 rounded-lg text-emerald-600 dark:text-emerald-400">
+                                        <Zap size={20} />
+                                     </div>
+                                     <div>
+                                        <h4 className="font-bold text-emerald-900 dark:text-emerald-400">Eventos en Tiempo Real</h4>
+                                        <p className="text-xs text-emerald-700/70 dark:text-emerald-500/60 mt-0.5">
+                                           Ingresa la URL pública de tu servidor (tu dominio o Ngrok) para que Signaturit te notifique las firmas.
+                                        </p>
+                                     </div>
+                                  </div>
+                                  
+                                  <div className="flex flex-col md:flex-row items-stretch gap-3 mt-2">
+                                     <input 
+                                        type="url" 
+                                        placeholder="ej: https://a1b2-34-56-78.ngrok-free.app" 
+                                        value={webhookUrl}
+                                        onChange={(e) => setWebhookUrl(e.target.value)}
+                                        className="flex-1 px-4 py-2 bg-white dark:bg-gray-950 border border-emerald-200 dark:border-emerald-800/50 rounded-xl outline-none focus:border-emerald-500 text-sm font-mono text-gray-900 dark:text-white"
+                                     />
+                                     <button 
+                                        type="button"
+                                        onClick={handleSetupWebhook}
+                                        disabled={settingUpWebhook}
+                                        className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shrink-0"
+                                     >
+                                        {settingUpWebhook ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                                        {settingUpWebhook ? 'Configurando...' : 'Activar Webhook'}
+                                     </button>
+                                  </div>
+                               </div>
+                            </div>
+                         )}
+                      </div>
+                  )}
+
+                  {/* ======================================================== */}
+                  {/* CONFIGURACIÓN EXCLUSIVA PARA CHATWOOT                    */}
+                  {/* ======================================================== */}
+                  {selectedApp.id === 'chatwoot' && (
+                      <div className="space-y-6 border-t border-gray-100 dark:border-gray-800 pt-6">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                               <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">URL del Servidor</label>
+                               <input 
+                                 type="url" 
+                                 placeholder={hasTokenSaved ? "•••••••••••••••• (Guardado)" : "https://app.chatwoot.com"}
+                                 value={cwUrl}
+                                 onChange={e => {setCwUrl(e.target.value); if(setHasUnsavedChanges) setHasUnsavedChanges(true);}}
+                                 className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border rounded-xl outline-none text-sm border-gray-200 dark:border-gray-700 focus:border-blue-500 text-gray-900 dark:text-white"
+                               />
+                            </div>
+                            <div>
+                               <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Account ID</label>
+                               <input 
+                                 type="text" 
+                                 placeholder={hasTokenSaved ? "•••••••• (Guardado)" : "Ej: 1"}
+                                 value={cwAccountId}
+                                 onChange={e => {setCwAccountId(e.target.value.replace(/\D/g, '')); if(setHasUnsavedChanges) setHasUnsavedChanges(true);}}
+                                 className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border rounded-xl outline-none text-sm border-gray-200 dark:border-gray-700 focus:border-blue-500 text-gray-900 dark:text-white"
+                               />
+                            </div>
+                         </div>
+
+                         <div>
+                             <label className="flex justify-between items-center mb-2">
+                               <span className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Key size={14}/> User Access Token</span>
+                               {hasTokenSaved && <span className="text-[10px] font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-md flex items-center gap-1"><CheckCircle2 size={12}/> Configurado</span>}
+                             </label>
+                             <input 
+                                 type="password" 
+                                 placeholder={hasTokenSaved ? "•••••••••••••••••••••••••••••••• (Guardado y Encriptado)" : "Pega tu Access Token de Chatwoot aquí"}
+                                 value={cwToken}
+                                 onChange={e => {setCwToken(e.target.value); if(setHasUnsavedChanges) setHasUnsavedChanges(true);}}
+                                 className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-950 border rounded-xl outline-none text-sm font-mono transition-all text-gray-900 dark:text-white ${hasTokenSaved && !cwToken ? 'border-blue-200 dark:border-blue-800 focus:border-blue-500' : 'border-gray-200 dark:border-gray-700 focus:border-blue-500'}`} 
+                             />
+                             <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1"><ShieldAlert size={12}/> Estos 3 campos se encriptarán juntos en la base de datos de forma segura.</p>
+                         </div>
+                      </div>
+                  )}
+
                </div>
 
             </div>
@@ -212,23 +317,23 @@ const IntegrationBuilder = ({ moduleId, setHasUnsavedChanges }) => {
     <div className="p-8 h-full overflow-y-auto custom-scrollbar animate-in fade-in duration-300">
       <div className="mb-8 border-b border-gray-100 dark:border-gray-800/60 pb-6">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-           <Plug className="text-emerald-500" /> Mercado de Integraciones
+           <Plug className="text-gray-500" /> Mercado de Integraciones
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-medium">Conecta este módulo con plataformas externas y potencia tus automatizaciones.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
          {AVAILABLE_INTEGRATIONS.map(app => (
-            <div key={app.id} onClick={() => handleOpenConfig(app)} className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all cursor-pointer group hover:border-emerald-300 dark:hover:border-emerald-700 flex flex-col h-full">
+            <div key={app.id} onClick={() => handleOpenConfig(app)} className={`bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col h-full ${app.id === 'chatwoot' ? 'hover:border-blue-300 dark:hover:border-blue-700' : 'hover:border-emerald-300 dark:hover:border-emerald-700'}`}>
                <div className="flex items-center gap-4 mb-4">
                   <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-3xl border transition-transform group-hover:scale-105 ${app.color}`}>
                      {app.icon}
                   </div>
-                  <h3 className="font-bold text-lg text-gray-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{app.name}</h3>
+                  <h3 className={`font-bold text-lg text-gray-900 dark:text-white transition-colors ${app.id === 'chatwoot' ? 'group-hover:text-blue-600 dark:group-hover:text-blue-400' : 'group-hover:text-emerald-600 dark:group-hover:text-emerald-400'}`}>{app.name}</h3>
                </div>
                <p className="text-sm text-gray-500 dark:text-gray-400 flex-1">{app.description}</p>
                <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
-                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-500 group-hover:underline">Configurar Conexión →</span>
+                  <span className={`text-sm font-bold group-hover:underline ${app.id === 'chatwoot' ? 'text-blue-600 dark:text-blue-500' : 'text-emerald-600 dark:text-emerald-500'}`}>Configurar Conexión →</span>
                </div>
             </div>
          ))}

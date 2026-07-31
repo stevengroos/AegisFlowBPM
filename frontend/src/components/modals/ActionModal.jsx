@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Zap, User, BellRing, Edit2, ArrowRight, Database, Copy, Plus, ArrowLeft, Trash2, Code, Save, X, Loader2 } from 'lucide-react';
+import { Zap, User, BellRing, Edit2, ArrowRight, Database, Copy, Plus, ArrowLeft, Trash2, Code, Save, X, Loader2, MessageSquare } from 'lucide-react';
 import Select from 'react-select';
 import CodeEditorModal from './CodeEditorModal';
-import api from '../../api/axios'; // 👇 AÑADE ESTO
+import api from '../../api/axios'; 
 
 const ActionModal = ({
   isOpen,
@@ -28,6 +28,7 @@ const ActionModal = ({
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isCodeEditorOpen, setIsCodeEditorOpen] = useState(false);
   const [transitions, setTransitions] = useState([]); 
+  
   // 🔥 ESTADOS PARA LA ACCIÓN DE SIGNATURIT 🔥
   const [signaturitTemplates, setSignaturitTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -43,9 +44,8 @@ const ActionModal = ({
      }
   }, [newAction.action_type, moduleId, signaturitTemplates.length]);
 
-  // 👇 AÑADE ESTE EFECTO PARA CARGAR LAS FLECHAS CUANDO SE ABRA EL MODAL
+  // Cargar las flechas cuando se abra el modal
   useEffect(() => {
-    // 🔥 Le agregamos el blueprint_id a la URL para filtrar 🔥
     if (isEmailModalOpen && transitions.length === 0 && blueprintId) {
       api.get(`/api/v1/transitions/?blueprint_id=${blueprintId}`)
          .then(res => setTransitions(res.data))
@@ -62,7 +62,7 @@ const ActionModal = ({
   if (!isOpen) return null;
 
   // =================================================================
-  // 🔥 LÓGICA MOVIDA DESDE EL CANVAS A ESTE MODAL 🔥
+  // LÓGICA DE MAPEO DE CAMPOS (CREATE_RECORD)
   // =================================================================
   const handleAddMappingRow = () => {
     const currentConfig = { ...newAction.action_config };
@@ -139,15 +139,12 @@ const ActionModal = ({
     multiValueRemove: (provided) => ({ ...provided, color: isDarkMode ? '#9ca3af' : '#6b7280', ':hover': { backgroundColor: isDarkMode ? '#ef4444' : '#fee2e2', color: isDarkMode ? 'white' : '#ef4444' } }),
   };
 
-  // 🔥 MAGIA DE UX: Filtrar las opciones para que solo muestre las salidas válidas 🔥
+  // Filtrar las opciones para que solo muestre las salidas válidas
   const validTransitions = transitions.filter(t => {
-    // Si estamos editando una acción en una flecha (ej: "INICIAR")...
     if (selectedElement?.type === 'transition') {
-      // Queremos las flechas que SALEN del estado de DESTINO de la flecha actual
-      // (ej: salen de "Medio")
       return t.from_status_id === selectedElement.data.to_status_id;
     }
-    return true; // Por si acaso
+    return true; 
   });
 
   return (
@@ -174,6 +171,7 @@ const ActionModal = ({
                      {/* 🔥 NUEVO GRUPO: INTEGRACIONES 🔥 */}
                      <optgroup label="Integraciones Externas">
                         <option value="SEND_SIGNATURIT">Enviar Plantilla a Firmar (Signaturit)</option>
+                        <option value="SEND_CHATWOOT_MESSAGE">Responder Mensaje (Chatwoot)</option> {/* 🔥 NUEVO 🔥 */}
                      </optgroup>
                      <optgroup label="Datos y Lógica">
                         <option value="UPDATE_VALUE">Sobrescribir Valor Fijo</option>
@@ -343,6 +341,7 @@ const ActionModal = ({
                       )}
                    </div>
                 )}
+
                 {/* 🔥 UI PARA SIGNATURIT (MAPEO DINÁMICO) 🔥 */}
                 {newAction.action_type === 'SEND_SIGNATURIT' && (
                    <div className="animate-in fade-in duration-200 space-y-6">
@@ -431,6 +430,30 @@ const ActionModal = ({
                    </div>
                 )}
 
+                {/* 🔥 NUEVO: UI PARA CHATWOOT 🔥 */}
+                {newAction.action_type === 'SEND_CHATWOOT_MESSAGE' && (
+                  <div className="animate-in fade-in duration-200 space-y-4">
+                     <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-5 rounded-xl">
+                        <label className="block text-xs font-bold text-blue-600 dark:text-blue-500 uppercase mb-2 flex items-center gap-1.5">
+                           <MessageSquare size={14}/> Plantilla de Mensaje (WhatsApp / Web)
+                        </label>
+                        <textarea
+                          rows={4}
+                          required
+                          placeholder="Ej: Hola {{nombre_cliente}}, tu pedido ha sido aprobado. Pronto nos contactaremos."
+                          value={newAction.action_value || ''}
+                          onChange={e => setNewAction({...newAction, action_value: e.target.value})}
+                          className="w-full text-sm px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:border-blue-500 shadow-sm resize-none custom-scrollbar"
+                        />
+                        <p className="text-[10px] text-blue-600/70 dark:text-blue-500/70 mt-2 leading-relaxed">
+                          Usa <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{`{{api_name}}`}</span> para inyectar variables del registro de forma automática (ej. <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{`{{nombre_cliente}}`}</span>). 
+                          <br/><br/>
+                          <strong>Aviso:</strong> Esta acción solo se ejecutará exitosamente si el registro fue creado a partir de un mensaje entrante de Chatwoot, ya que requiere de un ID de conversación válido en el historial.
+                        </p>
+                     </div>
+                  </div>
+                )}
+
                 {newAction.action_type === 'UPDATE_VALUE' && (
                    <div className="animate-in fade-in duration-200">
                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Nuevo Valor (Puedes usar {'{NOW}'} para la fecha actual)</label>
@@ -439,43 +462,42 @@ const ActionModal = ({
                 )}
 
                 {newAction.action_type === 'CUSTOM_FUNCTION' && (
-   <div className="animate-in fade-in duration-200 space-y-3">
-     <label className="block text-xs font-bold text-green-600 dark:text-green-500 uppercase mb-2 flex items-center gap-1.5">
-       <Code size={14}/> Lógica Programable (Low-Code)
-     </label>
-     
-     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-inner group">
-        <div className="flex items-center justify-between mb-4">
-           <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[10px] font-mono text-green-500/80 tracking-widest uppercase">Entorno Python 3.11</span>
-           </div>
-           <button 
-              type="button"
-              onClick={() => setIsCodeEditorOpen(true)}
-              className="text-xs font-bold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-all flex items-center gap-2"
-           >
-              <Edit2 size={14}/> Abrir Editor Avanzado
-           </button>
-        </div>
-        <pre className="text-xs text-gray-400 font-mono bg-black/30 p-4 rounded-lg border border-gray-800 max-h-[100px] overflow-hidden opacity-60">
-           {newAction.function_code || "# No hay código definido aún..."}
-        </pre>
-     </div>
+                   <div className="animate-in fade-in duration-200 space-y-3">
+                     <label className="block text-xs font-bold text-green-600 dark:text-green-500 uppercase mb-2 flex items-center gap-1.5">
+                       <Code size={14}/> Lógica Programable (Low-Code)
+                     </label>
+                     
+                     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-inner group">
+                        <div className="flex items-center justify-between mb-4">
+                           <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                              <span className="text-[10px] font-mono text-green-500/80 tracking-widest uppercase">Entorno Python 3.11</span>
+                           </div>
+                           <button 
+                              type="button"
+                              onClick={() => setIsCodeEditorOpen(true)}
+                              className="text-xs font-bold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-all flex items-center gap-2"
+                           >
+                              <Edit2 size={14}/> Abrir Editor Avanzado
+                           </button>
+                        </div>
+                        <pre className="text-xs text-gray-400 font-mono bg-black/30 p-4 rounded-lg border border-gray-800 max-h-[100px] overflow-hidden opacity-60">
+                           {newAction.function_code || "# No hay código definido aún..."}
+                        </pre>
+                     </div>
 
-     {/* EL EDITOR DE PANTALLA COMPLETA */}
-     <CodeEditorModal 
-        isOpen={isCodeEditorOpen}
-        onClose={() => setIsCodeEditorOpen(false)}
-        initialCode={newAction.function_code}
-        mockDataInitial={null} // Podrías pasar datos del módulo aquí
-        onSave={(updatedCode) => {
-           setNewAction({ ...newAction, function_code: updatedCode });
-           setIsCodeEditorOpen(false);
-        }}
-     />
-   </div>
-)}
+                     <CodeEditorModal 
+                        isOpen={isCodeEditorOpen}
+                        onClose={() => setIsCodeEditorOpen(false)}
+                        initialCode={newAction.function_code}
+                        mockDataInitial={null} 
+                        onSave={(updatedCode) => {
+                           setNewAction({ ...newAction, function_code: updatedCode });
+                           setIsCodeEditorOpen(false);
+                        }}
+                     />
+                   </div>
+                )}
             </form>
             
             <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 shrink-0 flex justify-end gap-3">
@@ -487,7 +509,6 @@ const ActionModal = ({
         document.body
       )}
 
-      {/* 🔥 EL MODAL DE PLANTILLA DE CORREO RECUPERADO 🔥 */}
       {isEmailModalOpen && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[999999] p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">

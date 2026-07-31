@@ -56,7 +56,7 @@ def calculate_formulas(db: Session, form_id: int, data_dict: dict) -> dict:
     ).all()
 
     for field in formula_fields:
-        formula = field.options # Ej: "([precio] * [volumen]) * 0.05"
+        formula = field.options 
         if not formula: continue
         try:
             expression = str(formula)
@@ -64,11 +64,9 @@ def calculate_formulas(db: Session, form_id: int, data_dict: dict) -> dict:
             for var in variables:
                 val = data_dict.get(var, 0)
                 if val == "" or val is None: val = 0
-                # Limpiamos todo lo que no sea número para evitar inyecciones
                 clean_val = re.sub(r'[^\d.-]', '', str(val)) or 0
                 expression = expression.replace(f"[{var}]", str(clean_val))
             
-            # eval seguro sin acceso a funciones del sistema
             result = eval(expression, {"__builtins__": {}})
             data_dict[field.api_name or field.label] = round(float(result), 4)
         except Exception as e:
@@ -77,21 +75,13 @@ def calculate_formulas(db: Session, form_id: int, data_dict: dict) -> dict:
 
     return data_dict
 
-
-
 # =======================================================
-# 🔥 NUEVO: GENERADOR SEGURO DE AUTO-NÚMEROS 🔥
+# 🔥 GENERADOR SEGURO DE AUTO-NÚMEROS 🔥
 # =======================================================
 def generate_auto_number(db: Session, company_id: int, field: models.FormField) -> str:
-    """
-    Genera el siguiente número de secuencia de forma atómica.
-    """
-    # Usamos el form_id y el api_name como clave única para esta secuencia
+    """Genera el siguiente número de secuencia de forma atómica."""
     seq_key = f"form_{field.form_id}_{field.api_name}"
     
-    # 1. Buscamos o creamos el tracker de secuencia para esta empresa
-    # Usamos with_for_update() para bloquear la fila (ROW LOCK) y evitar que 
-    # dos usuarios obtengan el mismo número si guardan al mismo milisegundo.
     sequence = db.query(models.AutoNumberSequence).filter(
         models.AutoNumberSequence.company_id == company_id,
         models.AutoNumberSequence.sequence_key == seq_key
@@ -99,7 +89,6 @@ def generate_auto_number(db: Session, company_id: int, field: models.FormField) 
     
     options = field.options or {}
     if isinstance(options, str):
-        import json
         try: options = json.loads(options)
         except: options = {}
         
@@ -107,7 +96,6 @@ def generate_auto_number(db: Session, company_id: int, field: models.FormField) 
     padding = int(options.get("padding", 4))
     
     if not sequence:
-        # Si es el primer registro, empezamos por el starting_number - 1
         starting_number = int(options.get("starting_number", 1))
         sequence = models.AutoNumberSequence(
             company_id=company_id,
@@ -115,20 +103,16 @@ def generate_auto_number(db: Session, company_id: int, field: models.FormField) 
             current_value=starting_number - 1
         )
         db.add(sequence)
-        db.flush() # Guardamos temporalmente en la transacción
+        db.flush() 
 
-    # 2. Incrementamos atómicamente
     sequence.current_value += 1
     db.flush()
     
-    # 3. Formateamos el resultado final (Ej: FAC-0005)
-    # zfill rellena con ceros a la izquierda según el padding
     number_str = str(sequence.current_value).zfill(padding)
     return f"{prefix}{number_str}"
 
-
 # =======================================================
-# 🔥 PENTEST FIX: GUARDAESPALDAS PARA LOW-CODE (SSRF PROTECTION) 🔥
+# 🔥 PENTEST FIX: GUARDAESPALDAS PARA LOW-CODE (SSRF) 🔥
 # =======================================================
 class SafeHTTPClient:
     """Wrapper seguro para permitir peticiones HTTP limitando vectores de ataque."""
@@ -144,12 +128,9 @@ class SafeHTTPClient:
         if not self._is_safe_url(url):
             return {"status": 403, "error": "URL bloqueada por políticas de seguridad (SSRF)."}
         try:
-            # Forzamos timeout de 3 segundos para evitar que congelen nuestro backend
             resp = requests.get(url, headers=headers, timeout=3)
-            try:
-                data = resp.json()
-            except:
-                data = resp.text
+            try: data = resp.json()
+            except: data = resp.text
             return {"status": resp.status_code, "data": data}
         except Exception as e:
             return {"status": 500, "error": str(e)}
@@ -159,10 +140,8 @@ class SafeHTTPClient:
             return {"status": 403, "error": "URL bloqueada por políticas de seguridad (SSRF)."}
         try:
             resp = requests.post(url, json=json, headers=headers, timeout=3)
-            try:
-                data = resp.json()
-            except:
-                data = resp.text
+            try: data = resp.json()
+            except: data = resp.text
             return {"status": resp.status_code, "data": data}
         except Exception as e:
             return {"status": 500, "error": str(e)}
@@ -176,40 +155,92 @@ def execute_webhook(rule, case_id: int, case_data: dict, status_name: str = ""):
     url = rule.target_field
     if not url: return
     
-    # Preparamos el payload reemplazando variables
     payload_str = rule.action_value or "{}"
     payload_str = payload_str.replace("{case_id}", str(case_id))
     payload_str = payload_str.replace("{status_name}", status_name)
     
-    # Para el {case_data}, si es Slack mandamos texto bonito, si es Webhook mandamos JSON puro
     if rule.action_type == "SEND_SLACK":
-        # Formateamos los datos del caso para que se vean bien en Slack
         formatted_data = "\n".join([f"*{k}*: {v}" for k, v in case_data.items()])
         payload_str = payload_str.replace("{case_data}", formatted_data)
-        
-        # Slack requiere un formato específico: {"text": "El mensaje"}
         json_data = {"text": payload_str}
         client.post(url, json=json_data)
         
     elif rule.action_type == "WEBHOOK_OUT":
-        # Para webhooks genéricos
         try:
-            # Reemplazar {case_data} con el objeto JSON real como string
             payload_str = payload_str.replace('"{case_data}"', json.dumps(case_data))
             json_data = json.loads(payload_str)
         except:
-            # Si el usuario escribió un JSON inválido, mandamos los datos básicos por si acaso
             json_data = {"case_id": case_id, "data": case_data}
             
         method = (rule.action_config or {}).get("method", "POST")
-        if method == "POST":
-            client.post(url, json=json_data)
-        elif method == "PUT":
-            # Nuestro SafeHTTPClient solo tiene GET y POST, pero podemos mapear PUT a POST si hace falta, 
-            # o si luego le agregas el método PUT a la clase, se usará. Por ahora usamos POST por defecto.
+        if method == "POST" or method == "PUT":
             client.post(url, json=json_data)
         else:
             client.get(url)
+
+# =======================================================
+# 🔥 NUEVO: EJECUTOR DE CHATWOOT OMNICANAL 🔥
+# =======================================================
+def execute_chatwoot_message(db: Session, company_id: int, module_id: int, case: models.Case, template_message: str):
+    """Envía un mensaje de respuesta automática al cliente a través de Chatwoot."""
+    # 1. Verificamos si este caso proviene de Chatwoot
+    conv_id = case.data.get("chatwoot_conversation_id") if case.data else None
+    if not conv_id:
+        print(f"Omitiendo Chatwoot: El caso {case.id} no tiene conversation_id.")
+        return
+
+    # 2. Buscamos las credenciales de la integración
+    integration = db.query(models.ModuleIntegration).filter(
+        models.ModuleIntegration.company_id == company_id,
+        models.ModuleIntegration.module_id == module_id,
+        models.ModuleIntegration.provider_name == "chatwoot",
+        models.ModuleIntegration.is_active == True
+    ).first()
+
+    if not integration or not integration.encrypted_token:
+        print(f"Omitiendo Chatwoot: Integración inactiva en el módulo {module_id}.")
+        return
+
+    # 3. Desencriptamos y preparamos variables
+    from app.core.encryption import decrypt_secret
+    try:
+        creds_str = decrypt_secret(integration.encrypted_token).strip()
+        creds = json.loads(creds_str)
+        
+        base_url = creds.get("base_url", "https://app.chatwoot.com").rstrip("/")
+        account_id = creds.get("account_id")
+        api_token = creds.get("api_token")
+    except Exception as e:
+        print(f"Error descifrando credenciales de Chatwoot: {e}")
+        return
+
+    if not account_id or not api_token or not template_message:
+        return
+
+    # 4. Magia de Plantillas: Reemplazamos {{variable}} por datos del caso
+    message_content = template_message
+    variables = re.findall(r'\{\{(.*?)\}\}', message_content)
+    for var in variables:
+        # Extraemos el valor del JSON del caso (ej: nombre_cliente)
+        val = case.data.get(var.strip(), "")
+        message_content = message_content.replace(f"{{{{{var}}}}}", str(val))
+
+    # 5. Enviamos la orden a la API de Chatwoot
+    url = f"{base_url}/api/v1/accounts/{account_id}/conversations/{conv_id}/messages"
+    headers = {
+        "api_access_token": api_token,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "content": message_content,
+        "message_type": "outgoing",
+        "private": False
+    }
+
+    try:
+        requests.post(url, json=payload, headers=headers, timeout=5)
+    except Exception as e:
+        print(f"Error de red contactando a Chatwoot: {e}")
 
 # ==========================
 # ESQUEMAS
@@ -283,9 +314,8 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
             if v_str.isdigit():
                 case.assigned_to = int(v_str)
             elif v_str.startswith("role_") or v_str.startswith("profile_"):
-                # 🔥 ASIGNACIÓN ROUND ROBIN 🔥
                 parts = v_str.split("_")
-                group_type = parts[0] # 'role' o 'profile'
+                group_type = parts[0] 
                 group_id = int(parts[1])
                 
                 if group_type == "role":
@@ -360,17 +390,12 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                     new_v={"created_case_id": new_case.id, "target_module_id": target_mod_id, "rule_name": rule.name}
                 )
         
-        # =======================================================
-        # 🔥 EL MOTOR DE MATCHING (CRUCE DE DATOS INTELIGENTE) 🔥
-        # =======================================================
         elif rule.action_type == "DATA_MATCHING":
             config = rule.action_config or {}
             target_module_id = config.get("target_module_id")
-            # Criterios de cruce. Ej: [{"source_field": "tipo_grano", "target_field": "producto", "operator": "=="}]
             match_criteria = config.get("match_criteria", []) 
             
             if target_module_id and match_criteria:
-                # 1. Buscamos todos los registros activos del módulo objetivo (Ej: Módulo de Intereses de Compra)
                 target_cases = db.query(models.Case).filter(
                     models.Case.company_id == case.company_id,
                     models.Case.module_id == target_module_id,
@@ -379,7 +404,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
 
                 matches_found = []
                 
-                # 2. Escaneamos uno por uno para ver si hacen "Match" perfecto
                 for t_case in target_cases:
                     t_data = t_case.data or {}
                     is_match = True
@@ -399,10 +423,8 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                     if is_match:
                         matches_found.append(t_case)
 
-                # 3. ¡Si hay Match, disparamos las alertas a ambos usuarios!
                 if matches_found:
                     for match in matches_found:
-                        # Avisamos al dueño del registro encontrado
                         if match.created_by:
                             notification = models.Notification(
                                 company_id=case.company_id,
@@ -414,7 +436,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                             )
                             db.add(notification)
                             
-                        # Avisamos al creador de la oferta actual
                         notification_self = models.Notification(
                             company_id=case.company_id,
                             user_id=user_id,
@@ -424,18 +445,18 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                             message=f"Tu publicación coincide con el interés de compra #{match.id}."
                         )
                         db.add(notification_self)
-                        
-                    # OPCIONAL: Aquí se podría auto-generar un "Borrador de Contrato" uniendo a ambos.
                 
         elif rule.action_type in ["WEBHOOK_OUT", "SEND_SLACK"]:
-            # 🔥 FASE 3: INTEGRACIONES EXTERNAS (Ejecución silenciosa) 🔥
             try:
                 execute_webhook(rule, case.id, updated_data)
             except Exception as e:
                 print(f"Error ejecutando integración (Regla ID {rule.id}): {e}")        
 
+        # 🔥 INYECTAMOS LA ACCIÓN DE CHATWOOT EN REGLAS GLOBALES 🔥
+        elif rule.action_type == "SEND_CHATWOOT_MESSAGE":
+            execute_chatwoot_message(db, case.company_id, case.module_id, case, rule.action_value)
+
         elif rule.action_type == "CUSTOM_FUNCTION" and rule.function_code:
-            # 🔥 PENTEST FIX: Sandbox con SafeHTTPClient y variables controladas 🔥
             local_env = {
                 "case_data": updated_data,
                 "user_id": user_id,
@@ -443,7 +464,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                 "http": SafeHTTPClient()
             }
             
-            # 🔥 FIX: Lista blanca de funciones seguras permitidas 🔥
             safe_builtins = {
                 "print": print, "int": int, "float": float, "str": str,
                 "bool": bool, "len": len, "round": round, "abs": abs,
@@ -451,7 +471,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
             }
             
             try:
-                # Ejecutamos el script. Si el usuario modifica 'case_data', lo capturamos.
                 exec(rule.function_code, {"__builtins__": safe_builtins}, local_env)
                 updated_data = local_env.get("case_data", updated_data)
                 data_changed = True
@@ -463,7 +482,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                 targets = []
                 config = rule.action_config or {}
                 
-                # Leer configuración avanzada si existe
                 if config.get("notify_users"):
                     targets.extend(config["notify_users"])
                 if config.get("notify_roles"):
@@ -473,16 +491,12 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                     profile_users = db.query(models.User.id).filter(models.User.profile_id.in_(config["notify_profiles"]), models.User.company_id == case.company_id).all()
                     targets.extend([u[0] for u in profile_users])
                     
-                # Si no hay config avanzada, notificar al creador (comportamiento legacy)
                 if not targets:
                     targets = [case.created_by if case.created_by else user_id]
                     
-                # Eliminar duplicados
                 unique_targets = list(set(targets))
                 
-                # Crear notificaciones masivas de forma segura
                 for target_id in unique_targets:
-                            # 🔥 PENTEST FIX: Verificar que el usuario exista en la BD antes de crear la notificación
                             user_exists = db.query(models.User).filter(models.User.id == target_id, models.User.company_id == case.company_id).first()
                             
                             if user_exists:
@@ -496,7 +510,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                                 )
                                 db.add(notification)
                                 
-                                # Enviar correo si está marcado
                                 if config.get("send_email") and user_exists.email:
                                     email_body = f"""
                                     <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e5e7eb; border-radius: 8px;">
@@ -508,14 +521,12 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                                         </p>
                                     </div>
                                     """
-                                   # 🔥 MAGIA ENTERPRISE V2: BOTONES BASADOS EN CONFIGURACIÓN UI 🔥
                                     email_actions = config.get("email_actions", [])
                                     
                                     if email_actions and len(email_actions) > 0:
                                         from app.core.security import create_action_token
                                         import os
                                         
-                                        # Buscar SOLO las transiciones que el usuario eligió en el frontend
                                         out_transitions = db.query(models.Transition).filter(
                                             models.Transition.id.in_(email_actions),
                                             models.Transition.company_id == case.company_id
@@ -540,7 +551,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                                                 buttons_html += f"<a href='{action_url}' style='background-color: {color}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin: 5px; font-family: sans-serif;'>{t.name}</a>"
                                             
                                             buttons_html += "</div>"
-                                            # Lo pegamos elegantemente justo antes de cerrar el recuadro del correo
                                             email_body = email_body.replace("</div>", f"{buttons_html}</div>")
                                     if background_tasks:
                                         background_tasks.add_task(
@@ -558,7 +568,6 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
             f = rule.target_field
             t = rule.action_type
 
-            # 🔥 NUEVA LÓGICA PARA SECCIONES 🔥
             target_fields = [f]
             
             if f.startswith("section_"):
@@ -600,18 +609,13 @@ def create_case(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    # =========================================================
-    # 🔥 PENTEST FIX: SOPORTE B2B Y B2C (Create vs Publish) 🔥
-    # =========================================================
     if not current_user.is_superadmin:
         profile = db.query(models.Profile).filter(models.Profile.id == current_user.profile_id).first()
         mod_perms = profile.permissions.get("modules", {}).get(str(case_in.module_id), {}) if profile and profile.permissions else {}
         
-        # Permitimos el pase SI tiene permiso de "create" (Staff) O permiso de "publish" (App Móvil)
         if not mod_perms.get("create") and not mod_perms.get("publish"):
             raise HTTPException(status_code=403, detail="No tienes permiso para publicar o crear registros en este catálogo.")
 
-    # Validar que el Formulario pertenezca a la empresa
     form = db.query(models.Form).filter(
         models.Form.id == case_in.form_id, 
         models.Form.company_id == current_user.company_id
@@ -654,38 +658,29 @@ def create_case(
     ).all()
     fields_dict = {(f.api_name or f.label): f for f in form_fields}
     
-    # 1. Validamos los datos que envió el usuario
     for key, val in case_in.data.items():
         rule = field_rules.get(key, "editable")
         if rule in ["hidden", "readonly"]:
-            continue # 🛡️ No pueden inyectar datos en campos bloqueados al crear
+            continue 
             
-        # 🔥 NUEVO: VALIDACIÓN ESTRICTA DE CORREOS 🔥
         current_field = fields_dict.get(key)
         if current_field and current_field.field_type == "email" and val:
             try:
-                # TypeAdapter valida que el string cumpla con el estándar de correo
-                # y automáticamente lo pasa a minúsculas y elimina espacios.
                 val = TypeAdapter(EmailStr).validate_python(val)
             except ValidationError:
                 raise HTTPException(status_code=422, detail=f"El valor ingresado en '{current_field.label}' no es un correo electrónico válido.")
 
-        # 🛡️ Evitar inyección manual de un autonumérico desde el cliente
         if current_field and current_field.field_type == "auto_number":
             continue 
 
         safe_new_data[key] = val
         
-    # 2. Generar automáticamente los campos Auto-Incremental
     for field in form_fields:
         if field.field_type == "auto_number":
-            # Si la regla de seguridad del campo lo permite (no está oculto)
             if field_rules.get(field.api_name or field.label, "editable") != "hidden":
-                # Inyectamos el número generado de forma segura
                 key_name = field.api_name or field.label
                 safe_new_data[key_name] = generate_auto_number(db, current_user.company_id, field)
         
-    # 3. Calculamos las fórmulas
     safe_new_data = calculate_formulas(db, case_in.form_id, safe_new_data)
     case_in.data = safe_new_data
     
@@ -717,7 +712,6 @@ def create_case(
         note.case_id = new_case.id
     db.commit()
     
-    # 🔥 CREAMOS UNA COPIA LIMPIA SIN LA IMAGEN BASE64 PARA LA AUDITORÍA 🔥
     audit_data = {k: v for k, v in new_case.data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
 
     log_event(
@@ -762,16 +756,11 @@ def get_cases(
             (models.Case.assigned_to.in_(visible_user_ids))
         )
 
-    # Ejecutamos la consulta
     cases = query.order_by(models.Case.id.desc()).all()
 
-    # =========================================================
-    # 🔥 FASE 1: APLICAR FIELD-LEVEL SECURITY (LECTURA MASIVA) 🔥
-    # =========================================================
     rules_cache = {}
     
     for c in cases:
-        # Cacheamos las reglas por módulo para no saturar la BD en el bucle
         if c.module_id not in rules_cache:
             rules_cache[c.module_id] = security_utils.get_field_level_security(db, current_user, c.module_id)
         
@@ -859,15 +848,9 @@ def get_case(
         if case.created_by not in visible_user_ids and case.assigned_to not in visible_user_ids:
             raise HTTPException(403, "No tienes jerarquía para ver este registro.")
 
-    # =========================================================
-    # 🔥 FASE 1: APLICAR FIELD-LEVEL SECURITY (LECTURA) 🔥
-    # =========================================================
     field_rules = security_utils.get_field_level_security(db, current_user, case.module_id)
     if field_rules:
-        # Filtramos los datos, eliminando los que están marcados como "hidden"
         safe_data = {k: v for k, v in case.data.items() if field_rules.get(k) != "hidden"}
-        
-        # Desconectamos el objeto de la base de datos para no alterar la BD real
         make_transient(case)
         case.data = safe_data
 
@@ -963,7 +946,7 @@ def update_case(
     case_id: int,
     case_in: CaseUpdate,
     request: Request,
-    background_tasks: BackgroundTasks, # 🔥 INYECTADO
+    background_tasks: BackgroundTasks, 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -994,11 +977,10 @@ def update_case(
     
     updated_data = dict(case.data)
     
-    # Solo procesamos los campos que vienen en el payload y que NO están bloqueados
     for key, val in case_in.data.items():
         rule = field_rules.get(key, "editable")
         if rule in ["hidden", "readonly"]:
-            continue  # 🛡️ Ignoramos olímpicamente el intento de hackeo/edición
+            continue  
         
         updated_data[key] = val
     updated_data = calculate_formulas(db, case.form_id, updated_data)
@@ -1031,7 +1013,6 @@ def update_case(
                     case.entered_status_at = func.now()
                 break
 
-    # 🔥 LIMPIAMOS LAS IMÁGENES ANTES DE GUARDAR EN EL HISTORIAL 🔥
     audit_old_data = {k: v for k, v in old_data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
     audit_new_data = {k: v for k, v in case.data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
 
@@ -1058,7 +1039,7 @@ def change_case_status(
     case_id: int,
     status_in: StatusUpdate,
     request: Request, 
-    background_tasks: BackgroundTasks, # 🔥 INYECTADO
+    background_tasks: BackgroundTasks, 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -1125,7 +1106,6 @@ def change_case_status(
                 try: 
                     if float(current_value) >= float(val.validation_value): failed = True
                 except: failed = True
-                # 🔥 NUEVA REGLA ENTERPRISE: BLOQUEO POR FALTA DE FIRMA 🔥
             elif val.operator == "HAS_COMPLETED_SIGNATURE":
                 has_signed = db.query(models.SignatureRequest).filter(
                     models.SignatureRequest.case_id == case_id,
@@ -1135,7 +1115,6 @@ def change_case_status(
                 
                 if not has_signed:
                     failed = True
-                    # Si el admin no configuró un mensaje de error personalizado, le damos uno bonito
                     if not val.error_message:
                         val.error_message = "⚠️ Acción denegada: Este paso requiere que el documento esté firmado por todas las partes."
 
@@ -1242,7 +1221,6 @@ def change_case_status(
                             new_v={"created_case_id": new_case.id, "target_module_id": target_mod_id}
                         )
                 
-                # 🔥 NUEVA AUTOMATIZACIÓN: ENVÍO SILENCIOSO DE SIGNATURIT 🔥
                 elif t == "SEND_SIGNATURIT":
                     template_id = config.get("template_id")
                     signers_map = config.get("signers", [])
@@ -1263,10 +1241,8 @@ def change_case_status(
                             token = decrypt_secret(integration.encrypted_token).strip()
                             base_url = "https://api.sandbox.signaturit.com" if integration.environment == "sandbox" else "https://api.signaturit.com"
 
-                            # Leemos el tipo de firma elegido, por defecto 'advanced'
                             signature_type = config.get("signature_type", "advanced")
 
-                            # Preparamos el Payload silencioso
                             payload = {
                                 "delivery_type": "email",
                                 "type": signature_type,
@@ -1275,7 +1251,6 @@ def change_case_status(
 
                             signers_data = []
                             for i, smap in enumerate(signers_map):
-                                # 🔥 MAPEO MÁGICO: Extraemos los valores reales del caso usando los nombres de los campos configurados
                                 name = updated_data.get(smap.get("name_field"), f"Firmante {i+1}")
                                 email = updated_data.get(smap.get("email_field"), "")
 
@@ -1285,7 +1260,6 @@ def change_case_status(
                                 
                                 signers_data.append({"name": str(name), "email": str(email)})
 
-                            # Auto-rellenar campos adicionales de la plantilla si los nombres coinciden
                             for key, value in updated_data.items():
                                 if value is not None and str(value).strip() != "":
                                     payload[f"data[{key}]"] = str(value)
@@ -1294,12 +1268,10 @@ def change_case_status(
                             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                             
                             try:
-                                # Ejecutamos la petición POST en el mismo instante de la transición
                                 response = requests.post(f"{base_url}/v3/signatures.json", data=payload, headers=headers, verify=False)
                                 
                                 if response.ok:
                                     res_data = response.json()
-                                    # Guardamos el registro para que el Webhook lo encuentre
                                     sig_request = models.SignatureRequest(
                                         company_id=current_user.company_id,
                                         case_id=case.id,
@@ -1316,11 +1288,14 @@ def change_case_status(
                                 print(f"Error en red Auto-Send: {str(e)}")
                         
                 elif t in ["WEBHOOK_OUT", "SEND_SLACK"]:
-                    # 🔥 FASE 3: INTEGRACIONES EXTERNAS EN TRANSICIONES 🔥
                     try:
                         execute_webhook(act, case.id, updated_data, new_status.name)
                     except Exception as e:
                         print(f"Error ejecutando integración (Transición ID {transition.id}): {e}")
+
+                # 🔥 INYECTAMOS LA ACCIÓN DE CHATWOOT EN TRANSICIONES 🔥
+                elif t == "SEND_CHATWOOT_MESSAGE":
+                    execute_chatwoot_message(db, current_user.company_id, case.module_id, case, v)
 
                 elif t == "CUSTOM_FUNCTION" and act.function_code:
                     local_env = {
@@ -1330,7 +1305,6 @@ def change_case_status(
                         "http": SafeHTTPClient()
                     }
                     
-                    # 🔥 FIX: Lista blanca de funciones seguras permitidas 🔥
                     safe_builtins = {
                         "print": print, "int": int, "float": float, "str": str,
                         "bool": bool, "len": len, "round": round, "abs": abs,
@@ -1371,7 +1345,6 @@ def change_case_status(
                             )
                             db.add(notification)
                             
-                            # 🔥 NUEVO: ENVIAR POR CORREO SI ESTÁ MARCADO (EN SEGUNDO PLANO) 🔥
                             if config.get("send_email"):
                                 user_obj = db.query(models.User).filter(models.User.id == target_id).first()
                                 if user_obj and user_obj.email:
@@ -1385,7 +1358,6 @@ def change_case_status(
                                         </p>
                                     </div>
                                     """
-                                    # 🔥 MAGIA ENTERPRISE V2: BOTONES BASADOS EN CONFIGURACIÓN UI 🔥
                                     email_actions = config.get("email_actions", [])
                                     
                                     if email_actions and len(email_actions) > 0:
@@ -1401,11 +1373,11 @@ def change_case_status(
                                             buttons_html = "<div style='margin-top: 25px; margin-bottom: 10px; display: block; text-align: center;'>"
                                             backend_url = os.getenv("BACKEND_URL", "http://localhost:8000") 
                                             
-                                            for t in out_transitions:
-                                                token = create_action_token(case.id, t.id, target_id)
+                                            for t_obj in out_transitions:
+                                                token = create_action_token(case.id, t_obj.id, target_id)
                                                 action_url = f"{backend_url}/api/v1/workflow/email-action?token={token}"
                                                 
-                                                t_name = t.name.lower()
+                                                t_name = t_obj.name.lower()
                                                 if "rechazar" in t_name or "cancelar" in t_name or "denegar" in t_name:
                                                     color = "#ef4444"
                                                 elif "aprobar" in t_name or "autorizar" in t_name or "aceptar" in t_name:
@@ -1413,7 +1385,7 @@ def change_case_status(
                                                 else:
                                                     color = "#3b82f6"
                                                 
-                                                buttons_html += f"<a href='{action_url}' style='background-color: {color}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin: 5px; font-family: sans-serif;'>{t.name}</a>"
+                                                buttons_html += f"<a href='{action_url}' style='background-color: {color}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin: 5px; font-family: sans-serif;'>{t_obj.name}</a>"
                                             
                                             buttons_html += "</div>"
                                             email_body = email_body.replace("</div>", f"{buttons_html}</div>")
@@ -1777,22 +1749,12 @@ def add_case_comment(
         "created_at": new_comment.created_at
     }
     
-# 1. Creamos un pequeño esquema para recibir los datos masivos
-class BulkUpdatePayload(BaseModel):
-    case_ids: List[int]
-    field_api_name: str
-    new_value: Any
-
-# 2. El endpoint que hace la magia
 @router.put("/bulk/update")
 def bulk_update_cases(
     payload: BulkUpdatePayload,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Actualiza un campo específico para múltiples registros en una sola transacción.
-    """
     cases = db.query(models.Case).filter(
         models.Case.id.in_(payload.case_ids),
         models.Case.company_id == current_user.company_id
@@ -1804,18 +1766,12 @@ def bulk_update_cases(
     updated_count = 0
     
     for case in cases:
-        # Clonamos el diccionario de data para que SQLAlchemy detecte el cambio
         current_data = dict(case.data) if case.data else {}
-        
-        # Actualizamos el campo
         current_data[payload.field_api_name] = payload.new_value
         case.data = current_data
-        
         updated_count += 1
 
-    # Hacemos 1 solo COMMIT a la base de datos para los 100 registros. ¡Súper eficiente!
     db.commit()
-
     return {"message": f"{updated_count} registros actualizados exitosamente."}
 
 # =======================================================
@@ -1831,9 +1787,9 @@ async def send_to_signaturit(
     request: Request,
     template_id: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
-    signers: str = Form(...), # JSON list [{"name": "...", "email": "..."}]
-    delivery_type: str = Form("email"), # 'email' o 'url'
-    signature_type: str = Form("advanced"), # 'advanced' o 'simple'
+    signers: str = Form(...), 
+    delivery_type: str = Form("email"),
+    signature_type: str = Form("advanced"), 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
@@ -1854,23 +1810,19 @@ async def send_to_signaturit(
 
     signers_data = json.loads(signers)
     
-    # 1. Preparamos el payload base
     payload = {
         "delivery_type": delivery_type,
         "type": signature_type
     }
     
-    # 2. Agregamos los firmantes requeridos por Signaturit
     for i, signer in enumerate(signers_data):
         payload[f"recipients[{i}][name]"] = signer.get("name", f"Firmante {i+1}")
         payload[f"recipients[{i}][email]"] = signer.get("email")
 
     files = {}
 
-    # 3. Decidimos si enviamos un Archivo Físico o un Template ID
     if template_id:
         payload["templates[0]"] = template_id
-        # Mapeo Mágico: Enviamos los datos del caso a los campos de Signaturit
         for key, value in case.data.items():
             if value is not None and str(value).strip() != "":
                 payload[f"data[{key}]"] = str(value)
@@ -1880,7 +1832,6 @@ async def send_to_signaturit(
     else:
         raise HTTPException(400, "Debes seleccionar una plantilla o subir un documento.")
 
-    # 4. Hacemos la llamada
     headers = {"Authorization": f"Bearer {token}"}
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     
@@ -1892,7 +1843,6 @@ async def send_to_signaturit(
             
         res_data = response.json()
         
-        # 5. Guardamos el seguimiento en nuestra base de datos
         sig_request = models.SignatureRequest(
             company_id=current_user.company_id,
             case_id=case.id,
@@ -1905,7 +1855,6 @@ async def send_to_signaturit(
         db.add(sig_request)
         db.commit()
 
-        # 6. Buscador recursivo de la URL de firma (Si el usuario eligió "Firmar Yo")
         signature_url = None
         if delivery_type == "url":
             def find_url(d):
@@ -1937,7 +1886,6 @@ def get_case_signatures(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Obtiene el historial de firmas solicitadas para un caso específico."""
     case = db.query(models.Case).filter(
         models.Case.id == case_id, 
         models.Case.company_id == current_user.company_id
@@ -1969,7 +1917,6 @@ def remind_signature(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Reenvía el correo de recordatorio al cliente a través de Signaturit."""
     sig_request = db.query(models.SignatureRequest).filter(
         models.SignatureRequest.id == signature_id,
         models.SignatureRequest.case_id == case_id,
@@ -1988,7 +1935,6 @@ def remind_signature(
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     try:
-        # Llamamos al endpoint de remind de Signaturit
         response = requests.post(f"{base_url}/v3/signatures/{sig_request.signaturit_id}/remind.json", headers=headers, verify=False)
         if not response.ok:
             raise HTTPException(400, "Signaturit no pudo procesar el recordatorio. Verifica el estado del documento.")
@@ -2003,7 +1949,6 @@ def cancel_signature(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Cancela una solicitud de firma en Signaturit."""
     sig_request = db.query(models.SignatureRequest).filter(
         models.SignatureRequest.id == signature_id,
         models.SignatureRequest.case_id == case_id,
@@ -2022,12 +1967,10 @@ def cancel_signature(
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     try:
-        # 🔥 FIX: Signaturit exige que la cancelación sea con el método PATCH
         response = requests.patch(f"{base_url}/v3/signatures/{sig_request.signaturit_id}/cancel.json", headers=headers, verify=False)
         if not response.ok:
             raise HTTPException(400, f"No se pudo cancelar. Signaturit dice: {response.text}")
         
-        # Actualizamos la base de datos de inmediato para no esperar al webhook
         sig_request.status = "canceled"
         db.commit()
         return {"message": "Envío cancelado con éxito."}
@@ -2041,7 +1984,6 @@ def download_signed_document(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """Descarga el PDF final firmado desde Signaturit."""
     sig_request = db.query(models.SignatureRequest).filter(
         models.SignatureRequest.id == signature_id,
         models.SignatureRequest.case_id == case_id,
@@ -2050,7 +1992,6 @@ def download_signed_document(
     
     if not sig_request: raise HTTPException(404, "Solicitud no encontrada.")
 
-    # Protegemos que solo se descargue si ya se firmó
     if sig_request.status not in ["completed", "document_signed"]:
         raise HTTPException(400, "El documento aún no ha sido firmado completamente.")
 
@@ -2065,7 +2006,6 @@ def download_signed_document(
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     try:
-        # 1. Pedimos los detalles para sacar el ID interno del documento
         detail_res = requests.get(f"{base_url}/v3/signatures/{sig_request.signaturit_id}.json", headers=headers, verify=False)
         if not detail_res.ok:
             raise HTTPException(400, "No se pudieron obtener los detalles del documento en Signaturit.")
@@ -2076,13 +2016,11 @@ def download_signed_document(
             
         document_id = documents[0].get("id")
 
-        # 2. Descargamos el PDF firmado directamente
         pdf_res = requests.get(f"{base_url}/v3/signatures/{sig_request.signaturit_id}/documents/{document_id}/download/signed", headers=headers, verify=False, stream=True)
         
         if not pdf_res.ok:
             raise HTTPException(400, "Error al descargar el PDF desde los servidores de Signaturit.")
 
-        # 3. Lo devolvemos como un archivo descargable al navegador
         return StreamingResponse(
             pdf_res.iter_content(chunk_size=8192),
             media_type="application/pdf",
@@ -2098,10 +2036,6 @@ def get_linked_cases(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Búsqueda Inversa Blindada: Busca todos los registros que 
-    tengan un campo 'relation' apuntando a este registro.
-    """
     target_case = db.query(models.Case).filter(
         models.Case.id == case_id,
         models.Case.company_id == current_user.company_id
@@ -2110,7 +2044,6 @@ def get_linked_cases(
     if not target_case:
         raise HTTPException(404, "Caso no encontrado")
 
-    # 1. Buscamos campos de relación que SÍ pertenezcan a un formulario
     relation_fields = db.query(models.FormField).filter(
         models.FormField.company_id == current_user.company_id,
         models.FormField.field_type == 'relation',
@@ -2121,38 +2054,27 @@ def get_linked_cases(
 
     for field in relation_fields:
         opts = field.options
-        if not opts:
-            continue
+        if not opts: continue
             
-        # Si las opciones se guardaron como String por error, las parseamos
         if isinstance(opts, str):
-            try:
-                opts = json.loads(opts)
-            except:
-                continue
+            try: opts = json.loads(opts)
+            except: continue
                 
-        # Si definitivamente no es un diccionario, saltamos este campo
-        if not isinstance(opts, dict):
-            continue
+        if not isinstance(opts, dict): continue
             
-        # Si el campo apunta a nuestro módulo...
         if str(opts.get("target_module_id")) == str(target_case.module_id):
             
-            # Buscamos el formulario de forma segura
             form = db.query(models.Form).filter(models.Form.id == field.form_id).first()
-            if not form or not form.module_id:
-                continue
+            if not form or not form.module_id: continue
                 
             source_module_id = form.module_id
             field_key = field.api_name or field.label
 
-            # Buscamos los casos del módulo origen
             source_cases = db.query(models.Case).filter(
                 models.Case.module_id == source_module_id,
                 models.Case.deleted_at == None
             ).all()
 
-            # Buscamos coincidencias (si el campo relacional tiene nuestro ID)
             matches = [c for c in source_cases if str(c.data.get(field_key)) == str(case_id)]
 
             if matches:
@@ -2163,7 +2085,6 @@ def get_linked_cases(
                     linked_results[mod_name] = []
 
                 for c in matches:
-                    # Evitar duplicados si hay dos campos que apuntan a lo mismo en el mismo módulo
                     if not any(existing['id'] == c.id for existing in linked_results[mod_name]):
                         linked_results[mod_name].append({
                             "id": c.id,
@@ -2174,9 +2095,6 @@ def get_linked_cases(
 
     return linked_results
 
-# =======================================================
-# 🔥 NUEVO: BUSCADOR DE USUARIOS PARA CAMPOS 'USER_RELATION' 🔥
-# =======================================================
 @router.get("/users/search")
 def search_users_for_relation(
     q: str = "",
@@ -2185,11 +2103,6 @@ def search_users_for_relation(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    """
-    Endpoint dedicado para que los campos tipo 'user_relation' de React 
-    puedan buscar usuarios en tiempo real. 
-    Soporta filtrado opcional por Rol o Perfil si el campo fue configurado así.
-    """
     query = db.query(models.User).filter(
         models.User.company_id == current_user.company_id,
         models.User.is_active == True
@@ -2213,7 +2126,6 @@ def search_users_for_relation(
 
     users = query.limit(20).all()
 
-    # Formateamos la respuesta para que React-Select o Autocomplete la entiendan fácil
     return [{
         "id": u.id,
         "name": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
