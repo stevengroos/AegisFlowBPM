@@ -64,13 +64,17 @@ def get_public_catalog(
         })
 
     return {
-        "store_title": config.get("store_title", module.name),
-        #"module_name": module.name,
+        "store_title": config.get("store_title", module.name), 
         "custom_domain": config.get("custom_domain", ""),
         "theme_color": config.get("theme_color", "#3b82f6"),
-        "whatsapp_number": config.get("whatsapp_number", ""), # 🔥 NUEVO
-        "cover_image": config.get("cover_image", ""),         # 🔥 NUEVO
-        "mapped_variants": config.get("mapped_variants", ""), # 🔥 ASEGÚRATE DE AGREGAR ESTO
+        "whatsapp_number": config.get("whatsapp_number", ""), 
+        "cover_image": config.get("cover_image", ""),
+        "mapped_variants": config.get("mapped_variants", ""),
         "mapped_gallery": config.get("mapped_gallery", ""),
+        # 🔥 NUEVAS COLUMNAS MAPEADAS 🔥
+        "mapped_variants_col_name": config.get("mapped_variants_col_name", ""),
+        "mapped_variants_col_stock": config.get("mapped_variants_col_stock", ""),
+        "mapped_variants_col_image": config.get("mapped_variants_col_image", ""),
+        "mapped_gallery_col_image": config.get("mapped_gallery_col_image", ""),
         "products": catalog_items
     }

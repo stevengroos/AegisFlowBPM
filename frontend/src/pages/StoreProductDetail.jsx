@@ -15,19 +15,21 @@ export default function StoreProductDetail() {
     themeColor: '#3b82f6',
     whatsappNumber: '',
     coverImage: '',
-    mapped_variants: '', // 🔥 NUEVO
-    mapped_gallery: ''   // 🔥 NUEVO
+    mapped_variants: '', 
+    mapped_variants_col_name: '',
+    mapped_variants_col_stock: '',
+    mapped_variants_col_image: '',
+    mapped_gallery: '',
+    mapped_gallery_col_image: ''
   });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
-  // --- MODO OSCURO (Sincronizado) ---
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
 
   const [varianteSeleccionada, setVarianteSeleccionada] = useState(null);
   const [imagenGaleriaSeleccionada, setImagenGaleriaSeleccionada] = useState(null);
 
-  // --- CUOTERO Y CARRITO ---
   const [modalidad, setModalidad] = useState('financiado'); 
   const [cuotasElegidas, setCuotasElegidas] = useState(3); 
   const tasasExcel = { 2: 6.4, 3: 8.4, 4: 10.4, 5: 12.3, 6: 14.2, 7: 16.0, 8: 17.7, 9: 19.5, 10: 21.2, 11: 22.8, 12: 24.4, 13: 25.9, 14: 27.5, 15: 28.9, 16: 30.4, 17: 31.8, 18: 33.2, 19: 34.5, 20: 35.8, 21: 37.0, 22: 38.3, 23: 39.5, 24: 40.7 };
@@ -37,7 +39,6 @@ export default function StoreProductDetail() {
     try { return JSON.parse(localStorage.getItem(`carrito_tienda_${moduleId}`)) || []; } catch (e) { return []; }
   });
 
-  // --- EFECTOS ---
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -48,13 +49,11 @@ export default function StoreProductDetail() {
     }
   }, [isDarkMode]);
 
-  // 🔥 EFECTO SWR (Carga instantánea desde Caché) 🔥
   useEffect(() => {
     const fetchProduct = async () => {
       const cacheKey = `store_catalog_${moduleId}`;
       const cachedData = sessionStorage.getItem(cacheKey);
 
-      // 1. Si venimos del Home, ya tenemos los datos en caché. Los mostramos AL INSTANTE.
       if (cachedData) {
         try {
           const parsed = JSON.parse(cachedData);
@@ -67,7 +66,6 @@ export default function StoreProductDetail() {
         } catch (e) {}
       }
 
-      // 2. Fetch silencioso a la API para asegurar que el stock o el precio no hayan cambiado
       try {
         const res = await axios.get(`${API_URL}/api/v1/storefront/catalog/${moduleId}`);
         const newStoreInfo = {
@@ -75,8 +73,12 @@ export default function StoreProductDetail() {
           themeColor: res.data.theme_color || '#3b82f6',
           whatsappNumber: res.data.whatsapp_number || '', 
           coverImage: res.data.cover_image || '',
-          mapped_variants: res.data.mapped_variants || '', // 🔥 GUARDAMOS EL MAPEO
-          mapped_gallery: res.data.mapped_gallery || ''    // 🔥 GUARDAMOS EL MAPEO     
+          mapped_variants: res.data.mapped_variants || '', 
+          mapped_variants_col_name: res.data.mapped_variants_col_name || '', 
+          mapped_variants_col_stock: res.data.mapped_variants_col_stock || '',
+          mapped_variants_col_image: res.data.mapped_variants_col_image || '',
+          mapped_gallery: res.data.mapped_gallery || '',
+          mapped_gallery_col_image: res.data.mapped_gallery_col_image || ''
         };
         setStoreInfo(newStoreInfo);
         
@@ -85,7 +87,6 @@ export default function StoreProductDetail() {
         
         setProducto(foundProduct);
 
-        // Actualizamos el caché maestro por si el usuario vuelve atrás
         sessionStorage.setItem(cacheKey, JSON.stringify({ products: res.data.products, storeInfo: newStoreInfo }));
       } catch (err) {
         if (!cachedData || !producto) setError(err.response?.data?.detail || err.message || 'Error al cargar el producto.');
@@ -100,31 +101,62 @@ export default function StoreProductDetail() {
   useEffect(() => localStorage.setItem(`carrito_tienda_${moduleId}`, JSON.stringify(carrito)), [carrito, moduleId]);
 
   // =========================================================================
-  // 🔥 EXTRACCIÓN DINÁMICA DE TABLAS (VARIANTES Y GALERÍA) 🔥
+  // 🔥 LECTURA INTELIGENTE DE MAPEOS Y CORRECCIÓN DE IMÁGENES 🔥
   // =========================================================================
+  
+  // FIX: Las imágenes crudas de la BD vienen como "/uploads/foto.jpg". Necesitamos pegarle la URL de la API.
+  const resolveImageUrl = (url) => {
+      if (!url) return null;
+      return url.startsWith('http') ? url : `${API_URL}${url}`;
+  };
+
   const precioBase = producto ? Number(producto.price) || 0 : 0;
   
-  // 🔥 LEEMOS EL MAPEO EXACTO DEL CHANNEL BUILDER 🔥
   const variantsApiName = storeInfo.mapped_variants;
   const galleryApiName = storeInfo.mapped_gallery;
 
-  // Extraemos las tablas usando el nombre mapeado, con un respaldo de nombres comunes por si acaso
   const variants = (variantsApiName ? producto?.raw_data?.[variantsApiName] : (producto?.raw_data?.opciones_de_colores_variantes || producto?.raw_data?.variantes || producto?.raw_data?.variants)) || [];
   const gallery = (galleryApiName ? producto?.raw_data?.[galleryApiName] : (producto?.raw_data?.galeria_de_imagenes || producto?.raw_data?.galeria || producto?.raw_data?.gallery)) || [];
 
-  // Funciones Helper para encontrar las columnas sin importar cómo las nombraste en el panel
-  const getVariantImage = (v) => v?.['Imagen'] || v?.['Foto'] || v?.['image_url'];
-  const getVariantColor = (v) => v?.['Color'] || v?.['Variante'] || v?.['Opcion'] || v?.['Nombre'] || v?.['color_name'] || 'Opción sin nombre';
-  const getVariantStock = (v) => {
-    const stock = v?.['Stock'] !== undefined ? v['Stock'] : (v?.['Cantidad'] !== undefined ? v['Cantidad'] : v?.['stock']);
-    return Number(stock) || 0;
+  const getVariantColor = (v) => {
+      if (storeInfo.mapped_variants_col_name && v[storeInfo.mapped_variants_col_name] !== undefined) {
+          return v[storeInfo.mapped_variants_col_name];
+      }
+      return v?.['Color'] || v?.['Variante'] || v?.['Opcion'] || v?.['Nombre'] || v?.['color_name'] || 'Opción sin nombre';
   };
-  const getGalleryImage = (g) => g?.['Imagen'] || g?.['Foto'] || g?.['image_url'];
+
+  const getVariantStock = (v) => {
+      if (storeInfo.mapped_variants_col_stock && v[storeInfo.mapped_variants_col_stock] !== undefined) {
+          return Number(v[storeInfo.mapped_variants_col_stock]) || 0;
+      }
+      return Number(v?.['Stock'] ?? v?.['Cantidad'] ?? v?.['stock']) || 0;
+  };
+
+  const getVariantImage = (v) => {
+      let rawUrl = null;
+      if (storeInfo.mapped_variants_col_image && v[storeInfo.mapped_variants_col_image] !== undefined) {
+          rawUrl = v[storeInfo.mapped_variants_col_image];
+      } else {
+          rawUrl = v?.['Imagen'] || v?.['Foto'] || v?.['image_url'];
+      }
+      return resolveImageUrl(rawUrl);
+  };
+
+  const getGalleryImage = (g) => {
+      let rawUrl = null;
+      if (storeInfo.mapped_gallery_col_image && g[storeInfo.mapped_gallery_col_image] !== undefined) {
+          rawUrl = g[storeInfo.mapped_gallery_col_image];
+      } else {
+          rawUrl = g?.['Imagen'] || g?.['Foto'] || g?.['image_url'];
+      }
+      return resolveImageUrl(rawUrl);
+  };
 
   // =========================================================================
   
   const currentVariantImage = varianteSeleccionada ? getVariantImage(varianteSeleccionada) : null;
-  let imagenMostrar = currentVariantImage || imagenGaleriaSeleccionada || producto?.image_url;
+  // 🔥 FIX DE LA FOTO PRINCIPAL: A la foto de portada también le aplicamos resolveImageUrl
+  let imagenMostrar = currentVariantImage || imagenGaleriaSeleccionada || resolveImageUrl(producto?.image_url);
   
   const stockMostrar = varianteSeleccionada ? getVariantStock(varianteSeleccionada) : (producto?.stock || 0);
   const nombreProductoFinal = varianteSeleccionada ? `${producto?.title} - ${getVariantColor(varianteSeleccionada)}` : producto?.title;
@@ -274,7 +306,7 @@ export default function StoreProductDetail() {
             {(gallery.length > 0 || variants.some(v => getVariantImage(v))) && (
               <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
                 <button onClick={() => { setImagenGaleriaSeleccionada(null); setVarianteSeleccionada(null); }} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white dark:bg-gray-800 border-2 overflow-hidden flex-shrink-0 p-2 transition-all ${(!varianteSeleccionada && !imagenGaleriaSeleccionada) ? 'border-gray-500' : 'border-gray-200 dark:border-gray-700'}`} style={(!varianteSeleccionada && !imagenGaleriaSeleccionada) ? {borderColor: storeInfo.themeColor} : {}}>
-                  <img src={producto.image_url} alt="Portada" loading="lazy" className="w-full h-full object-contain" />
+                  <img src={resolveImageUrl(producto?.image_url)} alt="Portada" loading="lazy" className="w-full h-full object-contain" />
                 </button>
                 
                 {variants.filter(v => getVariantImage(v)).map((v, i) => {
