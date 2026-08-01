@@ -61,6 +61,24 @@ def calculate_formulas(db: Session, form_id: int, data_dict: dict) -> dict:
         if not formula: continue
         try:
             expression = str(formula)
+            
+            # 🔥 NUEVO: Soporte para sumar columnas de subformularios SUM([subform.columna])
+            sum_matches = re.findall(r'SUM\(\[(.*?)\.(.*?)\]\)', expression)
+            for subform_key, col_key in sum_matches:
+                sub_data = data_dict.get(subform_key, [])
+                if not isinstance(sub_data, list): sub_data = []
+                
+                total_sum = 0
+                for row in sub_data:
+                    if isinstance(row, dict):
+                        # Limpiamos el valor para asegurar que es un número
+                        val = re.sub(r'[^\d.-]', '', str(row.get(col_key, 0))) or 0
+                        total_sum += float(val)
+                        
+                # Reemplazamos la expresión completa por el número calculado
+                expression = expression.replace(f"SUM([{subform_key}.{col_key}])", str(total_sum))
+
+            # Lógica existente para campos simples
             variables = re.findall(r'\[(.*?)\]', expression)
             for var in variables:
                 val = data_dict.get(var, 0)

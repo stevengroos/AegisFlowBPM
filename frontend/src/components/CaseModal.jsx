@@ -527,12 +527,28 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
       if (!formulaStr) return '';
       try {
           let expr = formulaStr;
+          
+          // 🔥 NUEVO: Resolver SUM([subform.columna])
+          const sumRegex = /SUM\(\[(.*?)\.(.*?)\]\)/g;
+          expr = expr.replace(sumRegex, (match, subformKey, colKey) => {
+              const subformData = currentData[subformKey];
+              if (!Array.isArray(subformData)) return 0;
+              
+              return subformData.reduce((acc, row) => {
+                  const val = Number(String(row[colKey] || 0).replace(/[^0-9.-]+/g,""));
+                  return acc + (isNaN(val) ? 0 : val);
+              }, 0);
+          });
+
+          // Lógica existente para campos simples
           const vars = expr.match(/\[(.*?)\]/g) || [];
           vars.forEach(v => {
               const key = v.replace('[', '').replace(']', '');
-              const val = currentData[key] || 0;
+              let val = currentData[key] || 0;
+              val = Number(String(val).replace(/[^0-9.-]+/g,"")) || 0;
               expr = expr.replace(v, val);
           });
+          
           // eslint-disable-next-line no-eval
           const result = eval(expr);
           return isNaN(result) ? '...' : Number(result).toFixed(2);
