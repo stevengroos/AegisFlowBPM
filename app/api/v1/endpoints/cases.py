@@ -1547,22 +1547,29 @@ async def execute_import(
                 if excel_col in df.columns:
                     val = row[excel_col]
                     
-                    # 🔥 PARCHE DE IMPORTACIÓN JSON 🔥
+                    # 🔥 PARCHE DE IMPORTACIÓN JSON (CORREGIDO) 🔥
                     if isinstance(val, str):
                         val_str = val.strip()
                         # Si parece un Array JSON o un Objeto JSON
                         if (val_str.startswith("[") and val_str.endswith("]")) or (val_str.startswith("{") and val_str.endswith("}")):
                             try:
-                                # Lo parseamos para asegurar que es JSON válido
                                 parsed_val = json.loads(val_str)
-                                # Y lo asignamos como lista/diccionario nativo. 
-                                # SQLAlchemy se encargará de pasarlo a JSONB.
                                 val = parsed_val 
                             except:
-                                pass # Si falla, se queda como texto normal
+                                pass 
                                 
-                    # Evitamos meter valores nulos de pandas (NaN)
-                    if pd.isna(val) or val == "":
+                    # 🛡️ Chequeo de nulos a prueba de balas
+                    is_empty = False
+                    if isinstance(val, (list, dict)):
+                        is_empty = False # Si es una lista o diccionario, es data válida
+                    else:
+                        try:
+                            if pd.isna(val) or val == "":
+                                is_empty = True
+                        except:
+                            is_empty = False # Si falla la validación, asumimos que tiene algo
+                            
+                    if is_empty:
                          case_data[api_name] = ""
                     else:
                          case_data[api_name] = val
