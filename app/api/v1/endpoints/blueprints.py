@@ -33,7 +33,6 @@ class BlueprintUpdate(BaseModel):
 class BlueprintResponse(BlueprintBase):
     id: int
     company_id: int
-    # 🔥 FASE 1.1: Nuevos campos de versionado añadidos a la respuesta
     version: Optional[int] = 1
     is_draft: Optional[bool] = False
     parent_blueprint_id: Optional[int] = None
@@ -60,7 +59,6 @@ def clone_blueprint_dependencies(db: Session, old_bp_id: int, new_bp_id: int):
             name=os.name,
             is_initial=os.is_initial,
             sla_hours=os.sla_hours,
-            # 🔥 FASE BPMN: COPIAMOS FORMAS Y POSICIONES 🔥
             bpmn_shape=os.bpmn_shape,
             position_x=os.position_x,
             position_y=os.position_y
@@ -111,6 +109,9 @@ def clone_blueprint_dependencies(db: Session, old_bp_id: int, new_bp_id: int):
             db.add(nv)
             
     db.commit()
+    
+    # 🔥 AÑADIDO: Retornar el mapa de estados para la migración de casos 🔥
+    return status_map
 
 # ==========================
 # ENDPOINTS
@@ -121,7 +122,6 @@ def get_blueprints(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    # 🔥 FIX: Solo devolvemos las versiones ACTIVAS en la lista principal
     query = db.query(models.Blueprint).filter(
         models.Blueprint.company_id == current_user.company_id,
         models.Blueprint.is_active == True
@@ -132,7 +132,6 @@ def get_blueprints(
         
     return query.all()
 
-# 🔥 NUEVO: Endpoint para traer el historial de versiones de un Blueprint
 @router.get("/{blueprint_id}/versions", response_model=List[BlueprintResponse])
 def get_blueprint_versions(
     blueprint_id: int,
@@ -149,7 +148,6 @@ def get_blueprint_versions(
     if not blueprint:
         raise HTTPException(status_code=404, detail="Blueprint no encontrado")
         
-    # Traemos todo el "linaje" (flujos inactivos/activos con el mismo nombre y módulo)
     versions = db.query(models.Blueprint).filter(
         models.Blueprint.company_id == current_user.company_id,
         models.Blueprint.name == blueprint.name,
@@ -181,7 +179,7 @@ def create_blueprint(
         trigger_value=blueprint_in.trigger_value,
         module_id=blueprint_in.module_id,
         company_id=current_user.company_id,
-        version=1, # Todo flujo nuevo nace en V1
+        version=1,
         is_draft=False
     )
     db.add(new_blueprint)
@@ -228,13 +226,10 @@ def update_blueprint(
         "is_active": blueprint.is_active
     }
     
-    # 🔥 FASE 1.1: ARCHIVAR Y VERSIONAR 🔥
-    # Apagamos el actual para que los nuevos casos no lo usen
     blueprint.is_active = False
     
     update_data = blueprint_in.dict(exclude_unset=True)
     
-    # 🔥 FIX: APAGÓN MASIVO DE VERSIONES VIEJAS
     is_going_to_be_active = update_data.get('is_active', True)
     if is_going_to_be_active:
         db.query(models.Blueprint).filter(
@@ -243,28 +238,22 @@ def update_blueprint(
             models.Blueprint.name == blueprint.name
         ).update({"is_active": False})
 
-    # =================================================================
-    # 🔥 FIX DE NUMERACIÓN: EVITAR VERSIONES REPETIDAS (EJ. VARIAS V1) 🔥
-    # =================================================================
-    # Buscamos la versión MÁS ALTA que exista en el historial para este flujo
     latest_bp = db.query(models.Blueprint).filter(
         models.Blueprint.company_id == current_user.company_id,
         models.Blueprint.module_id == blueprint.module_id,
         models.Blueprint.name == blueprint.name
     ).order_by(models.Blueprint.version.desc()).first()
     
-    # Calculamos el siguiente número lógico
     next_version_number = (latest_bp.version if latest_bp and latest_bp.version else 1) + 1
 
-    # Creamos el nuevo registro (¡SOLO UNA VEZ!)
     new_blueprint = models.Blueprint(
         name=update_data.get('name', blueprint.name),
         trigger_field=update_data.get('trigger_field', blueprint.trigger_field),
         trigger_value=update_data.get('trigger_value', blueprint.trigger_value),
         module_id=update_data.get('module_id', blueprint.module_id),
         company_id=current_user.company_id,
-        version=next_version_number, # 🔥 Usamos la numeración inteligente calculada arriba
-        parent_blueprint_id=blueprint.id, # Rastreamos el linaje (de qué ID provino)
+        version=next_version_number,
+        parent_blueprint_id=blueprint.id,
         is_active=update_data.get('is_active', True),
         is_draft=False
     )
@@ -273,8 +262,29 @@ def update_blueprint(
     db.commit()
     db.refresh(new_blueprint)
     
-    # 🔥 Clonamos en cascada la estructura profunda 🔥
-    clone_blueprint_dependencies(db, blueprint.id, new_blueprint.id)
+    # 🔥 Clonamos en cascada la estructura profunda y RECUPERAMOS EL MAPA 🔥
+    status_map = clone_blueprint_dependencies(db, blueprint.id, new_blueprint.id)
+    
+    # ========================================================================
+    # 🔥 NUEVO: MIGRACIÓN AUTOMÁTICA DE CASOS AL NUEVO FLUJO 🔥
+    # ========================================================================
+    try:
+        if status_map:
+            for old_status_id, new_status_id in status_map.items():
+                # Actualizamos masivamente todos los registros anclados al ID viejo
+                db.query(models.Case).filter(
+                    models.Case.status_id == old_status_id,
+                    models.Case.module_id == new_blueprint.module_id
+                ).update(
+                    {"status_id": new_status_id},
+                    synchronize_session=False # Operación SQL optimizada y rápida
+                )
+            
+            db.commit() # Consolidamos la migración
+    except Exception as e:
+        print(f"Error crítico al migrar casos a la versión {new_blueprint.version}: {e}")
+        db.rollback()
+    # ========================================================================
     
     new_data = {
         "name": new_blueprint.name, 
