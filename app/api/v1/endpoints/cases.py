@@ -14,6 +14,7 @@ import asyncio
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import make_transient
 from sqlalchemy import or_
+import math
 
 
 from app.core.emails import send_security_alert_async
@@ -1475,7 +1476,6 @@ async def analyze_import_file(
     except Exception as e:
         raise HTTPException(400, f"Error al leer el archivo: {str(e)}")
 
-
 @router.post("/import/execute/{module_id}")
 async def execute_import(
     module_id: int,
@@ -1486,6 +1486,23 @@ async def execute_import(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
+    #import math # Importamos math para detectar los NaN
+    
+    # 🔥 EL ESTERILIZADOR DE JSON 🔥
+    # Función recursiva que entra a los subformularios y elimina NaNs
+    def sanitize_for_json(v):
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return ""
+        if isinstance(v, dict):
+            return {k: sanitize_for_json(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [sanitize_for_json(val) for val in v]
+        # Convertir tipos especiales de Numpy (como int64) a Python normal
+        if hasattr(v, 'item') and callable(getattr(v, 'item')): 
+            try: return v.item()
+            except: pass
+        return v
+
     security_utils.check_module_permission(db, current_user, module_id, "create")
     
     form = db.query(models.Form).filter(
@@ -1514,6 +1531,7 @@ async def execute_import(
         else:
             raise HTTPException(400, "Formato no soportado. Usa .csv o .xlsx")
 
+        # 1. Limpiamos las celdas vacías del Excel/Pandas
         df = df.fillna("")
 
         new_batch = models.ImportBatch(
@@ -1547,7 +1565,7 @@ async def execute_import(
                 if excel_col in df.columns:
                     val = row[excel_col]
                     
-                    # 🔥 PARCHE DEFINITIVO PARA IMPORTAR JSON 🔥
+                    # 2. Parseamos el JSON si es un Subformulario (Array) u Objeto
                     if isinstance(val, str):
                         val_str = val.strip()
                         if (val_str.startswith("[") and val_str.endswith("]")) or (val_str.startswith("{") and val_str.endswith("}")):
@@ -1556,24 +1574,9 @@ async def execute_import(
                             except:
                                 pass 
                                 
-                    # 🛡️ CHEQUEO DE NULOS ESTRICTO Y SEGURO
-                    is_empty = False
-                    
-                    # 1. Si es exactamente None o un string vacío
-                    if val is None or (isinstance(val, str) and val.strip() == ""):
-                        is_empty = True
-                    # 2. Si es una lista o diccionario (ej. Variantes/Galería), NUNCA está vacío a nivel de BD
-                    elif isinstance(val, (list, dict)):
-                        is_empty = False
-                    # 3. Solo revisamos pd.isna() si estamos 100% seguros que es un valor simple (escalar)
-                    elif pd.api.types.is_scalar(val):
-                        if pd.isna(val):
-                            is_empty = True
-                            
-                    if is_empty:
-                         case_data[api_name] = ""
-                    else:
-                         case_data[api_name] = val
+                    # 3. Esterilizamos TODO el contenido de una forma 100% segura para la BD
+                    clean_val = sanitize_for_json(val)
+                    case_data[api_name] = clean_val
 
             new_case = models.Case(
                 company_id=current_user.company_id,
