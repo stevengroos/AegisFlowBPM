@@ -1546,13 +1546,26 @@ async def execute_import(
             for excel_col, api_name in mapping_dict.items():
                 if excel_col in df.columns:
                     val = row[excel_col]
-                    # 🔥 NUEVO: Auto-parsear JSON para importar Subformularios (Tablas) 🔥
-                    if isinstance(val, str) and val.strip().startswith("[") and val.strip().endswith("]"):
-                        try:
-                            val = json.loads(val.strip())
-                        except:
-                            pass
-                    case_data[api_name] = val if val != "" else ""
+                    
+                    # 🔥 PARCHE DE IMPORTACIÓN JSON 🔥
+                    if isinstance(val, str):
+                        val_str = val.strip()
+                        # Si parece un Array JSON o un Objeto JSON
+                        if (val_str.startswith("[") and val_str.endswith("]")) or (val_str.startswith("{") and val_str.endswith("}")):
+                            try:
+                                # Lo parseamos para asegurar que es JSON válido
+                                parsed_val = json.loads(val_str)
+                                # Y lo asignamos como lista/diccionario nativo. 
+                                # SQLAlchemy se encargará de pasarlo a JSONB.
+                                val = parsed_val 
+                            except:
+                                pass # Si falla, se queda como texto normal
+                                
+                    # Evitamos meter valores nulos de pandas (NaN)
+                    if pd.isna(val) or val == "":
+                         case_data[api_name] = ""
+                    else:
+                         case_data[api_name] = val
 
             new_case = models.Case(
                 company_id=current_user.company_id,
