@@ -10,6 +10,9 @@ import FileUploadField from '../components/ui/FileUploadField';
 import PhoneInputPkg from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
 import CurrencyInputPkg from 'react-currency-input-field';
+// 🔥 NUEVO: IMPORTAR EDITOR DE TEXTO ENRIQUECIDO 🔥
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 // 🔥 PENTEST FIX: Evitar "React Error 130: got object" en Vercel/Vite 🔥
 const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
@@ -437,9 +440,25 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
               })()}
             </div>
 
+          /* 🔥 NUEVO: MODO EDICIÓN DE TEXTO ENRIQUECIDO 🔥 */
           ) : field.field_type === 'textarea' ? (
-            <textarea required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} />
-            
+            <div>
+              <ReactQuill 
+                 theme="snow" 
+                 value={formData[fieldKey] || ''} 
+                 onChange={(content) => setFormData({...formData, [fieldKey]: content})} 
+                 className="bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg"
+                 modules={{
+                   toolbar: [
+                     ['bold', 'italic', 'underline', 'strike'],
+                     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                     ['clean']
+                   ]
+                 }}
+              />
+            </div>
+
+
           ) : field.field_type === 'checkbox' ? (
             <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
               <input type="checkbox" checked={formData[fieldKey] || false} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.checked})} className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-blue-600 focus:ring-blue-500 cursor-pointer" />

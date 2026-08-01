@@ -16,6 +16,9 @@ import CaseExternalChat from '../features/cases/CaseExternalChat';
 import PhoneInputPkg from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
 import CurrencyInputPkg from 'react-currency-input-field';
+// 🔥 NUEVO: IMPORTAR EDITOR DE TEXTO ENRIQUECIDO 🔥
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 // 🔥 PENTEST FIX: Evitar "React Error 130: got object" en Vercel/Vite 🔥
 const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
@@ -512,6 +515,15 @@ const CaseDetail = () => {
 
           ) : field.field_type === 'subform' ? (
              <SubformTable field={field} value={value || []} relationData={relationData} isEditing={false} />
+             
+          /* 🔥 NUEVO: MODO LECTURA DE TEXTO ENRIQUECIDO (HTML) 🔥 */
+          ) : field.field_type === 'textarea' ? (
+             <div className="ql-snow">
+               <div 
+                 className="ql-editor !p-0 text-sm font-medium text-gray-900 dark:text-gray-100" 
+                 dangerouslySetInnerHTML={{ __html: value || '<span class="text-gray-400 dark:text-gray-600 italic">--</span>' }} 
+               />
+             </div>
           ) : (
              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-pre-wrap leading-relaxed">
                {value !== undefined && value !== "" && value !== false ? String(value) : <span className="text-gray-400 dark:text-gray-600 italic">--</span>}
@@ -617,7 +629,26 @@ const CaseDetail = () => {
           </div>
         )
 
-        : field.field_type === 'textarea' ? <textarea required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} rows={3} className={inputClasses} />
+        /* 🔥 NUEVO: MODO EDICIÓN DE TEXTO ENRIQUECIDO 🔥 */
+        : field.field_type === 'textarea' ? (
+          <div className={isReadOnly ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}>
+            <ReactQuill 
+               theme="snow" 
+               value={value || ''} 
+               onChange={(content) => setEditFormData({...editFormData, [fieldKey]: content})} 
+               readOnly={isReadOnly}
+               className="bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg"
+               modules={{
+                 toolbar: isReadOnly ? false : [
+                   ['bold', 'italic', 'underline', 'strike'],
+                   [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                   ['clean']
+                 ]
+               }}
+            />
+          </div>
+        )
+        
         : field.field_type === 'checkbox' ? <input type="checkbox" disabled={isReadOnly} checked={value || false} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.checked})} className={`w-5 h-5 rounded text-blue-600 focus:ring-blue-500 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} /> 
         
         : field.field_type === 'map' ? (
