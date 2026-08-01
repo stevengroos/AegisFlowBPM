@@ -1546,6 +1546,12 @@ async def execute_import(
             for excel_col, api_name in mapping_dict.items():
                 if excel_col in df.columns:
                     val = row[excel_col]
+                    # 🔥 NUEVO: Auto-parsear JSON para importar Subformularios (Tablas) 🔥
+                    if isinstance(val, str) and val.strip().startswith("[") and val.strip().endswith("]"):
+                        try:
+                            val = json.loads(val.strip())
+                        except:
+                            pass
                     case_data[api_name] = val if val != "" else ""
 
             new_case = models.Case(
