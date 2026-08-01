@@ -1547,27 +1547,28 @@ async def execute_import(
                 if excel_col in df.columns:
                     val = row[excel_col]
                     
-                    # 🔥 PARCHE DE IMPORTACIÓN JSON (CORREGIDO) 🔥
+                    # 🔥 PARCHE DEFINITIVO PARA IMPORTAR JSON 🔥
                     if isinstance(val, str):
                         val_str = val.strip()
-                        # Si parece un Array JSON o un Objeto JSON
                         if (val_str.startswith("[") and val_str.endswith("]")) or (val_str.startswith("{") and val_str.endswith("}")):
                             try:
-                                parsed_val = json.loads(val_str)
-                                val = parsed_val 
+                                val = json.loads(val_str)
                             except:
                                 pass 
                                 
-                    # 🛡️ Chequeo de nulos a prueba de balas
+                    # 🛡️ CHEQUEO DE NULOS ESTRICTO Y SEGURO
                     is_empty = False
-                    if isinstance(val, (list, dict)):
-                        is_empty = False # Si es una lista o diccionario, es data válida
-                    else:
-                        try:
-                            if pd.isna(val) or val == "":
-                                is_empty = True
-                        except:
-                            is_empty = False # Si falla la validación, asumimos que tiene algo
+                    
+                    # 1. Si es exactamente None o un string vacío
+                    if val is None or (isinstance(val, str) and val.strip() == ""):
+                        is_empty = True
+                    # 2. Si es una lista o diccionario (ej. Variantes/Galería), NUNCA está vacío a nivel de BD
+                    elif isinstance(val, (list, dict)):
+                        is_empty = False
+                    # 3. Solo revisamos pd.isna() si estamos 100% seguros que es un valor simple (escalar)
+                    elif pd.api.types.is_scalar(val):
+                        if pd.isna(val):
+                            is_empty = True
                             
                     if is_empty:
                          case_data[api_name] = ""
