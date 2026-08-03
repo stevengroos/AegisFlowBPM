@@ -24,6 +24,25 @@ import 'react-quill-new/dist/quill.snow.css';
 const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
 const CurrencyInput = CurrencyInputPkg.default || CurrencyInputPkg;
 
+// 🔥 NUEVO FORMATO PARA MONEDAS Y FÓRMULAS 🔥
+const formatCurrencyValue = (val, decimalPlaces = 2, decSep = ',', grpSep = '.') => {
+  if (val === undefined || val === null || val === '') return '';
+  const num = Number(val);
+  if (isNaN(num)) return val; // Si no es número, devolver tal cual
+
+  // Convertimos a decimales (ej. "1000000.00")
+  let strNum = num.toFixed(decimalPlaces);
+  
+  // Separamos enteros de decimales
+  let parts = strNum.split('.');
+  
+  // Aplicamos el separador de miles a la parte entera
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, grpSep);
+  
+  // Unimos todo con el separador decimal
+  return decimalPlaces > 0 ? parts.join(decSep) : parts[0];
+};
+
 const CaseDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -510,8 +529,15 @@ const CaseDetail = () => {
              <a href={`https://www.google.com/maps/search/?api=1&query=${value}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1.5"><MapPin size={14}/> Ver en Google Maps ({value})</a>
           
           ) : field.field_type === 'formula' ? (
-             <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5"><Calculator size={14}/> {value !== undefined ? value : '--'}</span>
-          
+            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              <Calculator size={14}/> 
+              {value !== undefined ? (
+                  // Si el resultado de la fórmula es un número puro (ej. "7000000.0" o 7000000), le aplicamos el formato x.xxx.xxx,xx
+                  !isNaN(Number(value)) && String(value).trim() !== '' 
+                    ? formatCurrencyValue(value, 2, ',', '.') 
+                    : value
+              ) : '--'}
+            </span>
           /* 🔥 NUEVO: MODO LECTURA DE AUTO NUMÉRICO 🔥 */
           ) : field.field_type === 'auto_number' && value ? (
              <span className="text-sm font-bold text-orange-600 dark:text-orange-400 flex items-center gap-1.5">
@@ -519,10 +545,23 @@ const CaseDetail = () => {
              </span>
 
           ) : field.field_type === 'currency' && value !== undefined && value !== "" && value !== null ? (
-             <span className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-               <CircleDollarSign size={14} className="text-amber-500"/>
-               {field.options?.symbol_position === 'right' ? `${value} ${field.options?.symbol || '$'}` : `${field.options?.symbol || '$'} ${value}`}
-             </span>
+              <span className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                <CircleDollarSign size={14} className="text-amber-500"/>
+                {(() => {
+                    let parsedOpts = {};
+                    try { parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {}); } catch(e) {}
+                    
+                    const decPlaces = parsedOpts.decimal_places !== undefined ? parsedOpts.decimal_places : 2;
+                    let decSep = parsedOpts.decimal_separator || ',';
+                    let grpSep = parsedOpts.thousand_separator || '.';
+                    if (decSep === grpSep) { decSep = ','; grpSep = '.'; } // Anti-crash
+                    
+                    const formattedValue = formatCurrencyValue(value, decPlaces, decSep, grpSep);
+                    const sym = parsedOpts.symbol || '$';
+                    
+                    return parsedOpts.symbol_position === 'right' ? `${formattedValue} ${sym}` : `${sym} ${formattedValue}`;
+                })()}
+              </span>
              
           ) : field.field_type === 'phone' && value ? (
              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">

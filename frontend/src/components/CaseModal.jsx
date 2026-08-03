@@ -18,6 +18,18 @@ import 'react-quill-new/dist/quill.snow.css';
 const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
 const CurrencyInput = CurrencyInputPkg.default || CurrencyInputPkg;
 
+// 🔥 NUEVO FORMATO PARA MONEDAS Y FÓRMULAS 🔥
+const formatCurrencyValue = (val, decimalPlaces = 2, decSep = ',', grpSep = '.') => {
+  if (val === undefined || val === null || val === '') return '';
+  const num = Number(val);
+  if (isNaN(num)) return val;
+
+  let strNum = num.toFixed(decimalPlaces);
+  let parts = strNum.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, grpSep);
+  return decimalPlaces > 0 ? parts.join(decSep) : parts[0];
+};
+
 // ==========================================
 // COMPONENTE: SEARCHABLE SELECT CON PORTAL
 // ==========================================
@@ -481,8 +493,19 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
             
           ) : field.field_type === 'formula' ? (
             <div className="relative">
-               <Calculator className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={16} />
-               <input type="text" disabled value={calculateVisualFormula(field.options, formData)} className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} placeholder="Calculado automáticamente" />
+              <Calculator className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={16} />
+              <input 
+                  type="text" 
+                  disabled 
+                  value={(() => {
+                    const val = calculateVisualFormula(field.options, formData);
+                    return (!isNaN(Number(val)) && String(val).trim() !== '' && val !== '...') 
+                        ? formatCurrencyValue(val, 2, ',', '.') 
+                        : val;
+                  })()} 
+                  className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} 
+                  placeholder="Calculado automáticamente" 
+              />
             </div>
 
           
