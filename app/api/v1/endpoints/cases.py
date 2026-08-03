@@ -476,6 +476,8 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
             execute_chatwoot_message(db, case.company_id, case.module_id, case, rule.action_value)
 
         elif rule.action_type == "CUSTOM_FUNCTION" and rule.function_code:
+            # 🔥 FIX 2: Inyectamos el ID real para que tu script lo pueda atrapar 🔥
+            updated_data["id"] = case.id
             local_env = {
                 "case_data": updated_data,
                 "user_id": user_id,
@@ -713,6 +715,10 @@ def create_case(
         assigned_to=case_in.assigned_to,
         ui_rules={} 
     )
+    
+    # 🔥 FIX 1: Obligamos a la BD a generar el ID antes de ejecutar la regla 🔥
+    db.add(new_case)
+    db.flush()
     
     process_global_rules(db, new_case, current_user.id, "ON_CREATE", background_tasks=background_tasks)
     
