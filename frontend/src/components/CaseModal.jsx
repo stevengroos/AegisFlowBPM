@@ -260,7 +260,7 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing = true }
 // ==========================================
 const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   const { notify } = useNotification();
-  const { user } = useAuth(); // 🔥 NUEVO: Obtenemos al usuario que está logueado
+  const { user } = useAuth(); // 🔥 Obtenemos al usuario que está logueado
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [forms, setForms] = useState([]);
@@ -281,12 +281,12 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
     if (isOpen) {
       setStep(1); setSelectedForm(null); setFormData({});
       setRelationData({}); 
-      setAssignedTo(user?.id || ''); // 🔥 NUEVO: Asigna automáticamente al creador
+      setAssignedTo(user?.id || ''); // Asigna automáticamente al creador
       setTemplateSearch('');
       fetchForms();
       fetchUsers(); 
     }
-  }, [isOpen, moduleId, user]); // 🔥 Añadimos 'user' a las dependencias
+  }, [isOpen, moduleId, user]); 
 
   const fetchUsers = async () => {
     try {
@@ -404,26 +404,34 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
 
   const filteredForms = forms.filter(f => f.name.toLowerCase().includes(templateSearch.toLowerCase()) || (f.description && f.description.toLowerCase().includes(templateSearch.toLowerCase())));
   
-  // 🔥 AQUÍ ES DONDE FILTRAMOS LOS CAMPOS OCULTOS POR PERFIL 🔥
-  const fieldsToShow = fields.filter(f => 
-    f.show_in_create !== false && 
-    f.permission !== 'hidden' && 
-    f.profile_permission !== 'hidden'
-  ).sort((a,b) => a.order - b.order);
+  // 🔥 1. EXTRAER REGLAS DEL PERFIL DEL USUARIO LOGUEADO 🔥
+  let fieldRules = {};
+  if (!user?.is_superadmin && user?.permissions) {
+      const modPerms = user.permissions.modules?.[moduleId] || {};
+      fieldRules = modPerms.field_rules || {};
+  }
+
+  // 🔥 2. FILTRAR LOS CAMPOS OCULTOS 🔥
+  const fieldsToShow = fields.filter(f => {
+      const fieldKey = f.api_name || f.label;
+      const isHiddenByProfile = fieldRules[fieldKey] === 'hidden';
+      
+      return f.show_in_create !== false && !isHiddenByProfile;
+  }).sort((a,b) => a.order - b.order);
 
   const renderField = (field) => {
       const fieldKey = field.api_name || field.label;
       if (!fieldKey) return null;
       const isFullWidth = field.field_type === 'textarea' || field.field_type === 'subform';
       
-      // 🔥 1. DETECTAR EL MODO SOLO LECTURA DEL PERFIL 🔥
-      const isReadOnly = field.permission === 'read_only' || field.profile_permission === 'read_only';
+      // 🔥 3. DETECTAR EL MODO SOLO LECTURA DEL PERFIL 🔥
+      const isReadOnly = fieldRules[fieldKey] === 'read_only';
       
       let renderOptions = [];
       if (Array.isArray(field.options)) renderOptions = field.options;
       else if (typeof field.options === 'string') renderOptions = field.options.split(',');
 
-      // 🔥 2. CLASES DINÁMICAS (Se adapta si está bloqueado) 🔥
+      // 🔥 CLASES DINÁMICAS (Se adapta si está bloqueado) 🔥
       const dynamicInputClasses = `w-full px-4 py-2.5 rounded-xl outline-none transition-all text-sm ${isReadOnly ? 'bg-transparent border-transparent px-0 opacity-70 cursor-not-allowed font-medium text-gray-900 dark:text-white pointer-events-none' : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-200'}`;
 
       return (

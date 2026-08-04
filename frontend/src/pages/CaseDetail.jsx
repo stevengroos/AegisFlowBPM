@@ -414,10 +414,14 @@ const CaseDetail = () => {
 
   let canEdit = userData.is_superadmin;
   let canDelete = userData.is_superadmin;
+  let fieldRules = {}; // 🔥 NUEVO: Contenedor para las reglas FLS
 
   if (!userData.is_superadmin && userData.permissions) {
     const modPerms = userData.permissions.modules?.[caseData.module_id] || {};
+    fieldRules = modPerms.field_rules || {}; // 🔥 Extraemos las reglas exactas de los campos
+    
     const targetUserId = caseData.assigned_to || caseData.created_by;
+
     const isOwner = (userData.id === caseData.created_by) || (userData.id === caseData.assigned_to);
     
     const myUser = companyUsers.find(u => u.id === userData.id);
@@ -480,11 +484,17 @@ const CaseDetail = () => {
   // Renderizador Dinámico de Campos
   const renderField = (field) => {
     const fieldKey = field.api_name || field.label; 
-    const uiRules = caseData.ui_rules?.[fieldKey] || {};
-    if (uiRules.hidden) return null;
+    const uiRules = caseData.ui_rules?.[fieldKey] || {}; // Reglas Globales (Automatizaciones)
+    
+    // 🔥 2. COMBINAMOS REGLAS DE UI (Automatizaciones) CON REGLAS DE PERFIL 🔥
+    const isHiddenByProfile = fieldRules[fieldKey] === 'hidden';
+    if (uiRules.hidden || isHiddenByProfile) return null;
 
     const isRequired = uiRules.required !== undefined ? uiRules.required : field.required;
-    let isReadOnly = uiRules.readonly === true || field.permission === 'read_only' || field.profile_permission === 'read_only';
+    
+    const isReadOnlyByProfile = fieldRules[fieldKey] === 'read_only';
+    let isReadOnly = uiRules.readonly === true || isReadOnlyByProfile;
+    
     let isTriggerLock = false;
     if (isFlowActive && fieldKey === activeTriggerField) { isReadOnly = true; isTriggerLock = true; }
 
@@ -882,12 +892,16 @@ const CaseDetail = () => {
             </div>
 
             {(sections.length > 0 ? sections : [{ id: null, title: 'Información General', columns: 2 }]).map((section, sIdx) => {
-               const sFields = fields.filter(f => 
-                  (f.section_id === section.id || (!f.section_id && section.id === null)) && 
-                  f.permission !== 'hidden' && 
-                  f.profile_permission !== 'hidden'
-              ).sort((a,b) => a.order - b.order);
-               if (sFields.length === 0) return null;
+               const sFields = fields.filter(f => {
+                   const fieldKey = f.api_name || f.label;
+                   const isHiddenByProfile = fieldRules[fieldKey] === 'hidden';
+                   const isHiddenByUi = caseData.ui_rules?.[fieldKey]?.hidden === true;
+                   
+                   // 🔥 3. SI EL CAMPO ESTÁ OCULTO POR PERFIL O POR AUTOMATIZACIÓN, LO EXCLUIMOS 🔥
+                   return (f.section_id === section.id || (!f.section_id && section.id === null)) && !isHiddenByProfile && !isHiddenByUi;
+               }).sort((a,b) => a.order - b.order);
+               
+               if (sFields.length === 0) return null; // Si no quedan campos, la caja desaparece
                
                const gridClass = section.columns === 1 ? 'grid-cols-1' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
 
