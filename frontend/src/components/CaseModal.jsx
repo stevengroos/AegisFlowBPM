@@ -4,6 +4,7 @@ import api from '../api/axios';
 import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator, Phone, CircleDollarSign, Binary } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../context/NotificationContext';
+import { useAuth } from '../context/AuthContext'; // 🔥 NUEVO: Importamos la autenticación
 import FileUploadField from '../components/ui/FileUploadField';
 
 // 🔥 IMPORTACIONES DE LIBRERÍAS DE 3ROS PARA LOS NUEVOS CAMPOS 🔥
@@ -252,6 +253,7 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
 // ==========================================
 const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   const { notify } = useNotification();
+  const { user } = useAuth(); // 🔥 NUEVO: Obtenemos al usuario que está logueado
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [forms, setForms] = useState([]);
@@ -271,11 +273,13 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   useEffect(() => {
     if (isOpen) {
       setStep(1); setSelectedForm(null); setFormData({});
-      setRelationData({}); setAssignedTo(''); setTemplateSearch('');
+      setRelationData({}); 
+      setAssignedTo(user?.id || ''); // 🔥 NUEVO: Asigna automáticamente al creador
+      setTemplateSearch('');
       fetchForms();
       fetchUsers(); 
     }
-  }, [isOpen, moduleId]); 
+  }, [isOpen, moduleId, user]); // 🔥 Añadimos 'user' a las dependencias
 
   const fetchUsers = async () => {
     try {
