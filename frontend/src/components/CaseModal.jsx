@@ -165,20 +165,68 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
                   return (
                     <td key={cIdx} className="px-4 py-2 align-top">
                        {col.type === 'select' ? (
-                          <select value={cellValue} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
+                          <select value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
                              <option value="">...</option>
                              {(typeof col.options === 'string' ? col.options.split(',') : (Array.isArray(col.options) ? col.options : [])).map((o, i) => <option key={i} value={o.trim()}>{o.trim()}</option>)}
                           </select>
                        ) : col.type === 'relation' ? (
                           <div className="min-w-[200px]">
-                             <SearchableSelect value={cellValue} onChange={val => handleChangeCell(rIdx, col.label, val)} options={relationData[col.target_module_id] || []} placeholder="Seleccionar..." />
+                             <SearchableSelect value={cellValue || ''} onChange={val => handleChangeCell(rIdx, col.label, val)} options={relationData[col.target_module_id] || []} placeholder="Seleccionar..." />
                           </div>
+                          
+                       /* 🔥 NUEVO: SOPORTE PARA TELÉFONO EN EL MODAL 🔥 */
+                       ) : col.type === 'phone' ? (
+                          <div className="min-w-[200px] react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
+                            <PhoneInput
+                              country={col.options?.default_country?.toLowerCase() || 'py'}
+                              disableDropdown={col.options?.restrict_country || false}
+                              value={cellValue || ''}
+                              onChange={val => handleChangeCell(rIdx, col.label, val)}
+                              inputClass={inputClass}
+                              buttonClass="border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 !rounded-l-xl !border-r-0 !border-y-0"
+                              containerClass="w-full relative"
+                              inputStyle={{width: '100%', height: '34px', paddingLeft: '48px', backgroundColor: 'transparent', borderColor: 'transparent', color: 'inherit'}}
+                            />
+                          </div>
+
+                       /* 🔥 NUEVO: SOPORTE PARA MONEDA EN EL MODAL 🔥 */
+                       ) : col.type === 'currency' ? (
+                          <div className="min-w-[150px] relative">
+                             {(() => {
+                                let parsedOpts = {};
+                                try { parsedOpts = typeof col.options === 'string' ? JSON.parse(col.options) : (col.options || {}); } catch(e) {}
+                                const symPos = parsedOpts.symbol_position || 'left';
+                                const sym = parsedOpts.symbol || '$';
+                                let decSep = parsedOpts.decimal_separator || ',';
+                                let grpSep = parsedOpts.thousand_separator || '.';
+                                if (decSep === grpSep) { decSep = ','; grpSep = '.'; }
+                                
+                                return (
+                                  <>
+                                     {symPos === 'left' && <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">{sym}</span>}
+                                     <CurrencyInput
+                                        id={`currency-modal-${rIdx}-${cIdx}`}
+                                        name={`currency-modal-${rIdx}-${cIdx}`}
+                                        value={cellValue || ''}
+                                        decimalsLimit={parsedOpts.decimal_places ?? 2}
+                                        decimalSeparator={decSep}
+                                        groupSeparator={grpSep}
+                                        onValueChange={(val) => handleChangeCell(rIdx, col.label, val || '')}
+                                        className={`${inputClass} ${symPos === 'left' ? 'pl-6' : ''} ${symPos === 'right' ? 'pr-6' : ''}`}
+                                        placeholder="0.00"
+                                     />
+                                     {symPos === 'right' && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">{sym}</span>}
+                                  </>
+                                );
+                             })()}
+                          </div>
+
                        ) : col.type === 'file' || col.type === 'image' ? (
                           <div className="min-w-[200px]">
                             <FileUploadField type={col.type} value={cellValue} onChange={val => handleChangeCell(rIdx, col.label, val)} disabled={false} />
                           </div>
                        ) : (
-                          <input type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'} value={cellValue} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass} placeholder={`Escribir ${col.label.toLowerCase()}`} />
+                          <input type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'} value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass} placeholder={`Escribir ${col.label.toLowerCase()}`} />
                        )}
                     </td>
                   );

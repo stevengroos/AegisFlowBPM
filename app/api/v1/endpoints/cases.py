@@ -2117,36 +2117,47 @@ def get_linked_cases(
         if not isinstance(opts, dict): continue
             
         if str(opts.get("target_module_id")) == str(target_case.module_id):
-            
-            form = db.query(models.Form).filter(models.Form.id == field.form_id).first()
-            if not form or not form.module_id: continue
-                
-            source_module_id = form.module_id
-            field_key = field.api_name or field.label
+                    
+                    form = db.query(models.Form).filter(models.Form.id == field.form_id).first()
+                    if not form or not form.module_id: continue
+                        
+                    source_module_id = form.module_id
+                    field_key = field.api_name or field.label
 
-            source_cases = db.query(models.Case).filter(
-                models.Case.module_id == source_module_id,
-                models.Case.deleted_at == None
-            ).all()
+                    # 🔥 1. BUSCAMOS EL CAMPO PRINCIPAL DEL FORMULARIO ORIGEN 🔥
+                    primary_field = db.query(models.FormField).filter(
+                        models.FormField.form_id == form.id,
+                        models.FormField.is_primary == True
+                    ).first()
+                    primary_api_name = primary_field.api_name or primary_field.label if primary_field else None
 
-            matches = [c for c in source_cases if str(c.data.get(field_key)) == str(case_id)]
+                    source_cases = db.query(models.Case).filter(
+                        models.Case.module_id == source_module_id,
+                        models.Case.deleted_at == None
+                    ).all()
 
-            if matches:
-                module = db.query(models.Module).filter(models.Module.id == source_module_id).first()
-                mod_name = module.name if module else f"Módulo {source_module_id}"
+                    matches = [c for c in source_cases if str(c.data.get(field_key)) == str(case_id)]
 
-                if mod_name not in linked_results:
-                    linked_results[mod_name] = []
+                    if matches:
+                        module = db.query(models.Module).filter(models.Module.id == source_module_id).first()
+                        mod_name = module.name if module else f"Módulo {source_module_id}"
 
-                for c in matches:
-                    if not any(existing['id'] == c.id for existing in linked_results[mod_name]):
-                        linked_results[mod_name].append({
-                            "id": c.id,
-                            "status_id": c.status_id,
-                            "created_at": c.created_at,
-                            "data": c.data
-                        })
+                        if mod_name not in linked_results:
+                            linked_results[mod_name] = []
 
+                        for c in matches:
+                            if not any(existing['id'] == c.id for existing in linked_results[mod_name]):
+                                
+                                # 🔥 2. EXTRAEMOS EL VALOR DEL TÍTULO PRINCIPAL 🔥
+                                display_title = c.data.get(primary_api_name) if primary_api_name else None
+                                
+                                linked_results[mod_name].append({
+                                    "id": c.id,
+                                    "status_id": c.status_id,
+                                    "created_at": c.created_at,
+                                    "data": c.data,
+                                    "display_title": display_title # 🔥 3. LO ENVIAMOS AL FRONTEND
+                                })
     return linked_results
 
 @router.get("/users/search")

@@ -65,9 +65,31 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                     }
                     
                     // 🔥 NUEVO: Formato bonito para Monedas y Teléfonos en modo lectura
-                    if (col.type === 'currency' && cellValue) {
-                       const sym = col.options?.symbol || '$';
-                       displayValue = col.options?.symbol_position === 'right' ? `${cellValue} ${sym}` : `${sym} ${cellValue}`;
+                    if (col.type === 'currency' && cellValue !== undefined && cellValue !== "") {
+                       // Extraemos la configuración de la moneda
+                       let parsedOpts = {};
+                       try { parsedOpts = typeof col.options === 'string' ? JSON.parse(col.options) : (col.options || {}); } catch(e) {}
+                       
+                       const symPos = parsedOpts.symbol_position || 'left';
+                       const sym = parsedOpts.symbol || '$';
+                       const decPlaces = parsedOpts.decimal_places !== undefined ? parsedOpts.decimal_places : 2;
+                       
+                       let decSep = parsedOpts.decimal_separator || ',';
+                       let grpSep = parsedOpts.thousand_separator || '.';
+                       if (decSep === grpSep) { decSep = ','; grpSep = '.'; } // Anti-crash
+                       
+                       // Formateamos el número
+                       const num = Number(String(cellValue).replace(/[^0-9.-]+/g,"")); 
+                       let formattedVal = cellValue;
+                       
+                       if (!isNaN(num)) {
+                           let strNum = num.toFixed(decPlaces);
+                           let parts = strNum.split('.');
+                           parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, grpSep);
+                           formattedVal = decPlaces > 0 ? parts.join(decSep) : parts[0];
+                       }
+
+                       displayValue = symPos === 'right' ? `${formattedVal} ${sym}` : `${sym} ${formattedVal}`;
                     }
                     if (col.type === 'phone' && cellValue) {
                        displayValue = `+${cellValue}`; // Agregamos el + para denotar código internacional

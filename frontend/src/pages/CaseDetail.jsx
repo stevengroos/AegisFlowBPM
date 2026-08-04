@@ -1006,12 +1006,16 @@ const CaseDetail = () => {
                          {casesList.map(c => {
                         let linkedTitle = `Registro #${c.id}`;
                         
-                        if (c.data && Object.keys(c.data).length > 0) {
+                        // 🔥 AHORA USAMOS EL TÍTULO EXACTO QUE MANDÓ EL BACKEND 🔥
+                        if (c.display_title) {
+                            linkedTitle = c.display_title;
+                        } else if (c.data && Object.keys(c.data).length > 0) {
                             const firstValidText = Object.values(c.data).find(val => 
                                 typeof val === 'string' && 
                                 val.trim() !== '' && 
                                 val.length < 60 && 
-                                !val.includes('http')
+                                !val.includes('http') &&
+                                isNaN(Number(val)) // 🔥 CLAVE: Evita que elija un ID o número guardado como texto
                             );
                             
                             if (firstValidText) {
