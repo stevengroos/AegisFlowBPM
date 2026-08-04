@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
-import { Key, Plus, Trash2, Edit2, Loader2, Save, X, Shield, Box, Settings, Search, ChevronLeft, ChevronRight, Folder, ChevronDown, ChevronUp, Eye, EyeOff, Lock, Users } from 'lucide-react';
+import { Key, Plus, Trash2, Edit2, Loader2, Save, X, Shield, Box, Settings, Search, ChevronLeft, ChevronRight, Folder, ChevronDown, ChevronUp, Eye, EyeOff, Lock, Users, Smartphone } from 'lucide-react';
 
 import { useNotification } from '../context/NotificationContext';
 
@@ -9,7 +9,8 @@ const defaultPermissions = {
   settings: {
     manage_modules: false, manage_forms: false, manage_blueprints: false,
     manage_automations: false, manage_dashboards: false, view_audit: false,        
-    view_recycle_bin: false, manage_users: false, manage_roles: false, manage_security: false
+    view_recycle_bin: false, manage_users: false, manage_roles: false, manage_security: false,
+    manage_mobile_app: false // 🔥 NUEVA LLAVE PARA LA APP MÓVIL 🔥
   }
 };
 
@@ -30,12 +31,10 @@ const ProfilesManager = () => {
   const [editingId, setEditingId] = useState(null);
   const [hasChanges, setHasChanges] = useState(false); 
   
-  // 🔥 FASE 1: Añadimos is_external al estado del formulario
   const [formData, setFormData] = useState({ name: '', is_external: false, permissions: JSON.parse(JSON.stringify(defaultPermissions)) });
 
-  // 🔥 ESTADOS PARA EL ACORDEÓN Y LOS CAMPOS (FLS) 🔥
   const [expandedModule, setExpandedModule] = useState(null);
-  const [activeModTab, setActiveModTab] = useState('records'); // 'records' o 'fields'
+  const [activeModTab, setActiveModTab] = useState('records'); 
   const [fieldsCache, setFieldsCache] = useState({});
   const [loadingFields, setLoadingFields] = useState(false);
 
@@ -63,12 +62,11 @@ const ProfilesManager = () => {
     return () => controller.abort();
   }, [fetchData]);
 
-  // 🔥 FASE 1: Añadimos field_rules, publish, buy y view_all al estado inicial
   const getInitialModPerms = () => ({
     view: true, view_same_rank: false, create: false, edit_own: false, 
     edit_same_rank: false, edit_subordinates: false, delete_own: false, 
     delete_same_rank: false, delete_subordinates: false, field_rules: {},
-    view_all: false, publish: false, buy: false // 🔥 Nuevas llaves para la App B2C
+    view_all: false, publish: false, buy: false 
   });
 
   const handleOpenCreate = () => {
@@ -153,7 +151,6 @@ const ProfilesManager = () => {
        try {
           const res = await api.get(`/api/v1/fields/?module_id=${modId}`);
           
-          // 🔥 MAGIA: Deduplicamos los campos por su API Name o Label 🔥
           const uniqueFieldsMap = new Map();
           res.data.forEach(f => {
              const key = f.api_name || f.label;
@@ -182,7 +179,7 @@ const ProfilesManager = () => {
       const currentRules = currentMod.field_rules || {};
       const newRules = { ...currentRules };
       
-      if (rule === 'editable') delete newRules[fieldKey]; // Por defecto es editable, borramos para ahorrar espacio JSON
+      if (rule === 'editable') delete newRules[fieldKey];
       else newRules[fieldKey] = rule;
 
       return {
@@ -201,7 +198,7 @@ const ProfilesManager = () => {
       
       modFields.forEach(f => {
         const fKey = f.api_name || f.label;
-        if (rule === 'editable') delete newRules[fKey]; // Editable es el estado por defecto, lo borramos para limpiar el JSON
+        if (rule === 'editable') delete newRules[fKey];
         else newRules[fKey] = rule;
       });
 
@@ -348,13 +345,11 @@ const ProfilesManager = () => {
                           <h4 className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest border-b border-emerald-100 dark:border-emerald-800/30 pb-1.5">
                             Acciones Permitidas
                           </h4>
-                          {/* Permiso para Vendedores */}
                           <label className="flex items-center gap-2 cursor-pointer mt-2">
                             <input type="checkbox" checked={perms.publish || false} onChange={() => toggleModPerm(mod.id, 'publish')} className="rounded border-gray-300 text-emerald-500 focus:ring-emerald-500" />
                             <span className="text-sm font-bold text-gray-900 dark:text-white">Publicar Ofertas (Vender)</span>
                           </label>
 
-                          {/* Permiso para Compradores */}
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" checked={perms.buy || false} onChange={() => toggleModPerm(mod.id, 'buy')} className="rounded border-gray-300 text-emerald-500 focus:ring-emerald-500" />
                             <span className="text-sm font-bold text-gray-900 dark:text-white">Realizar Compras (Comprar)</span>
@@ -583,6 +578,15 @@ const ProfilesManager = () => {
                 <div>
                   <p className="text-sm font-bold text-gray-900 dark:text-white">Papelera</p>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">Ver registros eliminados.</p>
+                </div>
+              </label>
+              
+              {/* 🔥 NUEVO: PERMISO PARA LA APP MÓVIL 🔥 */}
+              <label className="flex items-start gap-3 p-4 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800/50 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                <input type="checkbox" checked={formData.permissions.settings.manage_mobile_app || false} onChange={() => toggleSettingPerm('manage_mobile_app')} className="mt-1 w-4 h-4 rounded border-indigo-300 dark:border-indigo-600 dark:bg-gray-900 text-indigo-500 focus:ring-indigo-500 cursor-pointer" />
+                <div>
+                  <p className="text-sm font-bold text-indigo-700 dark:text-indigo-400">App Móvil & B2C</p>
+                  <p className="text-[11px] text-indigo-600/80 dark:text-indigo-400/80 mt-0.5 leading-tight">Configurar catálogos y flujos externos.</p>
                 </div>
               </label>
 

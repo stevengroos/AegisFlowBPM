@@ -41,8 +41,14 @@ const Settings = () => {
         const isSuper = res.data.is_superadmin;
         const perms = res.data.permissions?.settings || {};
         
-        if (!isSuper && !perms.manage_modules && perms.manage_security) {
-          setActiveMenu('users');
+        // 🔥 AUTO-REDIRECCIÓN: Si no puede ver módulos, lo mandamos a lo primero que sí pueda ver
+        if (!isSuper && !perms.manage_modules) {
+          if (perms.manage_mobile_app) setActiveMenu('mobile_app');
+          else if (perms.manage_security) setActiveMenu('policies');
+          else if (perms.manage_users) setActiveMenu('users');
+          else if (perms.manage_roles) setActiveMenu('roles');
+          else if (perms.view_audit) setActiveMenu('audit');
+          else setActiveMenu(''); // Sin acceso a nada
         }
       } catch (error) {
         if (error.name !== 'CanceledError') console.error("Error cargando usuario", error);
@@ -84,10 +90,24 @@ const Settings = () => {
     );
   }
 
+  // 🔥 DESGLOSE DE PERMISOS GRANULARES (Zero Trust) 🔥
   const isSuperAdmin = userData?.is_superadmin;
-  const isSystemCompany = userData?.is_system_company; // 🔥 Constante para validar HQ
-  const canManageModules = isSuperAdmin || userData?.permissions?.settings?.manage_modules;
-  const canManageSecurity = isSuperAdmin || userData?.permissions?.settings?.manage_security;
+  const isSystemCompany = userData?.is_system_company; 
+  const perms = userData?.permissions?.settings || {};
+
+  // Permisos Sistema
+  const canManageModules = isSuperAdmin || perms.manage_modules;
+  const canManageMobileApp = isSuperAdmin || perms.manage_mobile_app;
+  const canManageCompanies = isSuperAdmin && isSystemCompany;
+  const canSeeSystemSection = canManageModules || canManageMobileApp || canManageCompanies;
+
+  // Permisos Seguridad
+  const canManagePolicies = isSuperAdmin || perms.manage_security;
+  const canManageUsers = isSuperAdmin || perms.manage_users;
+  const canManageRoles = isSuperAdmin || perms.manage_roles;
+  const canViewAudit = isSuperAdmin || perms.view_audit;
+  const canSeeSecuritySection = canManagePolicies || canManageUsers || canManageRoles || canViewAudit;
+
 
   if (activeModule && canManageModules) {
     return (
@@ -195,34 +215,40 @@ const Settings = () => {
   return (
     <div className="flex flex-col md:flex-row gap-8 h-full animate-in fade-in duration-300">
       <div className="w-full md:w-64 shrink-0 space-y-6">
-        {canManageModules && (
+        
+        {/* 🔥 BLOQUE DE SISTEMA (Solo si tiene al menos 1 permiso de este bloque) 🔥 */}
+        {canSeeSystemSection && (
           <div className="animate-in fade-in slide-in-from-left-4 duration-300">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-3">Sistema</h3>
             <div className="space-y-1">
-              <button 
-                onClick={() => setActiveMenu('modules')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${
-                  activeMenu === 'modules' 
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                <Box size={18} /> Personalización (Módulos)
-              </button>
               
-              <button 
-                onClick={() => setActiveMenu('mobile_app')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${
-                  activeMenu === 'mobile_app' 
-                    ? 'bg-fuchsia-50 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400' 
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                <Smartphone size={18} /> App Móvil & B2C
-              </button>
+              {canManageModules && (
+                <button 
+                  onClick={() => setActiveMenu('modules')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                    activeMenu === 'modules' 
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <Box size={18} /> Personalización (Módulos)
+                </button>
+              )}
+              
+              {canManageMobileApp && (
+                <button 
+                  onClick={() => setActiveMenu('mobile_app')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                    activeMenu === 'mobile_app' 
+                      ? 'bg-fuchsia-50 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400' 
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <Smartphone size={18} /> App Móvil & B2C
+                </button>
+              )}
 
-              {/* 🔥 CORREGIDO: Exclusivo Súper Admin de System (HQ) 🔥 */}
-              {isSuperAdmin && isSystemCompany && (
+              {canManageCompanies && (
                 <button 
                   onClick={() => setActiveMenu('companies')}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${
@@ -238,51 +264,65 @@ const Settings = () => {
           </div>
         )}
         
-        {canManageSecurity && (
+        {/* 🔥 BLOQUE DE SEGURIDAD (Solo si tiene al menos 1 permiso de este bloque) 🔥 */}
+        {canSeeSecuritySection && (
           <div className="animate-in fade-in slide-in-from-left-4 duration-300">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-3">Seguridad y Acceso</h3>
             <div className="space-y-1">
-              <button 
-                onClick={() => setActiveMenu('policies')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'policies' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-              ><Lock size={18} /> Políticas Globales</button>
               
-              <button 
-                onClick={() => setActiveMenu('users')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'users' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-              ><Users size={18} /> Usuarios</button>
-              <button 
-                onClick={() => setActiveMenu('roles')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'roles' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-              ><Shield size={18} /> Roles (Jerarquía)</button>
-              <button 
-                onClick={() => setActiveMenu('profiles')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'profiles' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-              ><Key size={18} /> Perfiles (Permisos)</button>
-              <button 
-                onClick={() => setActiveMenu('audit')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'audit' ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-              ><ShieldAlert size={18} /> Auditoría Global</button>
+              {canManagePolicies && (
+                <button 
+                  onClick={() => setActiveMenu('policies')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'policies' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                ><Lock size={18} /> Políticas Globales</button>
+              )}
+              
+              {canManageUsers && (
+                <button 
+                  onClick={() => setActiveMenu('users')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'users' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                ><Users size={18} /> Usuarios</button>
+              )}
+
+              {canManageRoles && (
+                <>
+                  <button 
+                    onClick={() => setActiveMenu('roles')}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'roles' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                  ><Shield size={18} /> Roles (Jerarquía)</button>
+                  <button 
+                    onClick={() => setActiveMenu('profiles')}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'profiles' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                  ><Key size={18} /> Perfiles (Permisos)</button>
+                </>
+              )}
+
+              {canViewAudit && (
+                <button 
+                  onClick={() => setActiveMenu('audit')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-colors ${activeMenu === 'audit' ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                ><ShieldAlert size={18} /> Auditoría Global</button>
+              )}
+
             </div>
           </div>
         )}
       </div>
 
       <div className="flex-1 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col h-full min-h-[500px]">
+        {/* 🔥 PANTALLAS RENDERIZADAS SEGÚN PERMISOS 🔥 */}
         {activeMenu === 'modules' && canManageModules && <ModuleList onSelectModule={(mod) => handleAttemptNavigation('module', mod)} />}
+        {activeMenu === 'mobile_app' && canManageMobileApp && <MobileSettings />}
+        {activeMenu === 'companies' && canManageCompanies && <CompaniesManager />}
         
-        {activeMenu === 'mobile_app' && canManageModules && <MobileSettings />}
-        {activeMenu === 'policies' && canManageSecurity && <SecurityPolicies />}
+        {activeMenu === 'policies' && canManagePolicies && <SecurityPolicies />}
+        {activeMenu === 'users' && canManageUsers && <UsersManager />}
+        {activeMenu === 'roles' && canManageRoles && <RolesManager />}
+        {activeMenu === 'profiles' && canManageRoles && <ProfilesManager />}
+        {activeMenu === 'audit' && canViewAudit && <GlobalAudit />}
         
-        {activeMenu === 'users' && canManageSecurity && <UsersManager />}
-        {activeMenu === 'roles' && canManageSecurity && <RolesManager />}
-        {activeMenu === 'profiles' && canManageSecurity && <ProfilesManager />}
-        {activeMenu === 'audit' && canManageSecurity && <GlobalAudit />}
-        
-        {/* 🔥 CORREGIDO: Renderizado blindado de Empresas (Tenants) 🔥 */}
-        {activeMenu === 'companies' && isSuperAdmin && isSystemCompany && <CompaniesManager />}
-        
-        {!canManageModules && !canManageSecurity && !isSuperAdmin && (
+        {/* Pantalla de Restricción si llega a un menú sin permisos */}
+        {!canSeeSystemSection && !canSeeSecuritySection && (
             <div className="flex h-full flex-col items-center justify-center text-gray-500 dark:text-gray-400">
               <Shield size={48} className="mb-4 opacity-30" />
               <p className="font-bold text-lg text-gray-700 dark:text-gray-300">Acceso Restringido</p>
