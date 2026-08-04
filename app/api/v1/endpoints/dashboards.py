@@ -372,7 +372,9 @@ def execute_report(
         module_id = config.get("module_id")
         y_axis_type = config.get("y_axis_type", "count") 
         y_axis_field = config.get("y_axis_field")
+        
         x_axis = config.get("x_axis")
+        x_axis_interval = config.get("x_axis_interval", "month") # 🔥 NUEVO: Recibe el intervalo
         
         raw_filters_str = config.get("raw_filters", "{}") 
         
@@ -388,10 +390,12 @@ def execute_report(
             try:
                 filter_rules = json.loads(raw_filters_str) if raw_filters_str else {}
                 
+                # 🔥 MAGIA: Extraer datos JSON y mezclar con metadatos del sistema (created_at, status_id)
                 filtered_cases_data = []
                 for c in cases:
-                    if evaluate_group(c.data, filter_rules):
-                        filtered_cases_data.append(c.data)
+                    case_payload = {**c.data, "created_at": c.created_at, "status_id": c.status_id}
+                    if evaluate_group(case_payload, filter_rules):
+                        filtered_cases_data.append(case_payload)
                 
                 df = pd.DataFrame(filtered_cases_data)
                 final_data = []
@@ -407,7 +411,22 @@ def execute_report(
                         final_data = [{"name": "Total", "value": round(total, 2)}]
                     else:
                         if x_axis not in df.columns: raise HTTPException(400, f"El campo para el Eje X '{x_axis}' no existe en este módulo.")
-                        df[x_axis] = df[x_axis].replace("", "Sin definir")
+                        
+                        # 🔥 MAGIA DE PANDAS: Agrupación de Tiempo Inteligente 🔥
+                        if x_axis == 'created_at':
+                            df[x_axis] = pd.to_datetime(df[x_axis], errors='coerce')
+                            
+                            if x_axis_interval == 'day':
+                                df[x_axis] = df[x_axis].dt.strftime('%Y-%m-%d')
+                            elif x_axis_interval == 'week':
+                                df[x_axis] = df[x_axis].dt.strftime('%Y-W%U')
+                            elif x_axis_interval == 'month':
+                                df[x_axis] = df[x_axis].dt.strftime('%Y-%m')
+                            elif x_axis_interval == 'year':
+                                df[x_axis] = df[x_axis].dt.strftime('%Y')
+                        else:
+                            # Comportamiento normal para texto
+                            df[x_axis] = df[x_axis].replace("", "Sin definir")
                         
                         if y_axis_type == "count":
                             grouped = df.groupby(x_axis).size().to_dict()
@@ -418,7 +437,12 @@ def execute_report(
                             elif y_axis_type == "avg": grouped = df.groupby(x_axis)[y_axis_field].mean().to_dict()
 
                         final_data = [{"name": str(k), "value": round(v, 2)} for k, v in grouped.items()]
-                        final_data = sorted(final_data, key=lambda x: x["value"], reverse=True)
+                        
+                        # Si es fecha, ordenamos por nombre (cronológicamente). Si no, por valor (los mas grandes primero)
+                        if x_axis == 'created_at':
+                            final_data = sorted(final_data, key=lambda x: x["name"])
+                        else:
+                            final_data = sorted(final_data, key=lambda x: x["value"], reverse=True)
 
                     final_response = {
                         "report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": final_data

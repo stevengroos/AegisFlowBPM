@@ -60,7 +60,8 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
   
   const [reportForm, setReportForm] = useState({
     name: '', chart_type: 'bar',
-    visual_config: { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', metric_icon: 'file', metric_subtitle: '', filter_query: '' },
+    // 🔥 Añadido x_axis_interval para manejar meses, semanas o días
+    visual_config: { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', x_axis_interval: 'month', metric_icon: 'file', metric_subtitle: '', filter_query: '' },
     function_code: `# Escribe tu código Python aquí.\ncases = db.query(models.Case).filter(models.Case.company_id == company_id).all()\ndf = pd.DataFrame([c.data for c in cases])\nresult = [{"name": "Total", "value": len(df)}]`
   });
 
@@ -71,7 +72,7 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
       if (reportToEdit) {
         const isVisual = reportToEdit.function_code === 'VISUAL_MODE_FLAG';
         setBuildMode(isVisual ? 'visual' : 'code');
-        const loadedConfig = reportToEdit.config || { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', metric_icon: 'file', metric_subtitle: '', filter_query: '' };
+        const loadedConfig = reportToEdit.config || { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', x_axis_interval: 'month', metric_icon: 'file', metric_subtitle: '', filter_query: '' };
         
         if (isVisual && loadedConfig.raw_filters) {
           try { setFilterRules(JSON.parse(loadedConfig.raw_filters)); } catch(e){}
@@ -79,7 +80,7 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
 
         setReportForm({
           name: reportToEdit.name, chart_type: reportToEdit.chart_type,
-          visual_config: isVisual ? loadedConfig : { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', metric_icon: 'file', metric_subtitle: '', filter_query: '' },
+          visual_config: isVisual ? loadedConfig : { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', x_axis_interval: 'month', metric_icon: 'file', metric_subtitle: '', filter_query: '' },
           function_code: isVisual ? reportForm.function_code : reportToEdit.function_code
         });
       } else {
@@ -87,7 +88,7 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
         setFilterRules({ combinator: 'and', rules: [] });
         setReportForm({
           name: '', chart_type: 'bar',
-          visual_config: { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', metric_icon: 'file', metric_subtitle: '', filter_query: '' },
+          visual_config: { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', x_axis_interval: 'month', metric_icon: 'file', metric_subtitle: '', filter_query: '' },
           function_code: `# Escribe tu código Python aquí.\ncases = db.query(models.Case).filter(models.Case.company_id == company_id).all()\ndf = pd.DataFrame([c.data for c in cases])\nresult = [{"name": "Total", "value": len(df)}]`
         });
       }
@@ -100,8 +101,17 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
       const controller = new AbortController();
       api.get(`/api/v1/fields/?module_id=${reportForm.visual_config.module_id}`, { signal: controller.signal })
         .then(res => {
-          setModuleFields(res.data);
-          setQueryBuilderFields(res.data.map(f => ({ name: f.api_name, label: f.label, type: f.field_type })));
+          // 🔥 MAGIA: INYECTAMOS LOS CAMPOS NATIVOS DEL SISTEMA 🔥
+          const systemFields = [
+            { api_name: 'created_at', label: 'Fecha de Creación (Sistema)', field_type: 'date' },
+            { api_name: 'status_id', label: 'Estado del Registro (Sistema)', field_type: 'select' }
+          ];
+          
+          const allFields = [...systemFields, ...res.data];
+          setModuleFields(allFields);
+          
+          // Mapeamos todo para el Query Builder
+          setQueryBuilderFields(allFields.map(f => ({ name: f.api_name, label: f.label, type: f.field_type })));
         })
         .catch(err => { if (err.name !== 'CanceledError') console.error("Error", err); });
       return () => controller.abort();
@@ -197,6 +207,29 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
                 <div className="bg-white dark:bg-gray-950 p-4 rounded-xl shadow-sm border-l-4 border-l-amber-500">
                   <label className="block text-xs font-bold text-amber-500 uppercase mb-3">3. Eje X (Categorías)</label>
                   <SearchableSelect options={moduleFields} value={reportForm.visual_config.x_axis} onChange={(val) => setReportForm({...reportForm, visual_config: {...reportForm.visual_config, x_axis: val}})} placeholder="Buscar campo para agrupar..." />
+                  
+                  {/* 🔥 RENDERIZADO DINÁMICO: SOLO SI EL CAMPO ES TIPO FECHA 🔥 */}
+                  {(() => {
+                    const selectedField = moduleFields.find(f => f.api_name === reportForm.visual_config.x_axis);
+                    if (selectedField && (selectedField.field_type === 'date' || selectedField.field_type === 'datetime')) {
+                      return (
+                        <div className="mt-4 pt-3 border-t border-amber-100 dark:border-amber-900/30 animate-in fade-in">
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2">Intervalo de Tiempo</label>
+                          <select 
+                            value={reportForm.visual_config.x_axis_interval || 'month'} 
+                            onChange={e => setReportForm({...reportForm, visual_config: {...reportForm.visual_config, x_axis_interval: e.target.value}})} 
+                            className="w-full bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-lg px-3 py-2 text-sm font-medium outline-none text-amber-900 dark:text-amber-500 focus:ring-1 focus:ring-amber-500"
+                          >
+                            <option value="day">Agrupar por Días</option>
+                            <option value="week">Agrupar por Semanas</option>
+                            <option value="month">Agrupar por Meses</option>
+                            <option value="year">Agrupar por Años</option>
+                          </select>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
 
