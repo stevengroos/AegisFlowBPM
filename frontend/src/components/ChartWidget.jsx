@@ -159,7 +159,10 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
           <div>
             <h3 className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">{report.name}</h3>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-black text-gray-900 dark:text-white leading-none tracking-tight">{data[0]?.value || 0}</span>
+              {/* 🔥 FORMATO DE MILES PARA LAS MÉTRICAS 🔥 */}
+              <span className="text-4xl font-black text-gray-900 dark:text-white leading-none tracking-tight">
+                {Number(data[0]?.value || 0).toLocaleString('es-PY')}
+              </span>
               {report.config?.metric_subtitle && <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{report.config.metric_subtitle}</span>}
             </div>
           </div>
@@ -169,7 +172,18 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
   }
 
   const renderChart = () => {
-    if (!data || data.length === 0) return <div className="h-full flex items-center justify-center text-gray-400">Sin datos</div>;
+    // 🔥 PANTALLA AMIGABLE DE "SIN DATOS" 🔥
+    if (!data || data.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-gray-400 dark:text-gray-500">
+          <div className="w-12 h-12 bg-gray-50 dark:bg-gray-800/50 rounded-full flex items-center justify-center mb-3">
+            <FileText size={24} className="opacity-50" />
+          </div>
+          <p className="text-sm font-medium text-center">No hay datos para mostrar aún</p>
+          <p className="text-[11px] opacity-70 mt-1 text-center">El reporte se generará cuando existan registros.</p>
+        </div>
+      );
+    }
 
     switch (report.chart_type) {
       case 'bar':
@@ -178,8 +192,10 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
             <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:stroke-gray-700" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
-              <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              {/* 🔥 FORMATO DE MILES EN EL EJE Y 🔥 */}
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(value) => Number(value).toLocaleString('es-PY')} />
+              {/* 🔥 FORMATO DE MILES EN EL TOOLTIP 🔥 */}
+              <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value) => Number(value).toLocaleString('es-PY')} />
               <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40}>
                 {data.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
               </Bar>
@@ -192,8 +208,10 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
             <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:stroke-gray-700" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
-              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              {/* 🔥 FORMATO DE MILES EN EL EJE Y 🔥 */}
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(value) => Number(value).toLocaleString('es-PY')} />
+              {/* 🔥 FORMATO DE MILES EN EL TOOLTIP 🔥 */}
+              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value) => Number(value).toLocaleString('es-PY')} />
               <Line type="monotone" dataKey="value" stroke="#10b981" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -205,7 +223,8 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
               <Pie data={data} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                 {data.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="transparent" />)}
               </Pie>
-              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              {/* 🔥 FORMATO DE MILES EN EL TOOLTIP 🔥 */}
+              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value) => Number(value).toLocaleString('es-PY')} />
             </PieChart>
           </ResponsiveContainer>
         );
