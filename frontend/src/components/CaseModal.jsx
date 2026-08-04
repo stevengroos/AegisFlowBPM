@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom'; // Para el portal del SearchableSelect
 import api from '../api/axios';
-import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator, Phone, CircleDollarSign, Binary } from 'lucide-react';
+import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator, Phone, CircleDollarSign, Binary, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext'; // 🔥 NUEVO: Importamos la autenticación
@@ -116,7 +116,7 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder }) =
 // ==========================================
 // COMPONENTE SUBFORMULARIO (TABLA)
 // ==========================================
-const SubformTable = ({ field, value, onChange, relationData }) => {
+const SubformTable = ({ field, value, onChange, relationData, isEditing = true }) => {
   const rows = Array.isArray(value) ? value : [];
   
   let columns = [];
@@ -129,31 +129,34 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
   if (columns.length === 0) return <div className="p-4 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl text-center text-sm text-gray-400">Subformulario sin columnas configuradas.</div>;
 
   const handleAddRow = () => {
+    if (!isEditing) return;
     const newRow = {};
     columns.forEach(col => newRow[col.label] = '');
     onChange([...rows, newRow]);
   };
 
   const handleRemoveRow = (index) => {
+    if (!isEditing) return;
     const updated = [...rows];
     updated.splice(index, 1);
     onChange(updated);
   };
 
   const handleChangeCell = (index, colLabel, newValue) => {
+    if (!isEditing) return;
     const updated = [...rows];
     updated[index][colLabel] = newValue;
     onChange(updated);
   };
 
   return (
-    <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm col-span-full">
+    <div className={`border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm col-span-full ${!isEditing ? 'opacity-80 pointer-events-none' : ''}`}>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap min-w-[600px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
             <tr>
               {columns.map((col, i) => <th key={i} className="px-4 py-3 font-bold">{col.label}</th>)}
-              <th className="px-4 py-3 w-10"></th>
+              {isEditing && <th className="px-4 py-3 w-10"></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -161,24 +164,24 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
               <tr key={rIdx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
                 {columns.map((col, cIdx) => {
                   const cellValue = row[col.label] || '';
-                  const inputClass = "w-full px-3 py-1.5 bg-transparent border-0 border-b border-transparent focus:border-blue-500 hover:border-gray-300 dark:hover:border-gray-600 focus:ring-0 outline-none text-sm text-gray-900 dark:text-white transition-colors";
+                  const inputClass = "w-full px-3 py-1.5 bg-transparent border-0 border-b border-transparent focus:border-blue-500 hover:border-gray-300 dark:hover:border-gray-600 focus:ring-0 outline-none text-sm text-gray-900 dark:text-white transition-colors disabled:cursor-not-allowed";
                   
                   return (
                     <td key={cIdx} className="px-4 py-2 align-top">
                        {col.type === 'select' ? (
-                          <select value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
+                          <select disabled={!isEditing} value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
                              <option value="">...</option>
                              {(typeof col.options === 'string' ? col.options.split(',') : (Array.isArray(col.options) ? col.options : [])).map((o, i) => <option key={i} value={o.trim()}>{o.trim()}</option>)}
                           </select>
                        ) : col.type === 'relation' ? (
                           <div className="min-w-[200px]">
-                             <SearchableSelect value={cellValue || ''} onChange={val => handleChangeCell(rIdx, col.label, val)} options={relationData[col.target_module_id] || []} placeholder="Seleccionar..." />
+                             <SearchableSelect disabled={!isEditing} value={cellValue || ''} onChange={val => handleChangeCell(rIdx, col.label, val)} options={relationData[col.target_module_id] || []} placeholder="Seleccionar..." />
                           </div>
                           
-                       /* 🔥 NUEVO: SOPORTE PARA TELÉFONO EN EL MODAL 🔥 */
                        ) : col.type === 'phone' ? (
                           <div className="min-w-[200px] react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
                             <PhoneInput
+                              disabled={!isEditing}
                               country={col.options?.default_country?.toLowerCase() || 'py'}
                               disableDropdown={col.options?.restrict_country || false}
                               value={cellValue || ''}
@@ -190,7 +193,6 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
                             />
                           </div>
 
-                       /* 🔥 NUEVO: SOPORTE PARA MONEDA EN EL MODAL 🔥 */
                        ) : col.type === 'currency' ? (
                           <div className="min-w-[150px] relative">
                              {(() => {
@@ -206,6 +208,7 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
                                   <>
                                      {symPos === 'left' && <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">{sym}</span>}
                                      <CurrencyInput
+                                        disabled={!isEditing}
                                         id={`currency-modal-${rIdx}-${cIdx}`}
                                         name={`currency-modal-${rIdx}-${cIdx}`}
                                         value={cellValue || ''}
@@ -224,25 +227,29 @@ const SubformTable = ({ field, value, onChange, relationData }) => {
 
                        ) : col.type === 'file' || col.type === 'image' ? (
                           <div className="min-w-[200px]">
-                            <FileUploadField type={col.type} value={cellValue} onChange={val => handleChangeCell(rIdx, col.label, val)} disabled={false} />
+                            <FileUploadField type={col.type} value={cellValue} onChange={val => handleChangeCell(rIdx, col.label, val)} disabled={!isEditing} />
                           </div>
                        ) : (
-                          <input type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'} value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass} placeholder={`Escribir ${col.label.toLowerCase()}`} />
+                          <input disabled={!isEditing} type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'} value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass} placeholder={`Escribir ${col.label.toLowerCase()}`} />
                        )}
                     </td>
                   );
                 })}
-                <td className="px-4 py-2 text-right align-top pt-4">
-                  <button type="button" onClick={() => handleRemoveRow(rIdx)} className="text-gray-400 hover:text-red-500 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
-                </td>
+                {isEditing && (
+                  <td className="px-4 py-2 text-right align-top pt-4">
+                    <button type="button" onClick={() => handleRemoveRow(rIdx)} className="text-gray-400 hover:text-red-500 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30">
-        <button type="button" onClick={handleAddRow} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 flex items-center gap-1.5 transition-colors"><Plus size={14}/> Agregar Fila</button>
-      </div>
+      {isEditing && (
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30">
+          <button type="button" onClick={handleAddRow} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 flex items-center gap-1.5 transition-colors"><Plus size={14}/> Agregar Fila</button>
+        </div>
+      )}
     </div>
   );
 };
@@ -396,44 +403,53 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   if (!isOpen) return null;
 
   const filteredForms = forms.filter(f => f.name.toLowerCase().includes(templateSearch.toLowerCase()) || (f.description && f.description.toLowerCase().includes(templateSearch.toLowerCase())));
-  const fieldsToShow = fields.filter(f => f.show_in_create !== false).sort((a,b) => a.order - b.order);
-  const inputClasses = "w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm text-gray-700 dark:text-gray-200";
+  
+  // 🔥 AQUÍ ES DONDE FILTRAMOS LOS CAMPOS OCULTOS POR PERFIL 🔥
+  const fieldsToShow = fields.filter(f => 
+    f.show_in_create !== false && 
+    f.permission !== 'hidden' && 
+    f.profile_permission !== 'hidden'
+  ).sort((a,b) => a.order - b.order);
 
   const renderField = (field) => {
       const fieldKey = field.api_name || field.label;
       if (!fieldKey) return null;
       const isFullWidth = field.field_type === 'textarea' || field.field_type === 'subform';
       
+      // 🔥 1. DETECTAR EL MODO SOLO LECTURA DEL PERFIL 🔥
+      const isReadOnly = field.permission === 'read_only' || field.profile_permission === 'read_only';
+      
       let renderOptions = [];
       if (Array.isArray(field.options)) renderOptions = field.options;
       else if (typeof field.options === 'string') renderOptions = field.options.split(',');
+
+      // 🔥 2. CLASES DINÁMICAS (Se adapta si está bloqueado) 🔥
+      const dynamicInputClasses = `w-full px-4 py-2.5 rounded-xl outline-none transition-all text-sm ${isReadOnly ? 'bg-transparent border-transparent px-0 opacity-70 cursor-not-allowed font-medium text-gray-900 dark:text-white pointer-events-none' : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-200'}`;
 
       return (
         <div key={field.id} className={`${isFullWidth ? 'col-span-full' : ''} space-y-1.5`}>
           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-tight">
             {field.field_type === 'relation' && <LinkIcon size={12} className="text-blue-500" />}
-            {field.label} {field.required && <span className="text-red-500 dark:text-red-400">*</span>}
+            {field.label} 
+            {field.required && !isReadOnly && <span className="text-red-500 dark:text-red-400">*</span>}
+            {isReadOnly && <Lock size={12} className="text-gray-400 ml-auto" />}
           </label>
           
-          {/* ========================================================================= */}
-          {/* 🔥 LÓGICA DE RENDERIZADO PRINCIPAL 🔥 */}
-          {/* ========================================================================= */}
-          
           {field.field_type === 'select' ? (
-            <select required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={inputClasses}>
+            <select disabled={isReadOnly} required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={dynamicInputClasses}>
               <option value="">Selecciona una opción...</option>
               {renderOptions.map((opt, i) => <option key={i} value={typeof opt === 'string' ? opt.trim() : opt}>{typeof opt === 'string' ? opt.trim() : opt}</option>)}
             </select>
             
           ) : field.field_type === 'relation' ? (
-            <SearchableSelect placeholder="Enlazar con un registro..." value={formData[fieldKey] || ''} onChange={(val) => setFormData({...formData, [fieldKey]: val})} disabled={false} options={relationData[field.options?.target_module_id] || []} />
+            <SearchableSelect placeholder="Enlazar con un registro..." value={formData[fieldKey] || ''} onChange={(val) => setFormData({...formData, [fieldKey]: val})} disabled={isReadOnly} options={relationData[field.options?.target_module_id] || []} />
           
           ) : field.field_type === 'user_relation' ? (
             <SearchableSelect 
                placeholder="Seleccionar usuario..." 
                value={formData[fieldKey] || ''} 
                onChange={(val) => setFormData({...formData, [fieldKey]: val})} 
-               disabled={false} 
+               disabled={isReadOnly} 
                options={(() => {
                   let filtered = companyUsers;
                   const rId = field.options?.role_id;
@@ -444,50 +460,40 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                })()} 
             />
           
-          
           ) : field.field_type === 'phone' ? (
             <div className="react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
               <PhoneInput
+                disabled={isReadOnly}
                 country={field.options?.default_country?.toLowerCase() || 'py'}
                 disableDropdown={field.options?.restrict_country || false}
                 value={formData[fieldKey] || ''}
                 onChange={(phone) => setFormData({...formData, [fieldKey]: phone})}
-                inputClass={inputClasses}
+                inputClass={dynamicInputClasses}
                 buttonClass="border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 !rounded-l-xl !border-r-0 !border-y-0"
                 containerClass="w-full relative"
                 inputStyle={{width: '100%', height: '42px', paddingLeft: '48px', backgroundColor: 'transparent', borderColor: 'var(--tw-border-opacity)', color: 'inherit'}}
               />
             </div>
             
-         
           ) : field.field_type === 'currency' ? (
             <div className="relative">
               {(() => {
-                // 🔥 ANTI-CRASH SUPREMO: Parseamos las opciones de forma ultra-segura
                 let parsedOpts = {};
-                try {
-                    parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {});
-                } catch(e) {
-                    parsedOpts = {};
-                }
+                try { parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {}); } catch(e) { parsedOpts = {}; }
 
                 const symPos = parsedOpts.symbol_position || 'left';
                 const sym = parsedOpts.symbol || 'Gs';
                 
-                // Extraemos asegurando que si vienen vacíos, sean , y .
                 let decSep = parsedOpts.decimal_separator || ',';
                 let grpSep = parsedOpts.thousand_separator || '.';
 
-                // Escudo final: Si son exactamente iguales, forzamos el estándar
-                if (decSep === grpSep) {
-                    decSep = ',';
-                    grpSep = '.';
-                }
+                if (decSep === grpSep) { decSep = ','; grpSep = '.'; }
 
                 return (
                   <>
                     {symPos === 'left' && <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold z-10">{sym}</span>}
                     <CurrencyInput
+                      disabled={isReadOnly}
                       id={`currency-${fieldKey}`}
                       name={fieldKey}
                       value={formData[fieldKey] || ''}
@@ -495,7 +501,7 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                       decimalSeparator={decSep}
                       groupSeparator={grpSep}
                       onValueChange={(value) => setFormData({...formData, [fieldKey]: value || ''})}
-                      className={`${inputClasses} ${symPos === 'left' ? 'pl-9' : ''} ${symPos === 'right' ? 'pr-9' : ''}`}
+                      className={`${dynamicInputClasses} ${symPos === 'left' ? 'pl-9' : ''} ${symPos === 'right' ? 'pr-9' : ''}`}
                       placeholder="0.00"
                     />
                     {symPos === 'right' && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold z-10">{sym}</span>}
@@ -504,16 +510,16 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
               })()}
             </div>
 
-          /* 🔥 NUEVO: MODO EDICIÓN DE TEXTO ENRIQUECIDO 🔥 */
           ) : field.field_type === 'textarea' ? (
-            <div>
+            <div className={isReadOnly ? 'opacity-70 pointer-events-none cursor-not-allowed' : ''}>
               <ReactQuill 
+                 readOnly={isReadOnly}
                  theme="snow" 
                  value={formData[fieldKey] || ''} 
                  onChange={(content) => setFormData({...formData, [fieldKey]: content})} 
                  className="bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg"
                  modules={{
-                   toolbar: [
+                   toolbar: isReadOnly ? false : [
                      ['bold', 'italic', 'underline', 'strike'],
                      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
                      ['clean']
@@ -522,23 +528,22 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
               />
             </div>
 
-
           ) : field.field_type === 'checkbox' ? (
             <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
-              <input type="checkbox" checked={formData[fieldKey] || false} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.checked})} className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-blue-600 focus:ring-blue-500 cursor-pointer" />
-              <span className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer" onClick={() => setFormData({...formData, [fieldKey]: !formData[fieldKey]})}>Marcar como verdadero</span>
+              <input type="checkbox" disabled={isReadOnly} checked={formData[fieldKey] || false} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.checked})} className={`w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-blue-600 focus:ring-blue-500 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} />
+              <span className={`text-sm text-gray-700 dark:text-gray-300 ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`} onClick={() => !isReadOnly && setFormData({...formData, [fieldKey]: !formData[fieldKey]})}>Marcar como verdadero</span>
             </div>
             
           ) : field.field_type === 'map' ? (
             <div className="flex gap-2">
-               <input type="text" required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={inputClasses} placeholder="Latitud, Longitud" />
-               <button type="button" onClick={() => {
+               <input type="text" disabled={isReadOnly} required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={dynamicInputClasses} placeholder="Latitud, Longitud" />
+               <button type="button" disabled={isReadOnly} onClick={() => {
                    if (navigator.geolocation) {
                        navigator.geolocation.getCurrentPosition((pos) => {
                            setFormData({...formData, [fieldKey]: `${pos.coords.latitude}, ${pos.coords.longitude}`});
                        }, () => notify.error("Permiso de ubicación denegado."));
                    } else { notify.error("Geolocalización no soportada"); }
-               }} className="p-2.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl transition-colors border border-red-100 shadow-sm shrink-0" title="Obtener mi ubicación actual">
+               }} className="p-2.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl transition-colors border border-red-100 shadow-sm shrink-0 disabled:opacity-50 disabled:cursor-not-allowed" title="Obtener mi ubicación actual">
                   <MapPin size={20}/>
                </button>
             </div>
@@ -555,19 +560,18 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                         ? formatCurrencyValue(val, 2, ',', '.') 
                         : val;
                   })()} 
-                  className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} 
+                  className={`${dynamicInputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} 
                   placeholder="Calculado automáticamente" 
               />
             </div>
 
-          
           ) : field.field_type === 'auto_number' ? (
             <div className="relative">
                <Binary className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
                <input 
                  type="text" 
                  disabled 
-                 className={`${inputClasses} pl-9 bg-orange-50/30 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 font-bold border-orange-200 dark:border-orange-800/50 cursor-not-allowed`} 
+                 className={`${dynamicInputClasses} pl-9 bg-orange-50/30 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 font-bold border-orange-200 dark:border-orange-800/50 cursor-not-allowed`} 
                  placeholder="Se generará al guardar..." 
                />
             </div>
@@ -577,22 +581,22 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                type={field.field_type} 
                value={formData[fieldKey] || ''} 
                onChange={(url) => setFormData({...formData, [fieldKey]: url})} 
-               disabled={false} 
+               disabled={isReadOnly} 
                expectedFields={fieldsToShow.filter(f => !['file', 'image', 'subform', 'url'].includes(f.field_type)).map(f => f.api_name || f.label)}
                onDataExtracted={(aiData) => setFormData(prev => ({ ...prev, ...aiData }))}
             />
             
           ) : field.field_type === 'url' ? (
             <div className="relative">
-              <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input type="url" required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={`${inputClasses} pl-9`} placeholder="https://" />
+              <Link2 className={`absolute left-3 top-1/2 -translate-y-1/2 ${isReadOnly ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`} size={16} />
+              <input type="url" disabled={isReadOnly} required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={`${dynamicInputClasses} ${isReadOnly ? '' : 'pl-9'}`} placeholder="https://" />
             </div>
             
           ) : field.field_type === 'subform' ? (
-            <SubformTable field={field} value={formData[fieldKey] || []} onChange={(val) => setFormData({...formData, [fieldKey]: val})} relationData={relationData} />
+            <SubformTable field={field} value={formData[fieldKey] || []} onChange={(val) => setFormData({...formData, [fieldKey]: val})} relationData={relationData} isEditing={!isReadOnly} />
             
           ) : (
-            <input type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'email' ? 'email' : 'text'} required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={inputClasses} />
+            <input type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'email' ? 'email' : 'text'} disabled={isReadOnly} required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={dynamicInputClasses} />
           )}
         </div>
       );
@@ -689,6 +693,8 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
 
                 {(sections.length > 0 ? sections : [{ id: null, title: 'Información General', columns: 2 }]).map((section, sIdx) => {
                    const sFields = fieldsToShow.filter(f => f.section_id === section.id || (!f.section_id && section.id === null));
+                   
+                   // 🔥 MAGIA: SI LA SECCIÓN QUEDÓ SIN CAMPOS POR LOS PERMISOS, DESAPARECE 🔥
                    if (sFields.length === 0) return null;
                    
                    const gridClass = section.columns === 1 ? 'grid-cols-1' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';

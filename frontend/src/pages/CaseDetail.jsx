@@ -484,7 +484,7 @@ const CaseDetail = () => {
     if (uiRules.hidden) return null;
 
     const isRequired = uiRules.required !== undefined ? uiRules.required : field.required;
-    let isReadOnly = uiRules.readonly === true;
+    let isReadOnly = uiRules.readonly === true || field.permission === 'read_only' || field.profile_permission === 'read_only';
     let isTriggerLock = false;
     if (isFlowActive && fieldKey === activeTriggerField) { isReadOnly = true; isTriggerLock = true; }
 
@@ -882,7 +882,11 @@ const CaseDetail = () => {
             </div>
 
             {(sections.length > 0 ? sections : [{ id: null, title: 'Información General', columns: 2 }]).map((section, sIdx) => {
-               const sFields = fields.filter(f => f.section_id === section.id || (!f.section_id && section.id === null)).sort((a,b) => a.order - b.order);
+               const sFields = fields.filter(f => 
+                  (f.section_id === section.id || (!f.section_id && section.id === null)) && 
+                  f.permission !== 'hidden' && 
+                  f.profile_permission !== 'hidden'
+              ).sort((a,b) => a.order - b.order);
                if (sFields.length === 0) return null;
                
                const gridClass = section.columns === 1 ? 'grid-cols-1' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
