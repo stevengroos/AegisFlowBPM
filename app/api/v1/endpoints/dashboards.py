@@ -93,7 +93,8 @@ def create_dashboard(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    # 🔥 CORRECCIÓN: Validar manage_dashboards en lugar de manage_modules 🔥
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     new_dashboard = models.Dashboard(**dashboard_in.dict(), company_id=current_user.company_id)
     db.add(new_dashboard)
@@ -115,7 +116,7 @@ def update_dashboard(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     dashboard = db.query(models.Dashboard).filter(
         models.Dashboard.id == dashboard_id, 
@@ -147,7 +148,7 @@ def delete_dashboard(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     dashboard = db.query(models.Dashboard).filter(models.Dashboard.id == dashboard_id, models.Dashboard.company_id == current_user.company_id).first()
     if not dashboard: raise HTTPException(404, "Dashboard no encontrado")
@@ -177,7 +178,7 @@ def update_dashboard_layout(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     dash = db.query(models.Dashboard).filter(
         models.Dashboard.id == dashboard_id, 
@@ -220,7 +221,7 @@ def create_report(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     dash = db.query(models.Dashboard).filter(models.Dashboard.id == dashboard_id, models.Dashboard.company_id == current_user.company_id).first()
     if not dash: raise HTTPException(404, "Dashboard no encontrado")
@@ -245,7 +246,7 @@ def update_report(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
     if not report: raise HTTPException(404, "Reporte no encontrado")
@@ -274,7 +275,7 @@ def delete_report(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
     if not report: raise HTTPException(404, "Reporte no encontrado")
@@ -374,7 +375,7 @@ def execute_report(
         y_axis_field = config.get("y_axis_field")
         
         x_axis = config.get("x_axis")
-        x_axis_interval = config.get("x_axis_interval", "month") # 🔥 NUEVO: Recibe el intervalo
+        x_axis_interval = config.get("x_axis_interval", "month") # 🔥 Recibe el intervalo
         
         raw_filters_str = config.get("raw_filters", "{}") 
         
@@ -504,7 +505,7 @@ def test_python_script(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    check_settings_permission(db, current_user, "manage_modules")
+    check_settings_permission(db, current_user, "manage_dashboards")
     
     local_env = {
         "db": SandboxDB(db), 

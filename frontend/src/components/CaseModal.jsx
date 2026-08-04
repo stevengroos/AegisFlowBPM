@@ -199,7 +199,7 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing = true }
                                 let parsedOpts = {};
                                 try { parsedOpts = typeof col.options === 'string' ? JSON.parse(col.options) : (col.options || {}); } catch(e) {}
                                 const symPos = parsedOpts.symbol_position || 'left';
-                                const sym = parsedOpts.symbol || '$';
+                                const sym = parsedOpts.symbol || 'Gs';
                                 let decSep = parsedOpts.decimal_separator || ',';
                                 let grpSep = parsedOpts.thousand_separator || '.';
                                 if (decSep === grpSep) { decSep = ','; grpSep = '.'; }

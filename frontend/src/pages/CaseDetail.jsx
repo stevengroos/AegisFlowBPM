@@ -567,7 +567,7 @@ const CaseDetail = () => {
                     if (decSep === grpSep) { decSep = ','; grpSep = '.'; } // Anti-crash
                     
                     const formattedValue = formatCurrencyValue(value, decPlaces, decSep, grpSep);
-                    const sym = parsedOpts.symbol || '$';
+                    const sym = parsedOpts.symbol || 'Gs';
                     
                     return parsedOpts.symbol_position === 'right' ? `${formattedValue} ${sym}` : `${sym} ${formattedValue}`;
                 })()}
