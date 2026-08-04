@@ -468,7 +468,7 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                 }
 
                 const symPos = parsedOpts.symbol_position || 'left';
-                const sym = parsedOpts.symbol || '$';
+                const sym = parsedOpts.symbol || 'Gs';
                 
                 // Extraemos asegurando que si vienen vacíos, sean , y .
                 let decSep = parsedOpts.decimal_separator || ',';

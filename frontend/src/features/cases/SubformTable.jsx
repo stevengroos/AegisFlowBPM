@@ -71,7 +71,7 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                        try { parsedOpts = typeof col.options === 'string' ? JSON.parse(col.options) : (col.options || {}); } catch(e) {}
                        
                        const symPos = parsedOpts.symbol_position || 'left';
-                       const sym = parsedOpts.symbol || '$';
+                       const sym = parsedOpts.symbol || 'Gs';
                        const decPlaces = parsedOpts.decimal_places !== undefined ? parsedOpts.decimal_places : 2;
                        
                        let decSep = parsedOpts.decimal_separator || ',';
