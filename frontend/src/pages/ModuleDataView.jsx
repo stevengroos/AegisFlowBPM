@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { createPortal } from 'react-dom'; 
-import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info } from 'lucide-react'; // 🔥 NUEVO ÍCONO Info
+import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2 } from 'lucide-react'; // 🔥 ÍCONOS DE VISTA AÑADIDOS
 import Select from 'react-select'; 
 
 import CaseModal from '../components/CaseModal';
@@ -33,15 +33,25 @@ const ModuleDataView = () => {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   // ==========================================
+  // 🔥 ESTADO DE VISTA (TABLA vs GALERÍA) 🔥
+  // ==========================================
+  const [viewMode, setViewMode] = useState(() => {
+    return localStorage.getItem(`aegisflow_viewMode_${moduleId}`) || 'table';
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`aegisflow_viewMode_${moduleId}`, viewMode);
+  }, [viewMode, moduleId]);
+
+  // ==========================================
   // 🔥 FASE 3: ESTADOS PARA WEBHOOKS API 🔥
   // ==========================================
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [moduleWebhooks, setModuleWebhooks] = useState([]);
   const [newWebhookName, setNewWebhookName] = useState('');
-  const [selectedFormId, setSelectedFormId] = useState(''); // 🔥 NUEVO ESTADO PARA ELEGIR EL FORMULARIO
+  const [selectedFormId, setSelectedFormId] = useState(''); 
   const [loadingWebhooks, setLoadingWebhooks] = useState(false);
   
-  // Estados para el Portal del Desarrollador (Docs API)
   const [docsWebhook, setDocsWebhook] = useState(null);
   const [webhookExample, setWebhookExample] = useState(null);
   const [docsLoading, setDocsLoading] = useState(false);
@@ -61,7 +71,7 @@ const ModuleDataView = () => {
   useEffect(() => {
       if (isWebhookModalOpen) {
          fetchWebhooks();
-         setDocsWebhook(null); // Reseteamos la vista de docs al abrir
+         setDocsWebhook(null); 
       }
   }, [isWebhookModalOpen]);
 
@@ -69,13 +79,13 @@ const ModuleDataView = () => {
       e.preventDefault();
       if (!newWebhookName.trim()) return notify.warning("Escribe un nombre para el webhook.");
       if (forms.length === 0) return notify.warning("No hay un formulario activo en este módulo.");
-      if (!selectedFormId) return notify.warning("Por favor, selecciona un formulario para el webhook."); // 🔥 VALIDACIÓN NUEVA
+      if (!selectedFormId) return notify.warning("Por favor, selecciona un formulario para el webhook."); 
       
       try {
           await api.post('/api/v1/webhooks/', {
               name: newWebhookName,
               module_id: parseInt(moduleId),
-              form_id: parseInt(selectedFormId) // 🔥 USO DEL ESTADO SELECCIONADO
+              form_id: parseInt(selectedFormId) 
           });
           notify.success("Webhook generado exitosamente.");
           setNewWebhookName('');
@@ -435,6 +445,27 @@ const ModuleDataView = () => {
     }
   };
 
+  // 🔥 NUEVA FUNCIÓN PARA BORRADO INDIVIDUAL EN MODO TARJETA 🔥
+  const handleDeleteSingle = async (id) => {
+    const isConfirmed = await confirm({
+      title: 'Eliminar Registro',
+      message: '¿Estás seguro de eliminar este registro?',
+      confirmText: 'Sí, eliminar',
+      variant: 'danger'
+    });
+    if (!isConfirmed) return;
+
+    try {
+      setLoading(true);
+      await api.delete(`/api/v1/cases/${id}`);
+      notify.success('Registro eliminado con éxito.');
+      fetchData(new AbortController().signal);
+    } catch (error) {
+      notify.error('Ocurrió un error al eliminar el registro.');
+      setLoading(false);
+    }
+  };
+
   const modPerms = userData?.permissions?.modules?.[moduleId] || {};
   const canCreate = userData?.is_superadmin || modPerms.create === true;
 
@@ -449,6 +480,32 @@ const ModuleDataView = () => {
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
+
+          {/* 🔥 CONMUTADOR DE VISTAS (TABLA / GALERÍA) 🔥 */}
+          <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 mr-2">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-md flex items-center justify-center transition-all ${
+                viewMode === 'table' 
+                  ? 'bg-white dark:bg-gray-800 shadow-sm text-blue-600 dark:text-blue-400' 
+                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+              title="Vista de Tabla"
+            >
+              <List size={18} />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-md flex items-center justify-center transition-all ${
+                viewMode === 'grid' 
+                  ? 'bg-white dark:bg-gray-800 shadow-sm text-blue-600 dark:text-blue-400' 
+                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+              title="Vista de Galería / Tarjetas"
+            >
+              <LayoutGrid size={18} />
+            </button>
+          </div>
           
           <div className="flex items-center bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800/80 rounded-lg shadow-sm mr-1 overflow-hidden">
             <button onClick={exportToCSV} className="px-3 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 text-xs font-semibold border-r border-gray-200 dark:border-gray-800/80" title="Exportar a CSV">
@@ -466,7 +523,6 @@ const ModuleDataView = () => {
                </>
             )}
             
-            {/* 🔥 BOTÓN DE WEBHOOKS (SOLO SUPERADMIN) 🔥 */}
             {userData?.is_superadmin && (
                <button onClick={() => setIsWebhookModalOpen(true)} className="px-3 py-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-1.5 text-xs font-semibold border-l border-gray-200 dark:border-gray-800/80" title="Integraciones Webhook (Entrada)">
                  <Globe size={14} /> <span className="hidden sm:inline">API Webhooks</span>
@@ -598,9 +654,11 @@ const ModuleDataView = () => {
         </div>
       )}
 
-      {/* DATA GRID */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col z-0 relative">
-        <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800/60 gap-4 bg-gray-50/30 dark:bg-gray-900/50">
+      {/* RENDERIZADO DUAL DE DATOS (TABLA O GALERÍA) */}
+      <div className={`bg-white dark:bg-gray-900 rounded-2xl shadow-sm overflow-hidden flex flex-col z-0 relative ${viewMode === 'table' ? 'border border-gray-200 dark:border-gray-800' : 'bg-transparent shadow-none dark:bg-transparent'}`}>
+        
+        {/* Barra de búsqueda integrada */}
+        <div className="flex flex-col sm:flex-row items-center justify-between p-4 border border-gray-200 dark:border-gray-800 border-b-gray-100 dark:border-b-gray-800/60 gap-4 bg-gray-50/30 dark:bg-gray-900/50 rounded-t-2xl">
           <div className="relative w-full sm:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={18} />
             <input type="text" placeholder="Buscar por ID, datos, estado o dueño..." className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all text-sm text-gray-900 dark:text-white dark:placeholder-gray-500 shadow-sm" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
@@ -614,67 +672,167 @@ const ModuleDataView = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-50/50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800/80">
-              <tr>
-                <th className="px-6 py-3.5 w-10">
-                  <input type="checkbox" onChange={handleSelectAll} checked={currentListRecords.length > 0 && currentListRecords.every(r => selectedRecords.includes(r.id))} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer" />
-                </th>
-                <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">ID</th>
-                <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Creado</th>
-                {visibleFields.map(field => ( <th key={field.id} className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{field.label}</th> ))}
-                <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Propietario</th>
-                <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Estado</th>
-                <th className="px-6 py-3.5 text-right"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
-              {currentListRecords.length === 0 ? (
+        {viewMode === 'table' ? (
+          /* 🔥 VISTA DE TABLA (CLÁSICA) 🔥 */
+          <div className="overflow-x-auto border-x border-gray-200 dark:border-gray-800">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-gray-50/50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800/80">
                 <tr>
-                  <td colSpan={visibleFields.length + 6} className="px-6 py-16 text-center">
-                    <Box className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-700 mb-3" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{(searchTerm || startDate || endDate || Object.keys(fieldFilters).length > 0) ? 'No hay resultados para esta búsqueda.' : 'No hay registros en este módulo todavía.'}</p>
-                  </td>
+                  <th className="px-6 py-3.5 w-10">
+                    <input type="checkbox" onChange={handleSelectAll} checked={currentListRecords.length > 0 && currentListRecords.every(r => selectedRecords.includes(r.id))} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer" />
+                  </th>
+                  <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">ID</th>
+                  <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Creado</th>
+                  {visibleFields.map(field => ( <th key={field.id} className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{field.label}</th> ))}
+                  <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Propietario</th>
+                  <th className="px-6 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Estado</th>
+                  <th className="px-6 py-3.5 text-right"></th>
                 </tr>
-              ) : (
-                currentListRecords.map((rec) => (
-                  <tr key={rec.id} onClick={() => navigate(`/cases/${rec.id}`)} className={`transition-colors group cursor-pointer ${selectedRecords.includes(rec.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-gray-50/80 dark:hover:bg-gray-800/40'}`}>
-                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={selectedRecords.includes(rec.id)} onChange={(e) => toggleRecordSelection(e, rec.id)} className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 cursor-pointer" />
-                    </td>
-                    <td className="px-6 py-4 text-sm font-bold text-gray-700 dark:text-gray-300">#{rec.id}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{new Date(rec.created_at).toLocaleDateString()}</td>
-                    {visibleFields.map(field => (
-                      <td key={field.id} className="px-6 py-4 text-sm text-gray-900 dark:text-gray-200 truncate max-w-[200px]">
-                        {typeof rec.data[field.api_name] === 'object' ? 'Datos...' : (rec.data[field.api_name] || rec.data[field.label] || <span className="text-gray-300 dark:text-gray-700">—</span>)}
-                      </td>
-                    ))}
-                    
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{getUserName(rec.assigned_to || rec.created_by)}</td>
-                    
-                    <td className="px-6 py-4 whitespace-nowrap flex items-center gap-2">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">{getStatusName(rec.status_id)}</span>
-                      {(() => {
-                         const sla = getSlaStatus(rec);
-                         if (!sla) return null;
-                         if (sla.state === 'breached') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest animate-pulse" title={`Vencido por ${sla.hours} horas`}><AlertTriangle size={12} /> SLA Roto</span>;
-                         if (sla.state === 'warning') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest" title={`Quedan ${sla.hours} horas`}><Clock size={12} /> En Riesgo</span>;
-                         return null;
-                      })()}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all"><MoreHorizontal size={18} /></button>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
+                {currentListRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={visibleFields.length + 6} className="px-6 py-16 text-center border-b border-gray-200 dark:border-gray-800">
+                      <Box className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-700 mb-3" />
+                      <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{(searchTerm || startDate || endDate || Object.keys(fieldFilters).length > 0) ? 'No hay resultados para esta búsqueda.' : 'No hay registros en este módulo todavía.'}</p>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  currentListRecords.map((rec) => (
+                    <tr key={rec.id} onClick={() => navigate(`/cases/${rec.id}`)} className={`transition-colors group cursor-pointer ${selectedRecords.includes(rec.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-gray-50/80 dark:hover:bg-gray-800/40'}`}>
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={selectedRecords.includes(rec.id)} onChange={(e) => toggleRecordSelection(e, rec.id)} className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 cursor-pointer" />
+                      </td>
+                      <td className="px-6 py-4 text-sm font-bold text-gray-700 dark:text-gray-300">#{rec.id}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{new Date(rec.created_at).toLocaleDateString()}</td>
+                      {visibleFields.map(field => (
+                        <td key={field.id} className="px-6 py-4 text-sm text-gray-900 dark:text-gray-200 truncate max-w-[200px]">
+                          {typeof rec.data[field.api_name] === 'object' ? 'Datos...' : (rec.data[field.api_name] || rec.data[field.label] || <span className="text-gray-300 dark:text-gray-700">—</span>)}
+                        </td>
+                      ))}
+                      
+                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{getUserName(rec.assigned_to || rec.created_by)}</td>
+                      
+                      <td className="px-6 py-4 whitespace-nowrap flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">{getStatusName(rec.status_id)}</span>
+                        {(() => {
+                          const sla = getSlaStatus(rec);
+                          if (!sla) return null;
+                          if (sla.state === 'breached') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest animate-pulse" title={`Vencido por ${sla.hours} horas`}><AlertTriangle size={12} /> SLA Roto</span>;
+                          if (sla.state === 'warning') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest" title={`Quedan ${sla.hours} horas`}><Clock size={12} /> En Riesgo</span>;
+                          return null;
+                        })()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button className="p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all"><MoreHorizontal size={18} /></button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* 🔥 VISTA DE GALERÍA (TARJETAS) 🔥 */
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 py-6 animate-in fade-in duration-300">
+            {currentListRecords.length === 0 ? (
+               <div className="col-span-full py-16 text-center border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900">
+                  <Box className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-700 mb-3" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{(searchTerm || startDate || endDate || Object.keys(fieldFilters).length > 0) ? 'No hay resultados para esta búsqueda.' : 'No hay registros en este módulo todavía.'}</p>
+               </div>
+            ) : (
+              currentListRecords.map(rec => {
+                const primaryField = fields.find(f => f.is_primary);
+                const cardTitle = primaryField ? (rec.data[primaryField.api_name] || rec.data[primaryField.label]) : `Registro #${rec.id}`;
+
+                const imageField = fields.find(f => f.field_type === 'image' || f.field_type === 'file');
+                const coverImage = imageField ? (rec.data[imageField.api_name] || rec.data[imageField.label]) : null;
+
+                const cardFields = visibleFields.filter(f => !f.is_primary && f.field_type !== 'file' && f.field_type !== 'image').slice(0, 3);
+
+                return (
+                  <div key={rec.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm hover:shadow-lg transition-all overflow-hidden flex flex-col relative group">
+                    <div className="absolute top-3 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <input
+                        type="checkbox"
+                        checked={selectedRecords.includes(rec.id)}
+                        onChange={(e) => toggleRecordSelection(e, rec.id)}
+                        className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm bg-white"
+                      />
+                    </div>
+
+                    <div
+                      onClick={() => navigate(`/cases/${rec.id}`)}
+                      className="h-40 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-800 flex items-center justify-center overflow-hidden cursor-pointer relative"
+                    >
+                      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1 items-end">
+                         <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 shadow-sm backdrop-blur-sm">{getStatusName(rec.status_id)}</span>
+                         {(() => {
+                           const sla = getSlaStatus(rec);
+                           if (!sla) return null;
+                           if (sla.state === 'breached') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-200 dark:border-red-800/50 bg-red-50/90 dark:bg-red-900/90 text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest animate-pulse backdrop-blur-sm shadow-sm" title={`Vencido por ${sla.hours} horas`}><AlertTriangle size={10} /> SLA Roto</span>;
+                           if (sla.state === 'warning') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50/90 dark:bg-orange-900/90 text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest backdrop-blur-sm shadow-sm" title={`Quedan ${sla.hours} horas`}><Clock size={10} /> En Riesgo</span>;
+                           return null;
+                        })()}
+                      </div>
+
+                      {coverImage && typeof coverImage === 'string' && coverImage.startsWith('http') ? (
+                        <img src={coverImage} alt="Portada" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <ImageIcon size={40} className="text-gray-300 dark:text-gray-600" />
+                      )}
+                    </div>
+
+                    <div className="p-4 flex-1 flex flex-col cursor-pointer" onClick={() => navigate(`/cases/${rec.id}`)}>
+                      <h3 className="font-bold text-base text-gray-900 dark:text-white mb-3 truncate" title={cardTitle}>
+                        {cardTitle || 'Sin título'}
+                      </h3>
+                      <div className="space-y-2 flex-1">
+                        {cardFields.map(field => {
+                          const val = rec.data[field.api_name] || rec.data[field.label];
+                          return (
+                          <div key={field.id} className="flex justify-between items-center text-xs border-b border-gray-50 dark:border-gray-800/50 pb-2 last:border-0 last:pb-0">
+                            <span className="text-gray-500 dark:text-gray-400 truncate max-w-[45%] pr-2" title={field.label}>{field.label}</span>
+                            <span className="font-medium text-gray-900 dark:text-gray-200 truncate max-w-[50%] text-right" title={val}>
+                              {typeof val === 'object' ? 'Datos...' : (val || '-')}
+                            </span>
+                          </div>
+                        )})}
+                      </div>
+                    </div>
+
+                    <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 flex justify-between items-center">
+                      <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                        <Clock size={12} /> {new Date(rec.created_at).toLocaleDateString()}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => navigate(`/cases/${rec.id}`)}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md transition-colors"
+                          title="Editar / Ver"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        {modPerms?.delete && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteSingle(rec.id); }}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                            title="Eliminar Registro"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
 
         {totalPages > 1 && (
-          <div className="border-t border-gray-100 dark:border-gray-800/80 py-4 pl-4 pr-20 md:pr-24 flex justify-between items-center bg-gray-50/30 dark:bg-gray-900/50 mt-auto">
+          <div className={`border-t border-gray-100 dark:border-gray-800/80 py-4 pl-4 pr-20 md:pr-24 flex justify-between items-center bg-gray-50/30 dark:bg-gray-900/50 mt-auto ${viewMode === 'table' ? '' : 'border border-gray-200 dark:border-gray-800 rounded-b-2xl'}`}>
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
               Mostrando <span className="font-bold text-gray-700 dark:text-gray-300">{indexOfFirstRecord + 1}</span> - <span className="font-bold text-gray-700 dark:text-gray-300">{Math.min(indexOfLastRecord, filteredAndSortedRecords.length)}</span> de <span className="font-bold text-gray-700 dark:text-gray-300">{filteredAndSortedRecords.length}</span>
             </p>
