@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { createPortal } from 'react-dom'; 
-import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2, Minus, Check, Folder, ChevronDown, ChevronUp, Link as LinkIcon, Tag } from 'lucide-react'; // 🔥 AÑADIDOS ÍCONOS DE CARPETA Y CATEGORÍA
+import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2, Minus, Check, Folder, ChevronDown, ChevronUp, Link as LinkIcon, Tag } from 'lucide-react'; 
 import Select from 'react-select'; 
 
 import CaseModal from '../components/CaseModal';
@@ -36,21 +36,32 @@ const ModuleDataView = () => {
   // 🔥 ESTADOS DE VISTA E INVENTARIO 🔥
   // ==========================================
   const [viewMode, setViewMode] = useState(() => localStorage.getItem(`aegisflow_viewMode_${moduleId}`) || 'table');
-  const [inventoryTab, setInventoryTab] = useState('all'); // 'all' | 'out_of_stock' | 'categories'
+  const [inventoryTab, setInventoryTab] = useState('all'); 
   const [stockDraft, setStockDraft] = useState({}); 
 
   useEffect(() => {
     localStorage.setItem(`aegisflow_viewMode_${moduleId}`, viewMode);
   }, [viewMode, moduleId]);
 
-  // Extraemos el campo de stock
   const stockFieldApiName = module?.mobile_config?.mapping?.stock;
   const outOfStockCount = stockFieldApiName ? records.filter(r => Number(r.data[stockFieldApiName] || 0) <= 0).length : 0;
 
   // ==========================================
-  // 🔥 FASE 4: ESTADOS DE CATEGORÍAS 🔥
+  // 🔥 FUNCIONALIDAD DE FORMATO NUMÉRICO 🔥
   // ==========================================
-  // Detección automática del campo de categoría (por mapping móvil o por nombre)
+  const formatCellValue = (val, fieldType) => {
+    if (val === null || val === undefined || val === '') return '';
+    if (typeof val === 'object') return 'Datos...';
+    if (['number', 'currency', 'formula'].includes(fieldType)) {
+      const num = Number(val);
+      return !isNaN(num) ? num.toLocaleString('es-PY') : val;
+    }
+    return val;
+  };
+
+  // ==========================================
+  // 🔥 ESTADOS DE CATEGORÍAS Y PAGINACIÓN 🔥
+  // ==========================================
   const categoryFieldApiName = module?.mobile_config?.mapping?.category || 
     fields.find(f => f.field_type === 'select' && f.label.toLowerCase().includes('categor'))?.api_name;
     
@@ -61,6 +72,10 @@ const ModuleDataView = () => {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedToLink, setSelectedToLink] = useState([]);
   const [isCategorySaving, setIsCategorySaving] = useState(false);
+  
+  // Paginación de Productos en Categoría
+  const [categoryPage, setCategoryPage] = useState(1);
+  const categoryItemsPerPage = 20;
 
   const handleCreateCategory = async (e) => {
     e.preventDefault();
@@ -96,7 +111,6 @@ const ModuleDataView = () => {
       await api.put(`/api/v1/fields/${categoryFieldDef.id}`, { ...categoryFieldDef, options: newOptions });
       setFields(fields.map(f => f.id === categoryFieldDef.id ? { ...f, options: newOptions } : f));
 
-      // Quitar la categoría de todos los productos que la tenían
       const casesToUpdate = records.filter(r => r.data[categoryFieldApiName] === categoryName).map(r => r.id);
       if (casesToUpdate.length > 0) {
         await api.put('/api/v1/cases/bulk/update', { case_ids: casesToUpdate, field_api_name: categoryFieldApiName, new_value: '' });
@@ -338,7 +352,7 @@ const ModuleDataView = () => {
   const totalColumnPages = Math.ceil(filteredColumnFields.length / columnsPerPage) || 1;
   const currentColumnFields = filteredColumnFields.slice((columnPage - 1) * columnsPerPage, columnPage * columnsPerPage);
   const visibleFields = fields.filter(f => selectedColumns.includes(f.api_name || f.label));
-  const primaryField = fields.find(f => f.is_primary); // Helper general
+  const primaryField = fields.find(f => f.is_primary); 
 
   let filteredAndSortedRecords = records.filter(rec => {
     if (inventoryTab === 'out_of_stock' && stockFieldApiName) {
@@ -519,11 +533,19 @@ const ModuleDataView = () => {
                     label: primaryField ? r.data[primaryField.api_name || primaryField.label] : `Registro #${r.id}`
                   }));
 
+                  // LÓGICA DE PAGINACIÓN PARA PRODUCTOS EN CATEGORÍA
+                  const totalCategoryPages = Math.ceil(productsInCat.length / categoryItemsPerPage) || 1;
+                  const visibleProductsInCat = productsInCat.slice((categoryPage - 1) * categoryItemsPerPage, categoryPage * categoryItemsPerPage);
+
                   return (
                     <div key={cat} className={`border rounded-xl overflow-hidden transition-all ${isExpanded ? 'border-blue-500 shadow-md shadow-blue-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
                       {/* HEADER DEL ACORDEÓN */}
                       <div 
-                        onClick={() => { setExpandedCategory(isExpanded ? null : cat); setSelectedToLink([]); }} 
+                        onClick={() => { 
+                          setExpandedCategory(isExpanded ? null : cat); 
+                          setSelectedToLink([]); 
+                          setCategoryPage(1); // Reiniciar paginación al abrir
+                        }} 
                         className={`p-4 flex items-center justify-between cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-gray-50/50 dark:bg-[#151923]'}`}
                       >
                         <span className={`font-bold text-sm ${isExpanded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
@@ -552,7 +574,7 @@ const ModuleDataView = () => {
                               <p className="text-xs text-gray-400 dark:text-gray-500 italic p-4 text-center border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">Categoría vacía.</p>
                             ) : (
                               <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
-                                {productsInCat.map(p => (
+                                {visibleProductsInCat.map(p => (
                                   <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50/30 dark:bg-gray-900/30 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate pr-4">
                                       {primaryField ? p.data[primaryField.api_name || primaryField.label] : `Registro #${p.id}`}
@@ -562,6 +584,31 @@ const ModuleDataView = () => {
                                     </button>
                                   </div>
                                 ))}
+                                
+                                {/* CONTROLES DE PAGINACIÓN DE CATEGORÍA */}
+                                {totalCategoryPages > 1 && (
+                                  <div className="flex justify-between items-center px-4 py-2 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                      Página {categoryPage} de {totalCategoryPages}
+                                    </span>
+                                    <div className="flex gap-1">
+                                      <button 
+                                        onClick={() => setCategoryPage(p => Math.max(1, p - 1))} 
+                                        disabled={categoryPage === 1} 
+                                        className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                                      >
+                                        <ChevronLeft size={14} />
+                                      </button>
+                                      <button 
+                                        onClick={() => setCategoryPage(p => Math.min(totalCategoryPages, p + 1))} 
+                                        disabled={categoryPage === totalCategoryPages} 
+                                        className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                                      >
+                                        <ChevronRight size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -827,9 +874,12 @@ const ModuleDataView = () => {
                                 </td>
                               );
                             }
+                            
+                            // FORMATO INTELIGENTE DE CELDA
+                            const rawVal = rec.data[field.api_name] !== undefined ? rec.data[field.api_name] : rec.data[field.label];
                             return (
                               <td key={field.id} className="px-6 py-4 text-sm text-gray-900 dark:text-gray-200 truncate max-w-[200px]">
-                                {typeof rec.data[field.api_name] === 'object' ? 'Datos...' : (rec.data[field.api_name] || rec.data[field.label] || <span className="text-gray-300 dark:text-gray-700">—</span>)}
+                                {rawVal !== undefined && rawVal !== '' ? formatCellValue(rawVal, field.field_type) : <span className="text-gray-300 dark:text-gray-700">—</span>}
                               </td>
                             );
                           })}
@@ -899,11 +949,13 @@ const ModuleDataView = () => {
                           <h3 className="font-bold text-base text-gray-900 dark:text-white mb-3 truncate cursor-pointer" title={cardTitle} onClick={() => navigate(`/cases/${rec.id}`)}>{cardTitle || 'Sin título'}</h3>
                           <div className="space-y-2 flex-1 mb-4 cursor-pointer" onClick={() => navigate(`/cases/${rec.id}`)}>
                             {cardFields.map(field => {
-                              const val = rec.data[field.api_name] || rec.data[field.label];
+                              const rawVal = rec.data[field.api_name] !== undefined ? rec.data[field.api_name] : rec.data[field.label];
                               return (
                               <div key={field.id} className="flex justify-between items-center text-xs border-b border-gray-50 dark:border-gray-800/50 pb-2 last:border-0 last:pb-0">
                                 <span className="text-gray-500 dark:text-gray-400 truncate max-w-[45%] pr-2" title={field.label}>{field.label}</span>
-                                <span className="font-medium text-gray-900 dark:text-gray-200 truncate max-w-[50%] text-right" title={val}>{typeof val === 'object' ? 'Datos...' : (val || '-')}</span>
+                                <span className="font-medium text-gray-900 dark:text-gray-200 truncate max-w-[50%] text-right" title={rawVal}>
+                                  {rawVal !== undefined && rawVal !== '' ? formatCellValue(rawVal, field.field_type) : '-'}
+                                </span>
                               </div>
                             )})}
                           </div>
