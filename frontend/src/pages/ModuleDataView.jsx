@@ -4,6 +4,7 @@ import api from '../api/axios';
 import { createPortal } from 'react-dom'; 
 import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2, Minus, Check, Folder, ChevronDown, ChevronUp, Link as LinkIcon, Tag } from 'lucide-react'; 
 import Select from 'react-select'; 
+import Select, { components } from 'react-select';
 
 import CaseModal from '../components/CaseModal';
 import ImportDataModal from '../features/modules/ImportDataModal';
@@ -11,6 +12,23 @@ import ImportHistoryModal from '../features/modules/ImportHistoryModal';
 import { useNotification } from '../context/NotificationContext';
 import BulkActionsBar from '../components/BulkActionsBar';
 import BulkUpdateModal from '../components/BulkUpdateModal';
+
+// 🔥 OPTIMIZADOR PARA EVITAR SATURACIÓN DEL FRONTEND EN LISTAS LARGAS 🔥
+const OptimizedMenuList = (props) => {
+  const childrenArray = React.Children.toArray(props.children);
+  const MAX_ITEMS_TO_RENDER = 50; // Límite seguro para el DOM
+  
+  return (
+    <components.MenuList {...props}>
+      {childrenArray.slice(0, MAX_ITEMS_TO_RENDER)}
+      {childrenArray.length > MAX_ITEMS_TO_RENDER && (
+        <div className="p-2 text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-100 dark:border-gray-800">
+          Mostrando 50 de {childrenArray.length} resultados. Usa el buscador...
+        </div>
+      )}
+    </components.MenuList>
+  );
+};
 
 const ModuleDataView = () => {
   const { moduleId } = useParams(); 
@@ -626,6 +644,8 @@ const ModuleDataView = () => {
                                   placeholder="Buscar para añadir..."
                                   styles={customSingleSelectStyles}
                                   menuPortalTarget={document.body}
+                                  // 🔥 INYECTAMOS LA LISTA OPTIMIZADA AQUÍ 🔥
+                                  components={{ MenuList: OptimizedMenuList }} 
                                 />
                               </div>
                               <button 
