@@ -11,7 +11,7 @@ export default function StoreHome() {
   // --- ESTADOS DE LA TIENDA Y CACHÉ ---
   const [products, setProducts] = useState([]);
   const [storeInfo, setStoreInfo] = useState({ 
-    title: 'Cargando Catálogo...', // 🔥 ACTUALIZADO: Ahora es title
+    title: 'Cargando Catálogo...', 
     themeColor: '#3b82f6',
     whatsappNumber: '',
     coverImage: ''
@@ -25,10 +25,9 @@ export default function StoreHome() {
   // --- FILTROS, MÓVIL Y DEBOUNCE ---
   const [filtroTexto, setFiltroTexto] = useState('');
   const [filtroDebounced, setFiltroDebounced] = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState(''); // 🔥 NUEVO: Filtro de Categoría
+  const [categoriaFiltro, setCategoriaFiltro] = useState(''); 
   const [precioMin, setPrecioMin] = useState('');
   const [precioMax, setPrecioMax] = useState('');
-  const [soloConStock, setSoloConStock] = useState(false);
   const [ordenPrecio, setOrdenPrecio] = useState(''); 
   const [mostrarFiltrosMovil, setMostrarFiltrosMovil] = useState(false); 
 
@@ -80,7 +79,7 @@ export default function StoreHome() {
         const res = await axios.get(`${API_URL}/api/v1/storefront/catalog/${moduleId}`);
         const newProducts = res.data.products || [];
         const newStoreInfo = {
-          title: res.data.store_title || res.data.module_name || 'Catálogo', // 🔥 Lee el título dinámico
+          title: res.data.store_title || res.data.module_name || 'Catálogo', 
           themeColor: res.data.theme_color || '#3b82f6',
           whatsappNumber: res.data.whatsapp_number || '', 
           coverImage: res.data.cover_image || ''          
@@ -101,7 +100,7 @@ export default function StoreHome() {
   }, [moduleId, API_URL]);
 
   useEffect(() => localStorage.setItem(`carrito_tienda_${moduleId}`, JSON.stringify(carrito)), [carrito, moduleId]);
-  useEffect(() => setPaginaActual(1), [filtroDebounced, categoriaFiltro, precioMin, precioMax, soloConStock, ordenPrecio]);
+  useEffect(() => setPaginaActual(1), [filtroDebounced, categoriaFiltro, precioMin, precioMax, ordenPrecio]);
 
   // --- FUNCIONES DEL CARRITO ---
   const modificarCantidad = (idUnico, cambio) => {
@@ -144,17 +143,19 @@ export default function StoreHome() {
   };
 
   // --- LÓGICA DE FILTRADO ---
-  const categoriasUnicas = [...new Set(products.map(p => p.category).filter(Boolean))]; // 🔥 Obtenemos categorías únicas
+  const categoriasUnicas = [...new Set(products.map(p => p.category).filter(Boolean))]; 
 
   const productosFiltrados = products.filter((p) => {
+    // 🔥 REGLA DE ORO: SI NO HAY STOCK, SE DESCARTA INMEDIATAMENTE 🔥
+    if (p.stock <= 0) return false;
+
     const texto = filtroDebounced.toLowerCase();
     const tituloValido = p.title ? p.title.toLowerCase().includes(texto) : false;
-    const catValida = categoriaFiltro === '' || p.category === categoriaFiltro; // 🔥 Filtro de categoría
+    const catValida = categoriaFiltro === '' || p.category === categoriaFiltro; 
 
     return tituloValido && catValida &&
            (precioMin === '' || p.price >= parseFloat(precioMin)) &&
-           (precioMax === '' || p.price <= parseFloat(precioMax)) &&
-           (!soloConStock || p.stock > 0);
+           (precioMax === '' || p.price <= parseFloat(precioMax));
   });
 
   const productosOrdenados = [...productosFiltrados].sort((a, b) => {
@@ -167,7 +168,7 @@ export default function StoreHome() {
   const productosVisibles = productosOrdenados.slice((paginaActual - 1) * productosPorPagina, paginaActual * productosPorPagina);
 
   const limpiarFiltros = () => { 
-    setPrecioMin(''); setPrecioMax(''); setSoloConStock(false); setOrdenPrecio(''); setFiltroTexto(''); setCategoriaFiltro(''); 
+    setPrecioMin(''); setPrecioMax(''); setOrdenPrecio(''); setFiltroTexto(''); setCategoriaFiltro(''); 
     setMostrarFiltrosMovil(false); 
   };
   const obtenerTextoPlano = (html) => html ? new DOMParser().parseFromString(html, "text/html").body.textContent || "" : "Sin descripción.";
@@ -264,7 +265,7 @@ export default function StoreHome() {
           
           <div className="space-y-6">
             
-            {/* 🔥 NUEVO: SELECTOR DE CATEGORÍA 🔥 */}
+            {/* SELECTOR DE CATEGORÍA */}
             {categoriasUnicas.length > 0 && (
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Categoría</label>
@@ -294,11 +295,6 @@ export default function StoreHome() {
               </div>
             </div>
 
-            <label className="flex items-center gap-3 cursor-pointer p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-colors">
-              <input type="checkbox" checked={soloConStock} onChange={e => setSoloConStock(e.target.checked)} className="w-4 h-4 rounded text-blue-600" />
-              <span className="text-sm font-medium">Solo disponibles</span>
-            </label>
-
             <button onClick={limpiarFiltros} className="w-full py-3 bg-gray-200 dark:bg-gray-800 hover:bg-red-100 hover:text-red-600 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
               <X size={16}/> Limpiar Filtros
             </button>
@@ -327,7 +323,7 @@ export default function StoreHome() {
                 {productosVisibles.map((p) => (
                   <div key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm border border-gray-200 dark:border-gray-800 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col group relative">
                     
-                    <button onClick={() => agregarAlCarritoRápido(p)} disabled={p.stock === 0} className="absolute top-4 right-4 w-10 h-10 bg-white/90 dark:bg-gray-900/90 backdrop-blur rounded-full flex items-center justify-center shadow-md z-10 opacity-0 group-hover:opacity-100 transition-opacity disabled:hidden hover:scale-110" style={{ color: storeInfo.themeColor }} title="Agregar al carrito">
+                    <button onClick={() => agregarAlCarritoRápido(p)} className="absolute top-4 right-4 w-10 h-10 bg-white/90 dark:bg-gray-900/90 backdrop-blur rounded-full flex items-center justify-center shadow-md z-10 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110" style={{ color: storeInfo.themeColor }} title="Agregar al carrito">
                       <ShoppingCart size={18} />
                     </button>
 
@@ -350,8 +346,9 @@ export default function StoreHome() {
                         </div>
                       </div>
 
-                      <div className={`text-xs font-bold px-3 py-1.5 rounded-lg w-fit mb-4 ${p.stock > 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
-                        {p.stock > 0 ? `✓ ${p.stock} Disponibles` : '✗ Agotado'}
+                      {/* COMO FILTRAMOS LOS AGOTADOS, AQUÍ SIEMPRE HABRÁ STOCK */}
+                      <div className="text-xs font-bold px-3 py-1.5 rounded-lg w-fit mb-4 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">
+                        ✓ {p.stock} Disponibles
                       </div>
 
                       <button onClick={() => navigate(`/p/${moduleId}/${p.id}`)} className="w-full py-2.5 rounded-xl font-bold text-sm transition-all text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">
