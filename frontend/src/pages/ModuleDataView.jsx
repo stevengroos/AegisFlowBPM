@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { createPortal } from 'react-dom'; 
-import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2 } from 'lucide-react'; // 🔥 ÍCONOS DE VISTA AÑADIDOS
+import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2, Minus, Check } from 'lucide-react'; // 🔥 AÑADIDOS MINUS Y CHECK PARA EL STOCK
 import Select from 'react-select'; 
 
 import CaseModal from '../components/CaseModal';
@@ -33,18 +33,59 @@ const ModuleDataView = () => {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   // ==========================================
-  // 🔥 ESTADO DE VISTA (TABLA vs GALERÍA) 🔥
+  // 🔥 ESTADOS DE VISTA E INVENTARIO 🔥
   // ==========================================
-  const [viewMode, setViewMode] = useState(() => {
-    return localStorage.getItem(`aegisflow_viewMode_${moduleId}`) || 'table';
-  });
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem(`aegisflow_viewMode_${moduleId}`) || 'table');
+  const [inventoryTab, setInventoryTab] = useState('all'); // 'all' | 'out_of_stock'
+  const [stockDraft, setStockDraft] = useState({}); // Para la edición de stock en línea
 
   useEffect(() => {
     localStorage.setItem(`aegisflow_viewMode_${moduleId}`, viewMode);
   }, [viewMode, moduleId]);
 
+  // Extraemos el campo de stock de la configuración móvil (ChannelBuilder)
+  const stockFieldApiName = module?.mobile_config?.mapping?.stock;
+  const outOfStockCount = stockFieldApiName ? records.filter(r => Number(r.data[stockFieldApiName] || 0) <= 0).length : 0;
+
   // ==========================================
-  // 🔥 FASE 3: ESTADOS PARA WEBHOOKS API 🔥
+  // 🔥 FUNCIONES DE EDICIÓN DE STOCK EN LÍNEA 🔥
+  // ==========================================
+  const handleStockDraftChange = (recordId, value) => {
+    const numericValue = parseInt(value, 10);
+    if (isNaN(numericValue) || numericValue < 0) return;
+    setStockDraft(prev => ({ ...prev, [recordId]: numericValue }));
+  };
+
+  const cancelStock = (recordId) => {
+    const newDraft = { ...stockDraft };
+    delete newDraft[recordId];
+    setStockDraft(newDraft);
+  };
+
+  const saveStock = async (recordId) => {
+    const newValue = stockDraft[recordId];
+    if (newValue === undefined) return;
+    
+    try {
+      // Usamos el endpoint de actualización masiva para un guardado rápido
+      await api.put('/api/v1/cases/bulk/update', {
+        case_ids: [recordId],
+        field_api_name: stockFieldApiName,
+        new_value: newValue
+      });
+      
+      // Actualizamos el estado local instantáneamente
+      setRecords(records.map(r => r.id === recordId ? { ...r, data: { ...r.data, [stockFieldApiName]: newValue } } : r));
+      cancelStock(recordId);
+      notify.success("Inventario actualizado.");
+    } catch (error) {
+      notify.error("Error al actualizar el inventario.");
+    }
+  };
+
+
+  // ==========================================
+  // ESTADOS PARA WEBHOOKS API
   // ==========================================
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [moduleWebhooks, setModuleWebhooks] = useState([]);
@@ -137,7 +178,7 @@ const ModuleDataView = () => {
   };
 
   // ==========================================
-  // Grid, Filtros y Columnas (Sin Cambios)
+  // Grid, Filtros y Columnas
   // ==========================================
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -286,6 +327,11 @@ const ModuleDataView = () => {
   const visibleFields = fields.filter(f => selectedColumns.includes(f.api_name || f.label));
 
   let filteredAndSortedRecords = records.filter(rec => {
+    // 🔥 FILTRO DE INVENTARIO AGOTADO 🔥
+    if (inventoryTab === 'out_of_stock' && stockFieldApiName) {
+      if (Number(rec.data[stockFieldApiName] || 0) > 0) return false;
+    }
+
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const matchId = rec.id.toString().includes(term);
@@ -445,7 +491,6 @@ const ModuleDataView = () => {
     }
   };
 
-  // 🔥 NUEVA FUNCIÓN PARA BORRADO INDIVIDUAL EN MODO TARJETA 🔥
   const handleDeleteSingle = async (id) => {
     const isConfirmed = await confirm({
       title: 'Eliminar Registro',
@@ -473,6 +518,24 @@ const ModuleDataView = () => {
 
   return (
     <>
+      {/* 🔥 PESTAÑAS DE INVENTARIO INTELIGENTE 🔥 */}
+      {stockFieldApiName && (
+        <div className="flex items-center gap-3 mb-6 animate-in slide-in-from-top-4">
+          <button 
+            onClick={() => { setInventoryTab('all'); setCurrentPage(1); }} 
+            className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'all' ? 'bg-blue-600 text-white shadow-blue-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+          >
+             <Box size={16} /> Inventario ({records.length})
+          </button>
+          <button 
+            onClick={() => { setInventoryTab('out_of_stock'); setCurrentPage(1); }} 
+            className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'out_of_stock' ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-white dark:bg-gray-900 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
+          >
+             <AlertTriangle size={16} /> Agotados ({outOfStockCount})
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">{module?.name}</h1>
@@ -705,11 +768,41 @@ const ModuleDataView = () => {
                       </td>
                       <td className="px-6 py-4 text-sm font-bold text-gray-700 dark:text-gray-300">#{rec.id}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{new Date(rec.created_at).toLocaleDateString()}</td>
-                      {visibleFields.map(field => (
-                        <td key={field.id} className="px-6 py-4 text-sm text-gray-900 dark:text-gray-200 truncate max-w-[200px]">
-                          {typeof rec.data[field.api_name] === 'object' ? 'Datos...' : (rec.data[field.api_name] || rec.data[field.label] || <span className="text-gray-300 dark:text-gray-700">—</span>)}
-                        </td>
-                      ))}
+                      
+                      {visibleFields.map(field => {
+                        // 🔥 HIJACKING DE CELDA: INYECTAR EDITOR DE STOCK 🔥
+                        const isStockField = stockFieldApiName && (field.api_name === stockFieldApiName || field.label === stockFieldApiName);
+                        
+                        if (isStockField) {
+                          const currentStock = stockDraft[rec.id] !== undefined ? stockDraft[rec.id] : Number(rec.data[stockFieldApiName] || 0);
+                          const hasChanges = stockDraft[rec.id] !== undefined && stockDraft[rec.id] !== Number(rec.data[stockFieldApiName] || 0);
+                          
+                          return (
+                            <td key={field.id} className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex flex-col gap-1.5 items-start">
+                                <div className="flex items-center gap-1 bg-white dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                  <button onClick={(e) => { e.stopPropagation(); handleStockDraftChange(rec.id, currentStock - 1); }} className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"><Minus size={14} /></button>
+                                  <input type="number" value={currentStock} onClick={e => e.stopPropagation()} onChange={(e) => handleStockDraftChange(rec.id, e.target.value)} className="w-12 text-center text-sm font-bold bg-transparent outline-none appearance-none text-gray-900 dark:text-white" />
+                                  <button onClick={(e) => { e.stopPropagation(); handleStockDraftChange(rec.id, currentStock + 1); }} className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"><Plus size={14} /></button>
+                                </div>
+                                {hasChanges && (
+                                  <div className="flex items-center gap-1 w-full animate-in fade-in zoom-in-95">
+                                    <button onClick={(e) => { e.stopPropagation(); saveStock(rec.id); }} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md p-1 flex justify-center transition-colors shadow-sm"><Check size={14} /></button>
+                                    <button onClick={(e) => { e.stopPropagation(); cancelStock(rec.id); }} className="bg-red-500 hover:bg-red-600 text-white rounded-md p-1 flex justify-center transition-colors shadow-sm"><X size={14} /></button>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        }
+
+                        // CELDA NORMAL
+                        return (
+                          <td key={field.id} className="px-6 py-4 text-sm text-gray-900 dark:text-gray-200 truncate max-w-[200px]">
+                            {typeof rec.data[field.api_name] === 'object' ? 'Datos...' : (rec.data[field.api_name] || rec.data[field.label] || <span className="text-gray-300 dark:text-gray-700">—</span>)}
+                          </td>
+                        );
+                      })}
                       
                       <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{getUserName(rec.assigned_to || rec.created_by)}</td>
                       
@@ -724,7 +817,7 @@ const ModuleDataView = () => {
                         })()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button className="p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all"><MoreHorizontal size={18} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteSingle(rec.id); }} className="p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"><Trash2 size={16} /></button>
                       </td>
                     </tr>
                   ))
@@ -734,7 +827,7 @@ const ModuleDataView = () => {
           </div>
         ) : (
           /* 🔥 VISTA DE GALERÍA (TARJETAS) 🔥 */
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 py-6 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 py-6 px-4 animate-in fade-in duration-300">
             {currentListRecords.length === 0 ? (
                <div className="col-span-full py-16 text-center border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900">
                   <Box className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-700 mb-3" />
@@ -748,7 +841,12 @@ const ModuleDataView = () => {
                 const imageField = fields.find(f => f.field_type === 'image' || f.field_type === 'file');
                 const coverImage = imageField ? (rec.data[imageField.api_name] || rec.data[imageField.label]) : null;
 
-                const cardFields = visibleFields.filter(f => !f.is_primary && f.field_type !== 'file' && f.field_type !== 'image').slice(0, 3);
+                // Solo mostramos campos que no sean primarios, no sean fotos y NO sean el stock (el stock va en el editor)
+                const cardFields = visibleFields.filter(f => !f.is_primary && f.field_type !== 'file' && f.field_type !== 'image' && f.api_name !== stockFieldApiName && f.label !== stockFieldApiName).slice(0, 3);
+
+                // Variables para el Editor de Stock en Tarjeta
+                const currentStock = stockDraft[rec.id] !== undefined ? stockDraft[rec.id] : Number(rec.data[stockFieldApiName] || 0);
+                const hasChanges = stockDraft[rec.id] !== undefined && stockDraft[rec.id] !== Number(rec.data[stockFieldApiName] || 0);
 
                 return (
                   <div key={rec.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm hover:shadow-lg transition-all overflow-hidden flex flex-col relative group">
@@ -783,11 +881,12 @@ const ModuleDataView = () => {
                       )}
                     </div>
 
-                    <div className="p-4 flex-1 flex flex-col cursor-pointer" onClick={() => navigate(`/cases/${rec.id}`)}>
-                      <h3 className="font-bold text-base text-gray-900 dark:text-white mb-3 truncate" title={cardTitle}>
+                    <div className="p-4 flex-1 flex flex-col">
+                      <h3 className="font-bold text-base text-gray-900 dark:text-white mb-3 truncate cursor-pointer" title={cardTitle} onClick={() => navigate(`/cases/${rec.id}`)}>
                         {cardTitle || 'Sin título'}
                       </h3>
-                      <div className="space-y-2 flex-1">
+                      
+                      <div className="space-y-2 flex-1 mb-4 cursor-pointer" onClick={() => navigate(`/cases/${rec.id}`)}>
                         {cardFields.map(field => {
                           const val = rec.data[field.api_name] || rec.data[field.label];
                           return (
@@ -799,6 +898,26 @@ const ModuleDataView = () => {
                           </div>
                         )})}
                       </div>
+
+                      {/* 🔥 EDITOR DE STOCK INCRUSTADO EN LA TARJETA 🔥 */}
+                      {stockFieldApiName && (
+                        <div className="mt-auto pt-3 border-t border-gray-100 dark:border-gray-800">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2 text-center">Ajustar Inventario</label>
+                          <div className="flex flex-col gap-1.5 items-center">
+                            <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-950 p-1 rounded-lg border border-gray-200 dark:border-gray-800 shadow-inner w-full justify-center">
+                              <button onClick={(e) => { e.stopPropagation(); handleStockDraftChange(rec.id, currentStock - 1); }} className="p-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white dark:hover:bg-gray-800 rounded-md transition-colors"><Minus size={14} /></button>
+                              <input type="number" value={currentStock} onClick={e => e.stopPropagation()} onChange={(e) => handleStockDraftChange(rec.id, e.target.value)} className="w-16 text-center text-sm font-bold bg-transparent outline-none appearance-none text-gray-900 dark:text-white" />
+                              <button onClick={(e) => { e.stopPropagation(); handleStockDraftChange(rec.id, currentStock + 1); }} className="p-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white dark:hover:bg-gray-800 rounded-md transition-colors"><Plus size={14} /></button>
+                            </div>
+                            {hasChanges && (
+                              <div className="flex items-center gap-2 w-full animate-in fade-in zoom-in-95">
+                                <button onClick={(e) => { e.stopPropagation(); saveStock(rec.id); }} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg py-1.5 flex justify-center transition-colors shadow-sm font-bold text-xs">Guardar</button>
+                                <button onClick={(e) => { e.stopPropagation(); cancelStock(rec.id); }} className="bg-red-500 hover:bg-red-600 text-white rounded-lg py-1.5 px-3 flex justify-center transition-colors shadow-sm"><X size={14} /></button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 flex justify-between items-center">
