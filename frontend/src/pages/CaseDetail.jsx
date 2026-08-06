@@ -343,8 +343,23 @@ const CaseDetail = () => {
   const handleSaveEdit = async () => {
     setSaving(true);
     try {
+      // 🔥 1. INTERCEPTOR DE FÓRMULAS PARA LA EDICIÓN 🔥
+      let payloadData = { ...editFormData };
+      const formulaFields = fields.filter(f => f.field_type === 'formula');
+      
+      // 3 pasadas para fórmulas encadenadas
+      for(let i = 0; i < 3; i++) {
+          formulaFields.forEach(f => {
+              const fKey = f.api_name || f.label;
+              const result = calculateVisualFormula(f.options, payloadData);
+              if (result !== '...') {
+                  payloadData[fKey] = result;
+              }
+          });
+      }
+
       await api.put(`/api/v1/cases/${id}`, { 
-        data: editFormData,
+        data: payloadData, // 🔥 2. Guardamos la data con las matemáticas ya resueltas
         assigned_to: editAssignedTo ? parseInt(editAssignedTo) : null 
       });
       notify.success("Registro guardado con éxito.");

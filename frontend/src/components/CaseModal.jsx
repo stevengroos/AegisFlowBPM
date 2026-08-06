@@ -376,10 +376,25 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   e.preventDefault(); 
   setLoading(true);
   try {
+    // 🔥 1. INTERCEPTOR DE FÓRMULAS ANTES DE GUARDAR 🔥
+    let payloadData = { ...formData };
+    const formulaFields = fieldsToShow.filter(f => f.field_type === 'formula');
+    
+    // Hacemos 3 pasadas matemáticas para resolver fórmulas que dependen de otras fórmulas
+    for(let i = 0; i < 3; i++) {
+        formulaFields.forEach(f => {
+            const fKey = f.api_name || f.label;
+            const result = calculateVisualFormula(f.options, payloadData);
+            if (result !== '...') {
+                payloadData[fKey] = result; // Inyectamos el resultado real al JSON
+            }
+        });
+    }
+
     const res = await api.post('/api/v1/cases/', { 
       form_id: selectedForm.id, 
       module_id: moduleId, 
-      data: formData,
+      data: payloadData, // 🔥 2. Enviamos los datos procesados en vez del formData crudo
       assigned_to: assignedTo ? parseInt(assignedTo) : null 
     });
 

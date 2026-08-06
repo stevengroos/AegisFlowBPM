@@ -56,41 +56,46 @@ def calculate_formulas(db: Session, form_id: int, data_dict: dict) -> dict:
         models.FormField.field_type == "formula"
     ).all()
 
-    for field in formula_fields:
-        formula = field.options 
-        if not formula: continue
-        try:
-            expression = str(formula)
-            
-            # 🔥 NUEVO: Soporte para sumar columnas de subformularios SUM([subform.columna])
-            sum_matches = re.findall(r'SUM\(\[(.*?)\.(.*?)\]\)', expression)
-            for subform_key, col_key in sum_matches:
-                sub_data = data_dict.get(subform_key, [])
-                if not isinstance(sub_data, list): sub_data = []
-                
-                total_sum = 0
-                for row in sub_data:
-                    if isinstance(row, dict):
-                        # Limpiamos el valor para asegurar que es un número
-                        val = re.sub(r'[^\d.-]', '', str(row.get(col_key, 0))) or 0
-                        total_sum += float(val)
-                        
-                # Reemplazamos la expresión completa por el número calculado
-                expression = expression.replace(f"SUM([{subform_key}.{col_key}])", str(total_sum))
+    if not formula_fields:
+        return data_dict
 
-            # Lógica existente para campos simples
-            variables = re.findall(r'\[(.*?)\]', expression)
-            for var in variables:
-                val = data_dict.get(var, 0)
-                if val == "" or val is None: val = 0
-                clean_val = re.sub(r'[^\d.-]', '', str(val)) or 0
-                expression = expression.replace(f"[{var}]", str(clean_val))
-            
-            result = eval(expression, {"__builtins__": {}})
-            data_dict[field.api_name or field.label] = round(float(result), 4)
-        except Exception as e:
-            print(f"Error evaluando fórmula {formula}: {e}")
-            data_dict[field.api_name or field.label] = 0
+    # 🔥 FIX: 3 Pasadas para resolver fórmulas que dependen de otras fórmulas (encadenadas) 🔥
+    for _ in range(3):
+        for field in formula_fields:
+            formula = field.options 
+            if not formula: continue
+            try:
+                expression = str(formula)
+                
+                # Soporte para sumar columnas de subformularios SUM([subform.columna])
+                sum_matches = re.findall(r'SUM\(\[(.*?)\.(.*?)\]\)', expression)
+                for subform_key, col_key in sum_matches:
+                    sub_data = data_dict.get(subform_key, [])
+                    if not isinstance(sub_data, list): sub_data = []
+                    
+                    total_sum = 0
+                    for row in sub_data:
+                        if isinstance(row, dict):
+                            # Limpiamos el valor para asegurar que es un número
+                            val = re.sub(r'[^\d.-]', '', str(row.get(col_key, 0))) or 0
+                            total_sum += float(val)
+                            
+                    # Reemplazamos la expresión completa por el número calculado
+                    expression = expression.replace(f"SUM([{subform_key}.{col_key}])", str(total_sum))
+
+                # Lógica existente para campos simples
+                variables = re.findall(r'\[(.*?)\]', expression)
+                for var in variables:
+                    val = data_dict.get(var, 0)
+                    if val == "" or val is None: val = 0
+                    clean_val = re.sub(r'[^\d.-]', '', str(val)) or 0
+                    expression = expression.replace(f"[{var}]", str(clean_val))
+                
+                result = eval(expression, {"__builtins__": {}})
+                data_dict[field.api_name or field.label] = round(float(result), 4)
+            except Exception as e:
+                print(f"Error evaluando fórmula {formula}: {e}")
+                data_dict[field.api_name or field.label] = 0
 
     return data_dict
 
@@ -382,7 +387,10 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                     elif src_info.get("type") == "dynamic":
                         src_field = src_info.get("value")
                         new_record_data[tgt_field] = updated_data.get(src_field, "")
-                        
+                
+                # 🔥 FIX: Calculamos las fórmulas en el nuevo registro ANTES de crearlo 🔥
+                new_record_data = calculate_formulas(db, target_form_id, new_record_data)
+
                 initial_status = db.query(models.Status).join(models.Blueprint).filter(
                     models.Blueprint.module_id == target_mod_id,
                     models.Blueprint.company_id == case.company_id,
@@ -613,6 +621,8 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
             ui_changed = True
 
     if data_changed:
+        # 🔥 FIX: Si la automatización cambió algún valor, recalculamos las fórmulas finales 🔥
+        updated_data = calculate_formulas(db, case.form_id, updated_data)
         case.data = updated_data
     if ui_changed:
         case.ui_rules = updated_ui
@@ -1219,7 +1229,10 @@ def change_case_status(
                             elif src_info.get("type") == "dynamic":
                                 src_field = src_info.get("value")
                                 new_record_data[tgt_field] = updated_data.get(src_field, "")
-                                
+                        
+                        # 🔥 FIX: Calculamos las fórmulas antes de crear el registro por Transición 🔥
+                        new_record_data = calculate_formulas(db, target_form_id, new_record_data)
+
                         initial_status = db.query(models.Status).join(models.Blueprint).filter(
                             models.Blueprint.module_id == target_mod_id,
                             models.Blueprint.company_id == case.company_id,
@@ -1446,6 +1459,9 @@ def change_case_status(
                         elif t == "SET_REQUIRED": updated_ui[target_f]["required"] = True
                         elif t == "SET_OPTIONAL": updated_ui[target_f]["required"] = False
 
+            # 🔥 FIX: Recalculamos fórmulas del caso base si una transición cambió sus datos 🔥
+            updated_data = calculate_formulas(db, case.form_id, updated_data)
+            
             case.data = updated_data
             case.ui_rules = updated_ui
 
@@ -1601,6 +1617,9 @@ async def execute_import(
                     # 3. Esterilizamos TODO el contenido de una forma 100% segura para la BD
                     clean_val = sanitize_for_json(val)
                     case_data[api_name] = clean_val
+
+            # 🔥 FIX: Calculamos las fórmulas de los registros importados automáticamente 🔥
+            case_data = calculate_formulas(db, form_id, case_data)
 
             new_case = models.Case(
                 company_id=current_user.company_id,
