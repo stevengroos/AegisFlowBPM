@@ -179,10 +179,23 @@ const ModuleDataView = () => {
     const newValue = stockDraft[recordId];
     if (newValue === undefined) return;
     try {
-      await api.put('/api/v1/cases/bulk/update', { case_ids: [recordId], field_api_name: stockFieldApiName, new_value: newValue });
+      // 🔥 FIX CRÍTICO: Empaquetar el payload exactamente como espera el modelo Pydantic del backend
+      const payload = {
+        case_ids: [recordId],
+        field_api_name: stockFieldApiName,
+        new_value: newValue
+      };
+      
+      // Enviar usando la directiva 'data' si es Axios, o simplemente el objeto puro en el segundo parámetro
+      await api.put('/api/v1/cases/bulk/update', payload);
+      
       setRecords(records.map(r => r.id === recordId ? { ...r, data: { ...r.data, [stockFieldApiName]: newValue } } : r));
-      cancelStock(recordId); notify.success("Inventario actualizado.");
-    } catch (error) { notify.error("Error al actualizar el inventario."); }
+      cancelStock(recordId); 
+      notify.success("Inventario actualizado.");
+    } catch (error) { 
+      notify.error("Error al actualizar el inventario."); 
+      console.error("Detalle del error de red:", error.response?.data || error.message);
+    }
   };
 
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
