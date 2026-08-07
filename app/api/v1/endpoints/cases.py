@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, BackgroundTasks, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any
 from pydantic import BaseModel, EmailStr, ValidationError, TypeAdapter
@@ -1835,7 +1835,7 @@ def add_case_comment(
     
 @router.put("/bulk/update")
 def bulk_update_cases(
-    payload: BulkUpdatePayload,
+    payload: BulkUpdatePayload = Body(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):

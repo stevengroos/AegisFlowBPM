@@ -1,6 +1,6 @@
 import json
 from pydantic import BaseModel, Field, field_validator
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 class CaseBase(BaseModel):
@@ -80,3 +80,9 @@ class CaseCommentResponse(CaseCommentBase):
     
     class Config:
         from_attributes = True
+        
+        
+class BulkUpdatePayload(BaseModel):
+    case_ids: List[int]
+    field_api_name: str
+    new_value: Any
