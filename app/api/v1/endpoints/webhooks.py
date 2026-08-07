@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models import models
 from app.api import deps
 from app.core.global_audit import log_global_event
+from app.core.audit import log_event  
 
 # Importamos tu motor de reglas para que se disparen cuando el webhook cree/actualice un caso
 from app.api.v1.endpoints.cases import process_global_rules, StatusUpdate
@@ -160,12 +161,32 @@ async def update_external_record(
     except:
         raise HTTPException(status_code=400, detail="El cuerpo debe ser un JSON válido.")
 
-    current_data = dict(case.data)
+    # Guardamos los datos antiguos para la auditoría
+    old_data = dict(case.data) if case.data else {}
+    
+    # Hacemos el merge con los nuevos datos
+    current_data = dict(case.data) if case.data else {}
     current_data.update(payload)
     case.data = current_data
 
     system_user_id = webhook.created_by or 0
-    process_global_rules(db, case, system_user_id, "ON_UPDATE", background_tasks=background_tasks)
+    process_global_rules(db, case, system_user_id, "ON_UPDATE", old_data=old_data, background_tasks=background_tasks)
+
+    # 🔥 1. REGISTRO EN LA LÍNEA DE TIEMPO DEL CASO (PRODUCTO)
+    log_event(
+        db=db, user_id=system_user_id, company_id=webhook.company_id,
+        case_id=case.id, action="UPDATE_DATA_API", # Le ponemos un nombre especial para saber que vino del Webhook
+        old_v={"data": old_data, "status_id": case.status_id},
+        new_v={"data": current_data, "status_id": case.status_id}
+    )
+    
+    # 🔥 2. REGISTRO EN LA AUDITORÍA GLOBAL DE LA EMPRESA
+    log_global_event(
+        db=db, user_id=system_user_id, company_id=webhook.company_id,
+        entity_type="CASE", action="WEBHOOK_UPDATE", entity_id=case.id,
+        details=f"Registro #{case.id} actualizado mediante la API de Integración (Webhook: {webhook.name}).",
+        old_value=old_data, new_value=current_data, request=request
+    )
 
     db.commit()
 
