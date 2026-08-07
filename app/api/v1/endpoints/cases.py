@@ -1833,9 +1833,10 @@ def add_case_comment(
         "created_at": new_comment.created_at
     }
     
+# 🔥 FIX: Usamos case_schema.BulkUpdatePayload para que Python encuentre la clase
 @router.put("/bulk/update")
 def bulk_update_cases(
-    payload: BulkUpdatePayload = Body(...),
+    payload: case_schema.BulkUpdatePayload = Body(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
 ):
