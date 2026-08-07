@@ -1833,9 +1833,9 @@ def add_case_comment(
         "created_at": new_comment.created_at
     }
     
-# 🔥 FIX: Usamos case_schema.BulkUpdatePayload para que Python encuentre la clase
 @router.put("/bulk/update")
 def bulk_update_cases(
+    request: Request, # 🔥 IMPORTANTE: Agregamos request para la auditoría global
     payload: case_schema.BulkUpdatePayload = Body(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
@@ -1851,10 +1851,35 @@ def bulk_update_cases(
     updated_count = 0
     
     for case in cases:
+        old_data = dict(case.data) if case.data else {}
         current_data = dict(case.data) if case.data else {}
-        current_data[payload.field_api_name] = payload.new_value
-        case.data = current_data
-        updated_count += 1
+        
+        # Opcional pero recomendado: solo actualizar y registrar si el valor realmente cambió
+        if current_data.get(payload.field_api_name) != payload.new_value:
+            current_data[payload.field_api_name] = payload.new_value
+            case.data = current_data
+            
+            # Preparamos los datos limpios para la auditoría (sin imágenes pesadas base64 si las hubiera)
+            audit_old_data = {k: v for k, v in old_data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
+            audit_new_data = {k: v for k, v in current_data.items() if not (isinstance(v, str) and v.startswith("data:image"))}
+
+            # 1. Registro en la Línea de Tiempo del Caso
+            log_event(
+                db=db, user_id=current_user.id, company_id=current_user.company_id,
+                case_id=case.id, action="UPDATE_DATA",
+                old_v={"data": audit_old_data, "status_id": case.status_id},
+                new_v={"data": audit_new_data, "status_id": case.status_id}
+            )
+            
+            # 2. Registro en la Auditoría Global de la Empresa
+            log_global_event(
+                db=db, user_id=current_user.id, company_id=current_user.company_id,
+                entity_type="CASE", action="BULK_UPDATE", entity_id=case.id,
+                details=f"Actualización rápida: campo '{payload.field_api_name}' en registro #{case.id}",
+                old_value=audit_old_data, new_value=audit_new_data, request=request
+            )
+            
+            updated_count += 1
 
     db.commit()
     return {"message": f"{updated_count} registros actualizados exitosamente."}
