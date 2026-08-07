@@ -169,6 +169,17 @@ class SafeHTTPClient:
             return {"status": resp.status_code, "data": data}
         except Exception as e:
             return {"status": 500, "error": str(e)}
+        
+    def put(self, url: str, json: dict = None, headers: dict = None):
+        if not self._is_safe_url(url):
+            return {"status": 403, "error": "URL bloqueada por políticas de seguridad (SSRF)."}
+        try:
+            resp = requests.put(url, json=json, headers=headers, timeout=3)
+            try: data = resp.json()
+            except: data = resp.text
+            return {"status": resp.status_code, "data": data}
+        except Exception as e:
+            return {"status": 500, "error": str(e)}
 
 # =======================================================
 # 🔥 EJECUTOR DE WEBHOOKS SEGURO (iPaaS) 🔥
