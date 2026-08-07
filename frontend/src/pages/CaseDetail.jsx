@@ -1,46 +1,107 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle, Phone, CircleDollarSign, Binary } from 'lucide-react';
 import { createPortal } from 'react-dom';
-// 🔥 Importaciones Arquitectura Limpia 🔥
 import { useNotification } from '../context/NotificationContext';
-import SearchableSelect from '../components/ui/SearchableSelect';
 import FileUploadField from '../components/ui/FileUploadField';
 import SubformTable from '../features/cases/SubformTable';
 import ExportPdfButton from '../components/ExportPdfButton';
 import CaseComments from '../features/cases/CaseComments';
 import CaseExternalChat from '../features/cases/CaseExternalChat';
 
-// 🔥 IMPORTACIONES DE LIBRERÍAS DE 3ROS PARA LOS NUEVOS CAMPOS 🔥
 import PhoneInputPkg from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
 import CurrencyInputPkg from 'react-currency-input-field';
-// 🔥 NUEVO: IMPORTAR EDITOR DE TEXTO ENRIQUECIDO 🔥
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
-// 🔥 PENTEST FIX: Evitar "React Error 130: got object" en Vercel/Vite 🔥
 const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
 const CurrencyInput = CurrencyInputPkg.default || CurrencyInputPkg;
 
-// 🔥 NUEVO FORMATO PARA MONEDAS Y FÓRMULAS 🔥
 const formatCurrencyValue = (val, decimalPlaces = 2, decSep = ',', grpSep = '.') => {
   if (val === undefined || val === null || val === '') return '';
   const num = Number(val);
-  if (isNaN(num)) return val; // Si no es número, devolver tal cual
-
-  // Convertimos a decimales (ej. "1000000.00")
+  if (isNaN(num)) return val; 
   let strNum = num.toFixed(decimalPlaces);
-  
-  // Separamos enteros de decimales
   let parts = strNum.split('.');
-  
-  // Aplicamos el separador de miles a la parte entera
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, grpSep);
-  
-  // Unimos todo con el separador decimal
   return decimalPlaces > 0 ? parts.join(decSep) : parts[0];
+};
+
+// ==========================================
+// COMPONENTE: SEARCHABLE SELECT CON PORTAL
+// ==========================================
+const SearchableSelect = ({ options, value, onChange, disabled, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const containerRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  const safeOptions = Array.isArray(options) ? options : [];
+  
+  // 🔥 FIX 1: Forzamos la comparación como texto para evitar fallos de edición
+  const selectedOption = safeOptions.find(opt => String(opt.value) === String(value));
+  
+  const displayValue = selectedOption ? selectedOption.label : '';
+  const filteredOptions = safeOptions.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const updateCoords = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setCoords({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width });
+    }
+  }, []);
+
+  const handleToggle = () => {
+    if (disabled) return;
+    if (!isOpen) updateCoords();
+    setIsOpen(!isOpen);
+    setSearchTerm('');
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        containerRef.current && !containerRef.current.contains(event.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(event.target)
+      ) { setIsOpen(false); }
+    };
+    const handleScrollOrResize = () => { if (isOpen) updateCoords(); };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      window.addEventListener('scroll', handleScrollOrResize, true);
+      window.addEventListener('resize', handleScrollOrResize);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [isOpen, updateCoords]);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div onClick={handleToggle} className={`w-full px-4 py-2.5 bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/50 rounded-xl text-sm text-gray-700 dark:text-gray-200 transition-colors flex justify-between items-center ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500'}`}>
+        <span className={`truncate ${selectedOption ? '' : 'text-gray-400 dark:text-gray-500'}`}>{selectedOption ? displayValue : placeholder}</span>
+        <ChevronDown size={16} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      {isOpen && createPortal(
+        <div ref={dropdownRef} style={{ position: 'absolute', top: `${coords.top + 4}px`, left: `${coords.left}px`, width: `${Math.max(coords.width, 200)}px`, zIndex: 999999 }} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in duration-100">
+          <div className="sticky top-0 bg-white dark:bg-gray-800 p-2 border-b border-gray-100 dark:border-gray-700 z-10">
+             <div className="relative">
+                <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+                <input type="text" autoFocus className="w-full pl-9 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-200" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onClick={(e) => e.stopPropagation()}/>
+             </div>
+          </div>
+          <div className="p-1 max-h-60 overflow-y-auto custom-scrollbar">
+             {filteredOptions.length === 0 ? <div className="px-3 py-4 text-sm text-gray-500 text-center italic">No hay resultados</div> : filteredOptions.map(opt => (<div key={opt.value} className={`px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors truncate ${String(value) === String(opt.value) ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`} onClick={() => {onChange(opt.value); setIsOpen(false); setSearchTerm('');}}>{opt.label}</div>))}
+          </div>
+        </div>, document.body
+      )}
+    </div>
+  );
 };
 
 const CaseDetail = () => {
@@ -92,9 +153,7 @@ const CaseDetail = () => {
         const isPurchasesModule = String(settingsRes.data?.purchases_module_id) === String(moduleId);
         
         setIsModulePublished(isPublished || isPurchasesModule);
-      } catch (err) {
-        console.error("No se pudo verificar configuración B2C");
-      }
+      } catch (err) {}
 
       const sigPromise = api.get(`/api/v1/modules/${moduleId}/integrations/signaturit`, { signal }).catch(() => ({ data: { is_active: false, has_token: false } }));
       const sigListPromise = api.get(`/api/v1/cases/${id}/signatures`, { signal }).catch(() => ({ data: [] }));
@@ -115,9 +174,7 @@ const CaseDetail = () => {
       try {
         const historyRes = await api.get(`/api/v1/cases/${id}/history`, { signal });
         fetchedHistory = historyRes.data;
-      } catch (hError) {
-         if (hError.name !== 'CanceledError') console.error("No se pudo cargar historial");
-      }
+      } catch (hError) {}
 
       const fetchedFields = fieldsRes.data;
       const relData = {};
@@ -142,8 +199,12 @@ const CaseDetail = () => {
       };
 
       for (const f of fetchedFields) {
-        if (f.field_type === 'relation' && f.options?.target_module_id) {
-           await loadTargetModuleData(f.options.target_module_id);
+        // 🔥 FIX 2: Parseamos las opciones si vienen como texto
+        let fOpts = f.options;
+        if (typeof fOpts === 'string') { try { fOpts = JSON.parse(fOpts); } catch(e){} }
+        
+        if (f.field_type === 'relation' && fOpts?.target_module_id) {
+           await loadTargetModuleData(fOpts.target_module_id);
         }
         if (f.field_type === 'subform' && f.subform_config) {
            for (const subCol of f.subform_config) {
@@ -171,111 +232,62 @@ const CaseDetail = () => {
          setLoadingLinked(true);
          const linkedRes = await api.get(`/api/v1/cases/${id}/linked`, { signal });
          setLinkedCases(linkedRes.data || {});
-      } catch (err) {
-         if (err.name !== 'CanceledError') console.error("Error al cargar vinculados");
-      } finally {
-         setLoadingLinked(false);
-      }
+      } catch (err) {} finally { setLoadingLinked(false); }
+      
     } catch (error) {
       if (error.name !== 'CanceledError') {
-        console.error("🔥 EL CULPABLE ES:", error); 
-        
         if (error.response && (error.response.status === 403 || error.response.status === 404)) {
-           notify.error("Acceso denegado o registro no encontrado.");
-           navigate('/dashboard');
+           notify.error("Acceso denegado o registro no encontrado."); navigate('/dashboard');
         } else {
-           notify.error("Error de conexión al cargar el registro.");
-           navigate('/dashboard');
+           notify.error("Error de conexión al cargar el registro."); navigate('/dashboard');
         }
       }
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signaturitTemplates, setSignaturitTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [sendingSignature, setSendingSignature] = useState(false);
-  const [sigConfig, setSigConfig] = useState({
-     sourceType: 'template',
-     templateId: '',
-     file: null,
-     signatureType: 'advanced',
-     deliveryType: 'email', 
-     signers: [{ name: '', email: '' }]
-  });
+  const [sigConfig, setSigConfig] = useState({ sourceType: 'template', templateId: '', file: null, signatureType: 'advanced', deliveryType: 'email', signers: [{ name: '', email: '' }] });
 
   const handleOpenSignatureModal = async () => {
-    setIsSignatureModalOpen(true);
-    setLoadingTemplates(true);
+    setIsSignatureModalOpen(true); setLoadingTemplates(true);
     try {
       const res = await api.get(`/api/v1/modules/${caseData.module_id}/integrations/signaturit/templates`);
       setSignaturitTemplates(res.data || []);
       const foundEmail = Object.values(caseData.data).find(v => typeof v === 'string' && v.includes('@'));
       if (foundEmail) setSigConfig(prev => ({...prev, signers: [{name: 'Cliente', email: foundEmail}]}));
-    } catch (e) {
-      notify.error("No se pudieron cargar las plantillas. Verifica la integración.");
-    } finally {
-      setLoadingTemplates(false);
-    }
+    } catch (e) { notify.error("No se pudieron cargar las plantillas. Verifica la integración."); } finally { setLoadingTemplates(false); }
   };
 
   const handleRemindSignature = async (signatureId) => {
-    try {
-      await api.post(`/api/v1/cases/${id}/signatures/${signatureId}/remind`);
-      notify.success("Recordatorio enviado al cliente.");
-    } catch (error) {
-      notify.error(error.response?.data?.detail || "Error al enviar recordatorio.");
-    }
+    try { await api.post(`/api/v1/cases/${id}/signatures/${signatureId}/remind`); notify.success("Recordatorio enviado al cliente."); } 
+    catch (error) { notify.error(error.response?.data?.detail || "Error al enviar recordatorio."); }
   };
 
   const handleDownloadSignedDocument = async (signatureId) => {
     try {
       notify.success("Iniciando descarga segura...");
-      const response = await api.get(`/api/v1/cases/${id}/signatures/${signatureId}/download`, {
-        responseType: 'blob' 
-      });
-      
+      const response = await api.get(`/api/v1/cases/${id}/signatures/${signatureId}/download`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Contrato_Firmado_${signatureId}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      
-    } catch (error) {
-      notify.error("Error al descargar el documento firmado.");
-    }
+      const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Contrato_Firmado_${signatureId}.pdf`);
+      document.body.appendChild(link); link.click(); link.remove();
+    } catch (error) { notify.error("Error al descargar el documento firmado."); }
   };
 
   const handleCancelSignature = async (signatureId) => {
-    const isConfirmed = await confirm({
-      title: 'Cancelar Envío de Firma',
-      message: '¿Estás seguro? El cliente ya no podrá firmar este documento y se invalidará el enlace.',
-      confirmText: 'Sí, cancelar envío',
-      variant: 'danger'
-    });
-
+    const isConfirmed = await confirm({ title: 'Cancelar Envío de Firma', message: '¿Estás seguro? El cliente ya no podrá firmar este documento y se invalidará el enlace.', confirmText: 'Sí, cancelar envío', variant: 'danger' });
     if (!isConfirmed) return;
-
-    try {
-      await api.post(`/api/v1/cases/${id}/signatures/${signatureId}/cancel`);
-      notify.success("El envío ha sido cancelado.");
-      fetchAllData(new AbortController().signal); 
-    } catch (error) {
-      notify.error(error.response?.data?.detail || "Error al cancelar.");
-    }
+    try { await api.post(`/api/v1/cases/${id}/signatures/${signatureId}/cancel`); notify.success("El envío ha sido cancelado."); fetchAllData(new AbortController().signal); } 
+    catch (error) { notify.error(error.response?.data?.detail || "Error al cancelar."); }
   };
 
   const handleSendToSignaturit = async (e) => {
     e.preventDefault();
     if (sigConfig.sourceType === 'template' && !sigConfig.templateId) return notify.warning("Selecciona una plantilla.");
     if (sigConfig.sourceType === 'file' && !sigConfig.file) return notify.warning("Sube un documento PDF.");
-    for (let s of sigConfig.signers) {
-      if (!s.name || !s.email) return notify.warning("Completa el nombre y correo de todos los firmantes.");
-    }
+    for (let s of sigConfig.signers) { if (!s.name || !s.email) return notify.warning("Completa el nombre y correo de todos los firmantes."); }
 
     setSendingSignature(true);
     try {
@@ -283,112 +295,61 @@ const CaseDetail = () => {
       formData.append('delivery_type', sigConfig.deliveryType);
       formData.append('signature_type', sigConfig.signatureType);
       formData.append('signers', JSON.stringify(sigConfig.signers));
-
-      if (sigConfig.sourceType === 'template') {
-        formData.append('template_id', sigConfig.templateId);
-      } else {
-        formData.append('file', sigConfig.file);
-      }
+      if (sigConfig.sourceType === 'template') formData.append('template_id', sigConfig.templateId);
+      else formData.append('file', sigConfig.file);
 
       const res = await api.post(`/api/v1/cases/${id}/signaturit/send`, formData, { headers: { 'Content-Type': 'multipart/form-data' }});
-      
       setIsSignatureModalOpen(false);
-      
-      if (sigConfig.deliveryType === 'url' && res.data.signature_url) {
-         notify.success("¡Documento listo! Redirigiendo a la sala de firmas...");
-         window.open(res.data.signature_url, '_blank');
-      } else {
-         notify.success("¡Documento enviado a firmar por correo exitosamente!");
-      }
-      
-    } catch (error) {
-      notify.error(error.response?.data?.detail || "Error al enviar a firma.");
-    } finally {
-      setSendingSignature(false);
-    }
+      if (sigConfig.deliveryType === 'url' && res.data.signature_url) { notify.success("¡Documento listo! Redirigiendo a la sala de firmas..."); window.open(res.data.signature_url, '_blank'); } 
+      else { notify.success("¡Documento enviado a firmar por correo exitosamente!"); }
+    } catch (error) { notify.error(error.response?.data?.detail || "Error al enviar a firma."); } finally { setSendingSignature(false); }
   };
 
   useEffect(() => { 
-    setActiveTab('details');
-    setIsEditing(false);
-    
+    setActiveTab('details'); setIsEditing(false);
     const controller = new AbortController();
     fetchAllData(controller.signal); 
     return () => controller.abort();
   }, [id]);
 
   const handleStatusChange = async (newStatusId) => {
-    try {
-      await api.put(`/api/v1/cases/${id}/status`, { new_status_id: newStatusId });
-      notify.success("Estado actualizado.");
-      await fetchAllData(new AbortController().signal); 
-    } catch (error) { 
-      notify.error(error.response?.data?.detail || "No se cumplen las reglas para avanzar este estado."); 
-    }
+    try { await api.put(`/api/v1/cases/${id}/status`, { new_status_id: newStatusId }); notify.success("Estado actualizado."); await fetchAllData(new AbortController().signal); } 
+    catch (error) { notify.error(error.response?.data?.detail || "No se cumplen las reglas para avanzar este estado."); }
   };
 
   const handleEditClick = () => {
     setEditFormData(caseData.data || {});
     setEditAssignedTo(caseData.assigned_to || ''); 
-    setIsEditing(true);
-    setActiveTab('details'); 
+    setIsEditing(true); setActiveTab('details'); 
   };
 
-  const handleCancelEdit = () => {
-    setEditFormData({});
-    setEditAssignedTo('');
-    setIsEditing(false);
-  };
+  const handleCancelEdit = () => { setEditFormData({}); setEditAssignedTo(''); setIsEditing(false); };
 
   const handleSaveEdit = async () => {
     setSaving(true);
     try {
-      // 🔥 1. INTERCEPTOR DE FÓRMULAS PARA LA EDICIÓN 🔥
       let payloadData = { ...editFormData };
       const formulaFields = fields.filter(f => f.field_type === 'formula');
       
-      // 3 pasadas para fórmulas encadenadas
       for(let i = 0; i < 3; i++) {
           formulaFields.forEach(f => {
               const fKey = f.api_name || f.label;
               const result = calculateVisualFormula(f.options, payloadData);
-              if (result !== '...') {
-                  payloadData[fKey] = result;
-              }
+              if (result !== '...') payloadData[fKey] = result;
           });
       }
 
-      await api.put(`/api/v1/cases/${id}`, { 
-        data: payloadData, // 🔥 2. Guardamos la data con las matemáticas ya resueltas
-        assigned_to: editAssignedTo ? parseInt(editAssignedTo) : null 
-      });
+      await api.put(`/api/v1/cases/${id}`, { data: payloadData, assigned_to: editAssignedTo ? parseInt(editAssignedTo) : null });
       notify.success("Registro guardado con éxito.");
-      setIsEditing(false);
-      await fetchAllData(new AbortController().signal); 
-    } catch (error) { 
-      notify.error("Error al guardar los cambios. Verifica los campos requeridos."); 
-    } finally { 
-      setSaving(false); 
-    }
+      setIsEditing(false); await fetchAllData(new AbortController().signal); 
+    } catch (error) { notify.error("Error al guardar los cambios. Verifica los campos requeridos."); } finally { setSaving(false); }
   };
 
   const handleDeleteCase = async () => {
-    const isConfirmed = await confirm({
-      title: 'Eliminar Registro',
-      message: '¿Estás seguro de mover este registro a la papelera? Podrás recuperarlo más tarde.',
-      confirmText: 'Sí, enviar a papelera',
-      variant: 'danger'
-    });
-
+    const isConfirmed = await confirm({ title: 'Eliminar Registro', message: '¿Estás seguro de mover este registro a la papelera?', confirmText: 'Sí, enviar a papelera', variant: 'danger' });
     if (!isConfirmed) return;
-
-    try { 
-      await api.delete(`/api/v1/cases/${id}`); 
-      notify.success("Registro movido a la papelera.");
-      navigate(`/modules/${caseData.module_id}`); 
-    } catch (error) {
-      notify.error("Error al eliminar el registro.");
-    }
+    try { await api.delete(`/api/v1/cases/${id}`); notify.success("Registro movido a la papelera."); navigate(`/modules/${caseData.module_id}`); } 
+    catch (error) { notify.error("Error al eliminar el registro."); }
   };
 
   if (loading) return <div className="flex h-screen items-center justify-center text-gray-500"><Loader2 className="animate-spin mr-2" size={40} /></div>;
@@ -417,33 +378,27 @@ const CaseDetail = () => {
      const startTime = new Date(caseData.entered_status_at || caseData.created_at);
      const deadline = new Date(startTime.getTime() + (status.sla_hours * 60 * 60 * 1000));
      const now = new Date();
-
      const timeRemaining = deadline - now;
      const hoursRemaining = timeRemaining / (1000 * 60 * 60);
 
      if (timeRemaining < 0) return { state: 'breached', label: 'SLA Vencido', hours: Math.abs(hoursRemaining).toFixed(1) };
      if (hoursRemaining <= (status.sla_hours * 0.2)) return { state: 'warning', label: 'Por vencer', hours: hoursRemaining.toFixed(1) };
-     
      return { state: 'good', label: 'A tiempo', hours: hoursRemaining.toFixed(1) };
   };
 
   let canEdit = userData.is_superadmin;
   let canDelete = userData.is_superadmin;
-  let fieldRules = {}; // 🔥 NUEVO: Contenedor para las reglas FLS
+  let fieldRules = {}; 
 
   if (!userData.is_superadmin && userData.permissions) {
     const modPerms = userData.permissions.modules?.[caseData.module_id] || {};
-    fieldRules = modPerms.field_rules || {}; // 🔥 Extraemos las reglas exactas de los campos
-    
+    fieldRules = modPerms.field_rules || {}; 
     const targetUserId = caseData.assigned_to || caseData.created_by;
-
     const isOwner = (userData.id === caseData.created_by) || (userData.id === caseData.assigned_to);
-    
     const myUser = companyUsers.find(u => u.id === userData.id);
     const targetUser = companyUsers.find(u => u.id === targetUserId);
     const myRole = myUser ? companyRoles.find(r => r.id === myUser.role_id) : null;
     const targetRole = targetUser ? companyRoles.find(r => r.id === targetUser.role_id) : null;
-    
     const myRank = myRole ? myRole.rank : null;
     const targetRank = targetRole ? targetRole.rank : null;
 
@@ -468,20 +423,15 @@ const CaseDetail = () => {
       if (!formulaStr) return '';
       try {
           let expr = formulaStr;
-          
-          // 🔥 NUEVO: Resolver SUM([subform.columna])
           const sumRegex = /SUM\(\[(.*?)\.(.*?)\]\)/g;
           expr = expr.replace(sumRegex, (match, subformKey, colKey) => {
               const subformData = currentData[subformKey];
               if (!Array.isArray(subformData)) return 0;
-              
               return subformData.reduce((acc, row) => {
                   const val = Number(String(row[colKey] || 0).replace(/[^0-9.-]+/g,""));
                   return acc + (isNaN(val) ? 0 : val);
               }, 0);
           });
-
-          // Lógica existente para campos simples
           const vars = expr.match(/\[(.*?)\]/g) || [];
           vars.forEach(v => {
               const key = v.replace('[', '').replace(']', '');
@@ -489,24 +439,19 @@ const CaseDetail = () => {
               val = Number(String(val).replace(/[^0-9.-]+/g,"")) || 0;
               expr = expr.replace(v, val);
           });
-          
-          // eslint-disable-next-line no-eval
           const result = eval(expr);
           return isNaN(result) ? '...' : Number(result).toFixed(2);
       } catch (e) { return '...'; }
   };
 
-  // Renderizador Dinámico de Campos
   const renderField = (field) => {
     const fieldKey = field.api_name || field.label; 
-    const uiRules = caseData.ui_rules?.[fieldKey] || {}; // Reglas Globales (Automatizaciones)
-    
-    // 🔥 2. COMBINAMOS REGLAS DE UI (Automatizaciones) CON REGLAS DE PERFIL 🔥
+    const uiRules = caseData.ui_rules?.[fieldKey] || {}; 
     const isHiddenByProfile = fieldRules[fieldKey] === 'hidden';
+    
     if (uiRules.hidden || isHiddenByProfile) return null;
 
     const isRequired = uiRules.required !== undefined ? uiRules.required : field.required;
-    
     const isReadOnlyByProfile = fieldRules[fieldKey] === 'read_only';
     let isReadOnly = uiRules.readonly === true || isReadOnlyByProfile;
     
@@ -531,7 +476,11 @@ const CaseDetail = () => {
              <button onClick={() => navigate(`/cases/${value}`)} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline text-left flex items-center gap-1.5">
                <LinkIcon size={14}/> 
                {(() => {
-                  const targetModuleId = field.options?.target_module_id;
+                  // 🔥 FIX 3: Parsear opciones en modo lectura
+                  let parsedOpts = {};
+                  try { parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {}); } catch(e) {}
+                  
+                  const targetModuleId = parsedOpts.target_module_id;
                   const options = relationData[targetModuleId] || [];
                   const foundOpt = options.find(opt => String(opt.value) === String(value));
                   return foundOpt ? foundOpt.label : `Registro #${value}`;
@@ -557,13 +506,11 @@ const CaseDetail = () => {
             <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
               <Calculator size={14}/> 
               {value !== undefined ? (
-                  // Si el resultado de la fórmula es un número puro (ej. "7000000.0" o 7000000), le aplicamos el formato x.xxx.xxx,xx
                   !isNaN(Number(value)) && String(value).trim() !== '' 
                     ? formatCurrencyValue(value, 2, ',', '.') 
                     : value
               ) : '--'}
             </span>
-          /* 🔥 NUEVO: MODO LECTURA DE AUTO NUMÉRICO 🔥 */
           ) : field.field_type === 'auto_number' && value ? (
              <span className="text-sm font-bold text-orange-600 dark:text-orange-400 flex items-center gap-1.5">
                <Binary size={14} className="text-orange-500"/> {value}
@@ -579,7 +526,7 @@ const CaseDetail = () => {
                     const decPlaces = parsedOpts.decimal_places !== undefined ? parsedOpts.decimal_places : 2;
                     let decSep = parsedOpts.decimal_separator || ',';
                     let grpSep = parsedOpts.thousand_separator || '.';
-                    if (decSep === grpSep) { decSep = ','; grpSep = '.'; } // Anti-crash
+                    if (decSep === grpSep) { decSep = ','; grpSep = '.'; } 
                     
                     const formattedValue = formatCurrencyValue(value, decPlaces, decSep, grpSep);
                     const sym = parsedOpts.symbol || 'Gs';
@@ -596,7 +543,6 @@ const CaseDetail = () => {
           ) : field.field_type === 'subform' ? (
              <SubformTable field={field} value={value || []} relationData={relationData} isEditing={false} />
              
-          /* 🔥 NUEVO: MODO LECTURA DE TEXTO ENRIQUECIDO (HTML) 🔥 */
           ) : field.field_type === 'textarea' ? (
              <div className="ql-snow">
                <div 
@@ -629,7 +575,20 @@ const CaseDetail = () => {
         
         {field.field_type === 'select' ? <select required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses}><option value="">Seleccione...</option>{field.options?.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}</select> 
         
-        : field.field_type === 'relation' ? <SearchableSelect placeholder="Buscar registro..." value={value || ''} onChange={(val) => setEditFormData({...editFormData, [fieldKey]: val})} disabled={isReadOnly} options={relationData[field.options?.target_module_id] || []} /> 
+        // 🔥 FIX 4: Parsear opciones en modo edición (RELATION) 🔥
+        : field.field_type === 'relation' ? (
+          <SearchableSelect 
+             placeholder="Buscar registro..." 
+             value={value || ''} 
+             onChange={(val) => setEditFormData({...editFormData, [fieldKey]: val})} 
+             disabled={isReadOnly} 
+             options={(() => {
+                let parsedOpts = {};
+                try { parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {}); } catch(e) {}
+                return relationData[parsedOpts.target_module_id] || [];
+             })()} 
+          />
+        )
         
         : field.field_type === 'user_relation' ? (
           <SearchableSelect 
@@ -667,7 +626,6 @@ const CaseDetail = () => {
         : field.field_type === 'currency' ? (
           <div className="relative">
             {(() => {
-                // 🔥 ANTI-CRASH SUPREMO: Parseamos las opciones de forma ultra-segura
                 let parsedOpts = {};
                 try {
                     parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {});
@@ -681,11 +639,7 @@ const CaseDetail = () => {
                 let decSep = parsedOpts.decimal_separator || ',';
                 let grpSep = parsedOpts.thousand_separator || '.';
 
-                // Escudo final: Si son exactamente iguales, forzamos el estándar
-                if (decSep === grpSep) {
-                    decSep = ',';
-                    grpSep = '.';
-                }
+                if (decSep === grpSep) { decSep = ','; grpSep = '.'; }
 
                 return (
                   <>
@@ -709,7 +663,6 @@ const CaseDetail = () => {
           </div>
         )
 
-        /* 🔥 NUEVO: MODO EDICIÓN DE TEXTO ENRIQUECIDO 🔥 */
         : field.field_type === 'textarea' ? (
           <div className={isReadOnly ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}>
             <ReactQuill 
@@ -748,8 +701,6 @@ const CaseDetail = () => {
              <input type="text" disabled value={calculateVisualFormula(field.options, editFormData)} className={`${inputClasses} pl-9 bg-emerald-50/30 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 font-bold border-emerald-200 dark:border-emerald-800/50 cursor-not-allowed`} placeholder="Calculado automáticamente" />
           </div>
         )
-
-        /* 🔥 NUEVO: MODO EDICIÓN DE AUTO NUMÉRICO (Siempre deshabilitado) 🔥 */
         : field.field_type === 'auto_number' ? (
           <div className="relative">
              <Binary className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
@@ -776,7 +727,6 @@ const CaseDetail = () => {
         : field.field_type === 'url' ? <div className="relative"><Link2 className={`absolute left-3 top-1/2 -translate-y-1/2 ${isReadOnly ? 'hidden' : 'text-gray-400'}`} size={16} /><input type="url" required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={`${inputClasses} ${isReadOnly ? '' : 'pl-9'}`} placeholder="https://" /></div>
         : field.field_type === 'subform' ? <SubformTable field={field} value={value || []} onChange={val => setEditFormData({...editFormData, [fieldKey]: val})} relationData={relationData} isEditing={!isReadOnly} />
         
-        /* 🔥 FIX: INYECTAR VALIDACIÓN HTML5 PARA 'email' 🔥 */
         : <input type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'email' ? 'email' : 'text'} required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses} />}
       </div>
     );
@@ -912,11 +862,10 @@ const CaseDetail = () => {
                    const isHiddenByProfile = fieldRules[fieldKey] === 'hidden';
                    const isHiddenByUi = caseData.ui_rules?.[fieldKey]?.hidden === true;
                    
-                   // 🔥 3. SI EL CAMPO ESTÁ OCULTO POR PERFIL O POR AUTOMATIZACIÓN, LO EXCLUIMOS 🔥
                    return (f.section_id === section.id || (!f.section_id && section.id === null)) && !isHiddenByProfile && !isHiddenByUi;
                }).sort((a,b) => a.order - b.order);
                
-               if (sFields.length === 0) return null; // Si no quedan campos, la caja desaparece
+               if (sFields.length === 0) return null; 
                
                const gridClass = section.columns === 1 ? 'grid-cols-1' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
 

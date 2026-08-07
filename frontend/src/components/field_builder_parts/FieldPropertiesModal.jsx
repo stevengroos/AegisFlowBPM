@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign, Binary } from 'lucide-react'; // 🔥 NUEVO ÍCONO Binary AÑADIDO
+import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign, Binary } from 'lucide-react'; 
 import { PALETTE_ITEMS } from './Palette';
 
 const FieldPropertiesModal = ({ 
@@ -57,7 +57,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 NUEVO: CONFIGURACIÓN DE AUTO NÚMERO (SECUENCIA) 🔥 */}
+           {/* CONFIGURACIÓN DE AUTO NÚMERO (SECUENCIA) */}
            {editingField.field_type === 'auto_number' && (
              <div className="bg-orange-50/50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-orange-700 dark:text-orange-400 uppercase mb-1.5 flex items-center gap-1">
@@ -178,17 +178,21 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN RELACIONAL (LOOKUP) */}
+           {/* 🔥 FIX: CONFIGURACIÓN RELACIONAL (LOOKUP) 🔥 */}
            {editingField.field_type === 'relation' && (
              <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 p-4 rounded-xl">
                <label className="block text-xs font-bold text-blue-700 dark:text-blue-400 uppercase mb-1.5 flex items-center gap-1"><LinkIcon size={14}/> Módulo Destino (Lookup)</label>
                <select 
                  required 
                  value={editingField.options?.target_module_id || ''} 
-                 onChange={(e) => setEditingField({
-                   ...editingField, 
-                   options: { ...editingField.options, target_module_id: e.target.value }
-                 })} 
+                 onChange={(e) => {
+                   // Aseguramos que se guarde como INTEGER
+                   const val = e.target.value ? parseInt(e.target.value, 10) : '';
+                   setEditingField({
+                     ...editingField, 
+                     options: { ...editingField.options, target_module_id: val }
+                   });
+                 }} 
                  className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all"
                >
                  <option value="">Seleccione Módulo a vincular...</option>
@@ -198,7 +202,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN DE RELACIÓN CON USUARIOS */}
+           {/* 🔥 FIX: CONFIGURACIÓN DE RELACIÓN CON USUARIOS 🔥 */}
            {editingField.field_type === 'user_relation' && (
              <div className="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase mb-1.5 flex items-center gap-1">
@@ -211,7 +215,10 @@ const FieldPropertiesModal = ({
                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Filtrar por Perfil</label>
                    <select 
                      value={editingField.options?.profile_id || ''} 
-                     onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, profile_id: e.target.value }})} 
+                     onChange={(e) => {
+                        const val = e.target.value ? parseInt(e.target.value, 10) : '';
+                        setEditingField({...editingField, options: { ...editingField.options, profile_id: val }});
+                     }} 
                      className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
                    >
                      <option value="">Cualquier Perfil</option>
@@ -222,7 +229,10 @@ const FieldPropertiesModal = ({
                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Filtrar por Rol</label>
                    <select 
                      value={editingField.options?.role_id || ''} 
-                     onChange={(e) => setEditingField({...editingField, options: { ...editingField.options, role_id: e.target.value }})} 
+                     onChange={(e) => {
+                        const val = e.target.value ? parseInt(e.target.value, 10) : '';
+                        setEditingField({...editingField, options: { ...editingField.options, role_id: val }});
+                     }} 
                      className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
                    >
                      <option value="">Cualquier Rol</option>
@@ -277,14 +287,24 @@ const FieldPropertiesModal = ({
                          <div className="flex gap-2 items-center">
                            <input type="text" placeholder="Nombre Columna" value={col.label} onChange={e => updateSubformCol(idx, 'label', e.target.value)} className="flex-1 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required/>
                            <select value={col.type} onChange={e => updateSubformCol(idx, 'type', e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
-                              {/* 🔥 Filtramos 'subform', 'map', 'formula', 'auto_number' que no deben ir en tablas */}
+                              {/* 🔥 Filtramos 'subform', 'map', 'formula', 'user_relation', 'auto_number' que no deben ir en tablas */}
                               {PALETTE_ITEMS.filter(p => !['subform', 'map', 'formula', 'user_relation', 'auto_number'].includes(p.type)).map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
                            </select>
                            <button type="button" onClick={() => removeSubformCol(idx)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
                          </div>
                          {col.type === 'select' && <input type="text" placeholder="Opciones (Ej: Opción 1, Opción 2)" value={col.options || ''} onChange={e => updateSubformCol(idx, 'options', e.target.value)} className="w-full px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required />}
+                         
+                         {/* 🔥 FIX RELACIONAL EN SUBFORM 🔥 */}
                          {col.type === 'relation' && (
-                           <select required value={col.target_module_id || ''} onChange={e => updateSubformCol(idx, 'target_module_id', e.target.value)} className="w-full px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
+                           <select 
+                             required 
+                             value={col.target_module_id || ''} 
+                             onChange={e => {
+                                const val = e.target.value ? parseInt(e.target.value, 10) : '';
+                                updateSubformCol(idx, 'target_module_id', val);
+                             }} 
+                             className="w-full px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500"
+                           >
                               <option value="">Seleccionar Módulo Destino...</option>
                               {modulesList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                            </select>

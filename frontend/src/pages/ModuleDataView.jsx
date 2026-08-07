@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { createPortal } from 'react-dom'; 
 import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2, Minus, Check, Folder, ChevronDown, ChevronUp, Link as LinkIcon, Tag } from 'lucide-react'; 
-import Select, { components } from 'react-select';
+import Select, { components } from 'react-select'; 
 
 import CaseModal from '../components/CaseModal';
 import ImportDataModal from '../features/modules/ImportDataModal';
@@ -12,17 +12,16 @@ import { useNotification } from '../context/NotificationContext';
 import BulkActionsBar from '../components/BulkActionsBar';
 import BulkUpdateModal from '../components/BulkUpdateModal';
 
-// 🔥 OPTIMIZADOR PARA EVITAR SATURACIÓN DEL FRONTEND EN LISTAS LARGAS 🔥
+// 🔥 OPTIMIZADOR DE RENDIMIENTO PARA LISTAS LARGAS (Evita que el navegador se congele)
 const OptimizedMenuList = (props) => {
   const childrenArray = React.Children.toArray(props.children);
-  const MAX_ITEMS_TO_RENDER = 50; // Límite seguro para el DOM
-  
+  const MAX_ITEMS_TO_RENDER = 50; 
   return (
     <components.MenuList {...props}>
       {childrenArray.slice(0, MAX_ITEMS_TO_RENDER)}
       {childrenArray.length > MAX_ITEMS_TO_RENDER && (
-        <div className="p-2 text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-100 dark:border-gray-800">
-          Mostrando 50 de {childrenArray.length} resultados. Usa el buscador...
+        <div className="p-2 text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+          Mostrando 50 de {childrenArray.length} resultados...
         </div>
       )}
     </components.MenuList>
@@ -42,6 +41,9 @@ const ModuleDataView = () => {
   const [allStatuses, setAllStatuses] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   
+  // 🔥 NUEVO ESTADO: DICCIONARIO DE RELACIONES (Traduce ID a Nombre)
+  const [relationMap, setRelationMap] = useState({});
+  
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
 
@@ -49,9 +51,6 @@ const ModuleDataView = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
-  // ==========================================
-  // 🔥 ESTADOS DE VISTA E INVENTARIO 🔥
-  // ==========================================
   const [viewMode, setViewMode] = useState(() => localStorage.getItem(`aegisflow_viewMode_${moduleId}`) || 'table');
   const [inventoryTab, setInventoryTab] = useState('all'); 
   const [stockDraft, setStockDraft] = useState({}); 
@@ -64,11 +63,17 @@ const ModuleDataView = () => {
   const outOfStockCount = stockFieldApiName ? records.filter(r => Number(r.data[stockFieldApiName] || 0) <= 0).length : 0;
 
   // ==========================================
-  // 🔥 FUNCIONALIDAD DE FORMATO NUMÉRICO 🔥
+  // 🔥 FORMATO NUMÉRICO Y DE RELACIONES 🔥
   // ==========================================
-  const formatCellValue = (val, fieldType) => {
+  const formatCellValue = (val, fieldType, apiName) => {
     if (val === null || val === undefined || val === '') return '';
     if (typeof val === 'object') return 'Datos...';
+    
+    // 🪄 MAGIA RELACIONAL: Si es relación y tenemos el ID mapeado, mostramos el nombre
+    if (fieldType === 'relation' && relationMap[apiName] && relationMap[apiName][val]) {
+        return relationMap[apiName][val];
+    }
+    
     if (['number', 'currency', 'formula'].includes(fieldType)) {
       const num = Number(val);
       return !isNaN(num) ? num.toLocaleString('es-PY') : val;
@@ -76,9 +81,6 @@ const ModuleDataView = () => {
     return val;
   };
 
-  // ==========================================
-  // 🔥 ESTADOS DE CATEGORÍAS Y PAGINACIÓN 🔥
-  // ==========================================
   const categoryFieldApiName = module?.mobile_config?.mapping?.category || 
     fields.find(f => f.field_type === 'select' && f.label.toLowerCase().includes('categor'))?.api_name;
     
@@ -90,7 +92,6 @@ const ModuleDataView = () => {
   const [selectedToLink, setSelectedToLink] = useState([]);
   const [isCategorySaving, setIsCategorySaving] = useState(false);
   
-  // Paginación de Productos en Categoría
   const [categoryPage, setCategoryPage] = useState(1);
   const categoryItemsPerPage = 20;
 
@@ -107,92 +108,54 @@ const ModuleDataView = () => {
       setFields(fields.map(f => f.id === categoryFieldDef.id ? { ...f, options: newOptions } : f));
       setNewCategoryName('');
       notify.success("Categoría creada con éxito.");
-    } catch (error) {
-      notify.error("Error al crear la categoría.");
-    } finally {
-      setIsCategorySaving(false);
-    }
+    } catch (error) { notify.error("Error al crear la categoría."); } finally { setIsCategorySaving(false); }
   };
 
   const handleDeleteCategory = async (categoryName) => {
-    const isConfirmed = await confirm({
-      title: 'Eliminar Categoría',
-      message: `¿Estás seguro de eliminar la categoría "${categoryName}"? Los productos volverán a estar "Sin Categoría".`,
-      confirmText: 'Sí, eliminar',
-      variant: 'danger'
-    });
+    const isConfirmed = await confirm({ title: 'Eliminar Categoría', message: `¿Estás seguro de eliminar la categoría "${categoryName}"?`, confirmText: 'Sí, eliminar', variant: 'danger' });
     if (!isConfirmed) return;
-
     try {
       const newOptions = categoriesList.filter(opt => opt !== categoryName);
       await api.put(`/api/v1/fields/${categoryFieldDef.id}`, { ...categoryFieldDef, options: newOptions });
       setFields(fields.map(f => f.id === categoryFieldDef.id ? { ...f, options: newOptions } : f));
-
       const casesToUpdate = records.filter(r => r.data[categoryFieldApiName] === categoryName).map(r => r.id);
       if (casesToUpdate.length > 0) {
         await api.put('/api/v1/cases/bulk/update', { case_ids: casesToUpdate, field_api_name: categoryFieldApiName, new_value: '' });
         fetchData(new AbortController().signal);
       }
       notify.success("Categoría eliminada.");
-    } catch (error) {
-      notify.error("Error al eliminar la categoría.");
-    }
+    } catch (error) { notify.error("Error al eliminar la categoría."); }
   };
 
   const handleLinkProducts = async (categoryName) => {
     if (selectedToLink.length === 0) return;
     try {
       await api.put('/api/v1/cases/bulk/update', { case_ids: selectedToLink, field_api_name: categoryFieldApiName, new_value: categoryName });
-      setSelectedToLink([]);
-      fetchData(new AbortController().signal);
-      notify.success("Productos vinculados a la categoría.");
-    } catch (error) {
-      notify.error("Error al vincular los productos.");
-    }
+      setSelectedToLink([]); fetchData(new AbortController().signal); notify.success("Productos vinculados.");
+    } catch (error) { notify.error("Error al vincular los productos."); }
   };
 
   const handleUnlinkProduct = async (recordId) => {
-    try {
-      await api.put('/api/v1/cases/bulk/update', { case_ids: [recordId], field_api_name: categoryFieldApiName, new_value: '' });
-      fetchData(new AbortController().signal);
-      notify.success("Producto desvinculado.");
-    } catch (error) {
-      notify.error("Error al desvincular.");
-    }
+    try { await api.put('/api/v1/cases/bulk/update', { case_ids: [recordId], field_api_name: categoryFieldApiName, new_value: '' }); fetchData(new AbortController().signal); notify.success("Producto desvinculado."); } catch (error) { notify.error("Error al desvincular."); }
   };
 
-
-  // ==========================================
-  // 🔥 FUNCIONES DE EDICIÓN DE STOCK EN LÍNEA 🔥
-  // ==========================================
   const handleStockDraftChange = (recordId, value) => {
     const numericValue = parseInt(value, 10);
     if (isNaN(numericValue) || numericValue < 0) return;
     setStockDraft(prev => ({ ...prev, [recordId]: numericValue }));
   };
 
-  const cancelStock = (recordId) => {
-    const newDraft = { ...stockDraft };
-    delete newDraft[recordId];
-    setStockDraft(newDraft);
-  };
-
+  const cancelStock = (recordId) => { const newDraft = { ...stockDraft }; delete newDraft[recordId]; setStockDraft(newDraft); };
   const saveStock = async (recordId) => {
     const newValue = stockDraft[recordId];
     if (newValue === undefined) return;
     try {
       await api.put('/api/v1/cases/bulk/update', { case_ids: [recordId], field_api_name: stockFieldApiName, new_value: newValue });
       setRecords(records.map(r => r.id === recordId ? { ...r, data: { ...r.data, [stockFieldApiName]: newValue } } : r));
-      cancelStock(recordId);
-      notify.success("Inventario actualizado.");
-    } catch (error) {
-      notify.error("Error al actualizar el inventario.");
-    }
+      cancelStock(recordId); notify.success("Inventario actualizado.");
+    } catch (error) { notify.error("Error al actualizar el inventario."); }
   };
 
-  // ==========================================
-  // ESTADOS PARA WEBHOOKS API
-  // ==========================================
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [moduleWebhooks, setModuleWebhooks] = useState([]);
   const [newWebhookName, setNewWebhookName] = useState('');
@@ -204,10 +167,7 @@ const ModuleDataView = () => {
 
   const fetchWebhooks = async () => {
       setLoadingWebhooks(true);
-      try {
-          const res = await api.get(`/api/v1/webhooks/module/${moduleId}`);
-          setModuleWebhooks(res.data);
-      } catch (error) { notify.error("Error al cargar los webhooks."); } finally { setLoadingWebhooks(false); }
+      try { const res = await api.get(`/api/v1/webhooks/module/${moduleId}`); setModuleWebhooks(res.data); } catch (error) { notify.error("Error al cargar los webhooks."); } finally { setLoadingWebhooks(false); }
   };
 
   useEffect(() => { if (isWebhookModalOpen) { fetchWebhooks(); setDocsWebhook(null); } }, [isWebhookModalOpen]);
@@ -215,22 +175,13 @@ const ModuleDataView = () => {
   const handleCreateWebhook = async (e) => {
       e.preventDefault();
       if (!newWebhookName.trim() || forms.length === 0 || !selectedFormId) return notify.warning("Completa los datos del webhook.");
-      try {
-          await api.post('/api/v1/webhooks/', { name: newWebhookName, module_id: parseInt(moduleId), form_id: parseInt(selectedFormId) });
-          notify.success("Webhook generado exitosamente.");
-          setNewWebhookName(''); setSelectedFormId(''); fetchWebhooks();
-      } catch (error) { notify.error("Error al generar el webhook."); }
+      try { await api.post('/api/v1/webhooks/', { name: newWebhookName, module_id: parseInt(moduleId), form_id: parseInt(selectedFormId) }); notify.success("Webhook generado exitosamente."); setNewWebhookName(''); setSelectedFormId(''); fetchWebhooks(); } catch (error) { notify.error("Error al generar el webhook."); }
   };
 
   const handleDeleteWebhook = async (webhookId) => {
       const isConfirmed = await confirm({ title: 'Eliminar Webhook', message: '¿Seguro? Sistemas externos fallarán.', confirmText: 'Sí, eliminar', variant: 'danger' });
       if (!isConfirmed) return;
-      try {
-          await api.delete(`/api/v1/webhooks/${webhookId}`);
-          notify.success("Webhook eliminado.");
-          if (docsWebhook?.id === webhookId) setDocsWebhook(null);
-          fetchWebhooks();
-      } catch (error) { notify.error("Error al eliminar el webhook."); }
+      try { await api.delete(`/api/v1/webhooks/${webhookId}`); notify.success("Webhook eliminado."); if (docsWebhook?.id === webhookId) setDocsWebhook(null); fetchWebhooks(); } catch (error) { notify.error("Error al eliminar el webhook."); }
   };
 
   const copyText = (text) => { navigator.clipboard.writeText(text); notify.success("Copiado al portapapeles."); };
@@ -238,15 +189,9 @@ const ModuleDataView = () => {
 
   const handleOpenDocs = async (wh) => {
       setDocsWebhook(wh); setDocsLoading(true);
-      try {
-          const res = await api.get(`/api/v1/webhooks/${wh.id}/example`);
-          setWebhookExample(res.data.example);
-      } catch (error) { notify.error("Error al cargar documentación."); setWebhookExample(null); } finally { setDocsLoading(false); }
+      try { const res = await api.get(`/api/v1/webhooks/${wh.id}/example`); setWebhookExample(res.data.example); } catch (error) { notify.error("Error al cargar documentación."); setWebhookExample(null); } finally { setDocsLoading(false); }
   };
 
-  // ==========================================
-  // Grid, Filtros y Columnas
-  // ==========================================
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState('newest'); 
@@ -308,6 +253,34 @@ const ModuleDataView = () => {
         fetchedFields = fieldsRes.data;
         setFields(fetchedFields); 
       }
+
+      // 🔥 EXTRACCIÓN Y TRADUCCIÓN DE RELACIONES EN BATCH 🔥
+      const relFields = fetchedFields.filter(f => f.field_type === 'relation');
+      const newRelationMap = {};
+      
+      await Promise.all(relFields.map(async (f) => {
+          try {
+              let targetModId = null;
+              if (typeof f.options === 'string') targetModId = JSON.parse(f.options).target_module_id;
+              else if (f.options?.target_module_id) targetModId = f.options.target_module_id;
+              
+              if (targetModId) {
+                  // Traemos los campos y los registros del modulo destino al mismo tiempo
+                  const [tFields, tRecords] = await Promise.all([
+                      api.get(`/api/v1/fields/?module_id=${targetModId}`, { signal }),
+                      api.get(`/api/v1/cases/?module_id=${targetModId}`, { signal })
+                  ]);
+                  const primaryField = tFields.data.find(tf => tf.is_primary) || tFields.data[0];
+                  
+                  const map = {};
+                  tRecords.data.forEach(r => {
+                      map[r.id] = primaryField ? (r.data[primaryField.api_name] || r.data[primaryField.label]) : `Registro #${r.id}`;
+                  });
+                  newRelationMap[f.api_name || f.label] = map;
+              }
+          } catch (e) { console.error("Error resolviendo relación:", e); }
+      }));
+      setRelationMap(newRelationMap); // Guardamos el mapa en memoria
 
       const savedColumns = localStorage.getItem(`module_${moduleId}_columns`);
       if (savedColumns) setSelectedColumns(JSON.parse(savedColumns).slice(0, 5)); 
@@ -413,7 +386,13 @@ const ModuleDataView = () => {
     const allHeaders = [...baseHeaders, ...fields.map(f => f.label)];
     const csvRows = filteredAndSortedRecords.map(rec => {
       const baseRow = [rec.id, new Date(rec.created_at).toLocaleDateString(), sanitizeCSV(getUserName(rec.assigned_to || rec.created_by)), sanitizeCSV(getStatusName(rec.status_id))];
-      const dynamicRow = fields.map(f => sanitizeCSV(rec.data[f.api_name] || rec.data[f.label] || ''));
+      // 🔥 EXPORTAMOS EL NOMBRE TRADUCIDO EN VEZ DEL ID 🔥
+      const dynamicRow = fields.map(f => {
+          const apiName = f.api_name || f.label;
+          let val = rec.data[apiName];
+          if (f.field_type === 'relation' && relationMap[apiName] && relationMap[apiName][val]) val = relationMap[apiName][val];
+          return sanitizeCSV(val || '');
+      });
       return [...baseRow, ...dynamicRow].join(',');
     });
     const blob = new Blob(["\uFEFF" + [allHeaders.join(','), ...csvRows].join('\n')], { type: 'text/csv;charset=utf-8;' }); 
@@ -550,7 +529,6 @@ const ModuleDataView = () => {
                     label: primaryField ? r.data[primaryField.api_name || primaryField.label] : `Registro #${r.id}`
                   }));
 
-                  // LÓGICA DE PAGINACIÓN PARA PRODUCTOS EN CATEGORÍA
                   const totalCategoryPages = Math.ceil(productsInCat.length / categoryItemsPerPage) || 1;
                   const visibleProductsInCat = productsInCat.slice((categoryPage - 1) * categoryItemsPerPage, categoryPage * categoryItemsPerPage);
 
@@ -561,7 +539,7 @@ const ModuleDataView = () => {
                         onClick={() => { 
                           setExpandedCategory(isExpanded ? null : cat); 
                           setSelectedToLink([]); 
-                          setCategoryPage(1); // Reiniciar paginación al abrir
+                          setCategoryPage(1); 
                         }} 
                         className={`p-4 flex items-center justify-between cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-gray-50/50 dark:bg-[#151923]'}`}
                       >
@@ -602,27 +580,14 @@ const ModuleDataView = () => {
                                   </div>
                                 ))}
                                 
-                                {/* CONTROLES DE PAGINACIÓN DE CATEGORÍA */}
                                 {totalCategoryPages > 1 && (
                                   <div className="flex justify-between items-center px-4 py-2 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
                                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                                       Página {categoryPage} de {totalCategoryPages}
                                     </span>
                                     <div className="flex gap-1">
-                                      <button 
-                                        onClick={() => setCategoryPage(p => Math.max(1, p - 1))} 
-                                        disabled={categoryPage === 1} 
-                                        className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                                      >
-                                        <ChevronLeft size={14} />
-                                      </button>
-                                      <button 
-                                        onClick={() => setCategoryPage(p => Math.min(totalCategoryPages, p + 1))} 
-                                        disabled={categoryPage === totalCategoryPages} 
-                                        className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                                      >
-                                        <ChevronRight size={14} />
-                                      </button>
+                                      <button onClick={() => setCategoryPage(p => Math.max(1, p - 1))} disabled={categoryPage === 1} className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"><ChevronLeft size={14} /></button>
+                                      <button onClick={() => setCategoryPage(p => Math.min(totalCategoryPages, p + 1))} disabled={categoryPage === totalCategoryPages} className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"><ChevronRight size={14} /></button>
                                     </div>
                                   </div>
                                 )}
@@ -643,15 +608,10 @@ const ModuleDataView = () => {
                                   placeholder="Buscar para añadir..."
                                   styles={customSingleSelectStyles}
                                   menuPortalTarget={document.body}
-                                  // 🔥 INYECTAMOS LA LISTA OPTIMIZADA AQUÍ 🔥
                                   components={{ MenuList: OptimizedMenuList }} 
                                 />
                               </div>
-                              <button 
-                                onClick={() => handleLinkProducts(cat)} 
-                                disabled={selectedToLink.length === 0}
-                                className="px-5 py-2 bg-gray-900 hover:bg-black dark:bg-gray-100 dark:hover:bg-white text-white dark:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-bold shadow-sm transition-all"
-                              >
+                              <button onClick={() => handleLinkProducts(cat)} disabled={selectedToLink.length === 0} className="px-5 py-2 bg-gray-900 hover:bg-black dark:bg-gray-100 dark:hover:bg-white text-white dark:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-bold shadow-sm transition-all">
                                 Guardar
                               </button>
                             </div>
@@ -788,11 +748,11 @@ const ModuleDataView = () => {
                           <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1 truncate">{fieldLabel}</label>
                           
                           {isSystemStatus ? (
-                            <Select options={allStatuses.map(s => ({ value: s.name, label: s.name }))} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier estado..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} />
+                            <Select options={allStatuses.map(s => ({ value: s.name, label: s.name }))} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier estado..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
                           ) : isSystemOwner ? (
-                            <Select options={allUsers.map(u => { const name = u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email; return { value: name, label: name }; })} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier propietario..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} />
+                            <Select options={allUsers.map(u => { const name = u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email; return { value: name, label: name }; })} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier propietario..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
                           ) : fieldDef?.field_type === 'select' ? (
-                            <Select options={fieldDef.options?.map(opt => ({ value: opt, label: opt })) || []} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier valor..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} />
+                            <Select options={fieldDef.options?.map(opt => ({ value: opt, label: opt })) || []} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier valor..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
                           ) : (
                             <input type="text" placeholder="Contiene..." value={fieldFilters[key] || ''} onChange={e => handleFilterValueChange(key, e.target.value)} className="w-full px-3 py-2 min-h-[38px] text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500" />
                           )}
@@ -813,7 +773,7 @@ const ModuleDataView = () => {
                   onChange={(opt) => { if (opt) handleAddFieldFilter(opt); }}
                   placeholder="+ Añadir regla de filtro..."
                   styles={{ ...customSingleSelectStyles, control: (provided) => ({ ...customSingleSelectStyles.control(provided), borderColor: isDarkMode ? '#1e3a8a' : '#bfdbfe', backgroundColor: 'transparent', color: isDarkMode ? '#60a5fa' : '#2563eb' }), placeholder: (provided) => ({ ...provided, color: isDarkMode ? '#60a5fa' : '#2563eb', fontWeight: '600' }) }}
-                  menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable
+                  menuPortalTarget={document.body} menuPosition={'fixed'} isSearchable components={{ MenuList: OptimizedMenuList }}
                 />
               </div>
             </div>
@@ -894,11 +854,12 @@ const ModuleDataView = () => {
                               );
                             }
                             
-                            // FORMATO INTELIGENTE DE CELDA
-                            const rawVal = rec.data[field.api_name] !== undefined ? rec.data[field.api_name] : rec.data[field.label];
+                            // 🔥 FORMATO INTELIGENTE DE CELDA (MUESTRA NOMBRES EN VEZ DE IDs)
+                            const apiName = field.api_name || field.label;
+                            const rawVal = rec.data[apiName];
                             return (
                               <td key={field.id} className="px-6 py-4 text-sm text-gray-900 dark:text-gray-200 truncate max-w-[200px]">
-                                {rawVal !== undefined && rawVal !== '' ? formatCellValue(rawVal, field.field_type) : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                                {rawVal !== undefined && rawVal !== '' ? formatCellValue(rawVal, field.field_type, apiName) : <span className="text-gray-300 dark:text-gray-700">—</span>}
                               </td>
                             );
                           })}
@@ -968,12 +929,14 @@ const ModuleDataView = () => {
                           <h3 className="font-bold text-base text-gray-900 dark:text-white mb-3 truncate cursor-pointer" title={cardTitle} onClick={() => navigate(`/cases/${rec.id}`)}>{cardTitle || 'Sin título'}</h3>
                           <div className="space-y-2 flex-1 mb-4 cursor-pointer" onClick={() => navigate(`/cases/${rec.id}`)}>
                             {cardFields.map(field => {
-                              const rawVal = rec.data[field.api_name] !== undefined ? rec.data[field.api_name] : rec.data[field.label];
+                              const apiName = field.api_name || field.label;
+                              const rawVal = rec.data[apiName];
                               return (
                               <div key={field.id} className="flex justify-between items-center text-xs border-b border-gray-50 dark:border-gray-800/50 pb-2 last:border-0 last:pb-0">
                                 <span className="text-gray-500 dark:text-gray-400 truncate max-w-[45%] pr-2" title={field.label}>{field.label}</span>
                                 <span className="font-medium text-gray-900 dark:text-gray-200 truncate max-w-[50%] text-right" title={rawVal}>
-                                  {rawVal !== undefined && rawVal !== '' ? formatCellValue(rawVal, field.field_type) : '-'}
+                                  {/* 🔥 MUESTRA EL NOMBRE TRADUCIDO EN LA TARJETA TAMBIÉN 🔥 */}
+                                  {rawVal !== undefined && rawVal !== '' ? formatCellValue(rawVal, field.field_type, apiName) : '-'}
                                 </span>
                               </div>
                             )})}

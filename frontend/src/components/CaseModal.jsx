@@ -1,25 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom'; // Para el portal del SearchableSelect
+import { createPortal } from 'react-dom'; 
 import api from '../api/axios';
 import { X, Loader2, ArrowLeft, FileText, ChevronRight, Link as LinkIcon, Search, ChevronDown, Trash2, Plus, Users, Link2, LayoutGrid, MapPin, Calculator, Phone, CircleDollarSign, Binary, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../context/NotificationContext';
-import { useAuth } from '../context/AuthContext'; // 🔥 NUEVO: Importamos la autenticación
+import { useAuth } from '../context/AuthContext'; 
 import FileUploadField from '../components/ui/FileUploadField';
 
-// 🔥 IMPORTACIONES DE LIBRERÍAS DE 3ROS PARA LOS NUEVOS CAMPOS 🔥
 import PhoneInputPkg from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
 import CurrencyInputPkg from 'react-currency-input-field';
-// 🔥 NUEVO: IMPORTAR EDITOR DE TEXTO ENRIQUECIDO 🔥
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
-// 🔥 PENTEST FIX: Evitar "React Error 130: got object" en Vercel/Vite 🔥
 const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
 const CurrencyInput = CurrencyInputPkg.default || CurrencyInputPkg;
 
-// 🔥 NUEVO FORMATO PARA MONEDAS Y FÓRMULAS 🔥
 const formatCurrencyValue = (val, decimalPlaces = 2, decSep = ',', grpSep = '.') => {
   if (val === undefined || val === null || val === '') return '';
   const num = Number(val);
@@ -42,7 +38,10 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder }) =
   const dropdownRef = useRef(null);
 
   const safeOptions = Array.isArray(options) ? options : [];
-  const selectedOption = safeOptions.find(opt => opt.value == value);
+  
+  // 🔥 FIX CRÍTICO: Forzamos comparación como String para los campos relacionales
+  const selectedOption = safeOptions.find(opt => String(opt.value) === String(value));
+  
   const displayValue = selectedOption ? selectedOption.label : '';
   const filteredOptions = safeOptions.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -104,7 +103,7 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder }) =
              </div>
           </div>
           <div className="p-1 max-h-60 overflow-y-auto custom-scrollbar">
-             {filteredOptions.length === 0 ? <div className="px-3 py-4 text-sm text-gray-500 text-center italic">No hay resultados</div> : filteredOptions.map(opt => (<div key={opt.value} className={`px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors truncate ${value == opt.value ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`} onClick={() => {onChange(opt.value); setIsOpen(false); setSearchTerm('');}}>{opt.label}</div>))}
+             {filteredOptions.length === 0 ? <div className="px-3 py-4 text-sm text-gray-500 text-center italic">No hay resultados</div> : filteredOptions.map(opt => (<div key={opt.value} className={`px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors truncate ${String(value) === String(opt.value) ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`} onClick={() => {onChange(opt.value); setIsOpen(false); setSearchTerm('');}}>{opt.label}</div>))}
           </div>
         </div>, document.body
       )}
@@ -260,7 +259,7 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing = true }
 // ==========================================
 const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   const { notify } = useNotification();
-  const { user } = useAuth(); // 🔥 Obtenemos al usuario que está logueado
+  const { user } = useAuth(); 
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [forms, setForms] = useState([]);
@@ -281,7 +280,7 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
     if (isOpen) {
       setStep(1); setSelectedForm(null); setFormData({});
       setRelationData({}); 
-      setAssignedTo(user?.id || ''); // Asigna automáticamente al creador
+      setAssignedTo(user?.id || ''); 
       setTemplateSearch('');
       fetchForms();
       fetchUsers(); 
@@ -330,8 +329,12 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
         else if (f.field_type === 'subform') initialData[fieldKey] = [];
         else initialData[fieldKey] = '';
 
-        if (f.field_type === 'relation' && f.options?.target_module_id) {
-          const targetModuleId = f.options.target_module_id;
+        // 🔥 FIX: Analizador seguro de 'options' para descargar relaciones correctamente
+        let fOpts = f.options;
+        if (typeof fOpts === 'string') { try { fOpts = JSON.parse(fOpts); } catch(e){} }
+
+        if (f.field_type === 'relation' && fOpts?.target_module_id) {
+          const targetModuleId = fOpts.target_module_id;
           if (!relData[targetModuleId]) await loadTargetModuleData(targetModuleId, relData);
         }
         
@@ -376,17 +379,15 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
   e.preventDefault(); 
   setLoading(true);
   try {
-    // 🔥 1. INTERCEPTOR DE FÓRMULAS ANTES DE GUARDAR 🔥
     let payloadData = { ...formData };
     const formulaFields = fieldsToShow.filter(f => f.field_type === 'formula');
     
-    // Hacemos 3 pasadas matemáticas para resolver fórmulas que dependen de otras fórmulas
     for(let i = 0; i < 3; i++) {
         formulaFields.forEach(f => {
             const fKey = f.api_name || f.label;
             const result = calculateVisualFormula(f.options, payloadData);
             if (result !== '...') {
-                payloadData[fKey] = result; // Inyectamos el resultado real al JSON
+                payloadData[fKey] = result; 
             }
         });
     }
@@ -394,7 +395,7 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
     const res = await api.post('/api/v1/cases/', { 
       form_id: selectedForm.id, 
       module_id: moduleId, 
-      data: payloadData, // 🔥 2. Enviamos los datos procesados en vez del formData crudo
+      data: payloadData, 
       assigned_to: assignedTo ? parseInt(assignedTo) : null 
     });
 
@@ -419,14 +420,12 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
 
   const filteredForms = forms.filter(f => f.name.toLowerCase().includes(templateSearch.toLowerCase()) || (f.description && f.description.toLowerCase().includes(templateSearch.toLowerCase())));
   
-  // 🔥 1. EXTRAER REGLAS DEL PERFIL DEL USUARIO LOGUEADO 🔥
   let fieldRules = {};
   if (!user?.is_superadmin && user?.permissions) {
       const modPerms = user.permissions.modules?.[moduleId] || {};
       fieldRules = modPerms.field_rules || {};
   }
 
-  // 🔥 2. FILTRAR LOS CAMPOS OCULTOS 🔥
   const fieldsToShow = fields.filter(f => {
       const fieldKey = f.api_name || f.label;
       const isHiddenByProfile = fieldRules[fieldKey] === 'hidden';
@@ -439,14 +438,21 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
       if (!fieldKey) return null;
       const isFullWidth = field.field_type === 'textarea' || field.field_type === 'subform';
       
-      // 🔥 3. DETECTAR EL MODO SOLO LECTURA DEL PERFIL 🔥
       const isReadOnly = fieldRules[fieldKey] === 'read_only';
       
+      // Select usa arrays para "options"
       let renderOptions = [];
-      if (Array.isArray(field.options)) renderOptions = field.options;
-      else if (typeof field.options === 'string') renderOptions = field.options.split(',');
+      if (field.field_type === 'select') {
+        if (Array.isArray(field.options)) renderOptions = field.options;
+        else if (typeof field.options === 'string') renderOptions = field.options.split(',');
+      }
 
-      // 🔥 CLASES DINÁMICAS (Se adapta si está bloqueado) 🔥
+      // 🔥 FIX: Los demás campos usan un objeto en "options" (Relation, Currency, Phone...)
+      let parsedOpts = {};
+      if (field.field_type !== 'select' && field.field_type !== 'formula') {
+        try { parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {}); } catch(e) { parsedOpts = {}; }
+      }
+
       const dynamicInputClasses = `w-full px-4 py-2.5 rounded-xl outline-none transition-all text-sm ${isReadOnly ? 'bg-transparent border-transparent px-0 opacity-70 cursor-not-allowed font-medium text-gray-900 dark:text-white pointer-events-none' : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-200'}`;
 
       return (
@@ -465,7 +471,13 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
             </select>
             
           ) : field.field_type === 'relation' ? (
-            <SearchableSelect placeholder="Enlazar con un registro..." value={formData[fieldKey] || ''} onChange={(val) => setFormData({...formData, [fieldKey]: val})} disabled={isReadOnly} options={relationData[field.options?.target_module_id] || []} />
+            <SearchableSelect 
+               placeholder="Enlazar con un registro..." 
+               value={formData[fieldKey] || ''} 
+               onChange={(val) => setFormData({...formData, [fieldKey]: val})} 
+               disabled={isReadOnly} 
+               options={relationData[parsedOpts.target_module_id] || []} 
+            />
           
           ) : field.field_type === 'user_relation' ? (
             <SearchableSelect 
@@ -475,8 +487,8 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
                disabled={isReadOnly} 
                options={(() => {
                   let filtered = companyUsers;
-                  const rId = field.options?.role_id;
-                  const pId = field.options?.profile_id;
+                  const rId = parsedOpts.role_id;
+                  const pId = parsedOpts.profile_id;
                   if (rId) filtered = filtered.filter(u => String(u.role_id) === String(rId));
                   if (pId) filtered = filtered.filter(u => String(u.profile_id) === String(pId));
                   return filtered.map(u => ({ value: u.id, label: u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.email }));
@@ -487,8 +499,8 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
             <div className="react-phone-wrapper" style={{'--phone-border': 'transparent', '--phone-bg': 'transparent'}}>
               <PhoneInput
                 disabled={isReadOnly}
-                country={field.options?.default_country?.toLowerCase() || 'py'}
-                disableDropdown={field.options?.restrict_country || false}
+                country={parsedOpts.default_country?.toLowerCase() || 'py'}
+                disableDropdown={parsedOpts.restrict_country || false}
                 value={formData[fieldKey] || ''}
                 onChange={(phone) => setFormData({...formData, [fieldKey]: phone})}
                 inputClass={dynamicInputClasses}
@@ -501,9 +513,6 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
           ) : field.field_type === 'currency' ? (
             <div className="relative">
               {(() => {
-                let parsedOpts = {};
-                try { parsedOpts = typeof field.options === 'string' ? JSON.parse(field.options) : (field.options || {}); } catch(e) { parsedOpts = {}; }
-
                 const symPos = parsedOpts.symbol_position || 'left';
                 const sym = parsedOpts.symbol || 'Gs';
                 
