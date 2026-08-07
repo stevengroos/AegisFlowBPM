@@ -211,12 +211,35 @@ def test_global_python_script(
     Idéntico al de transiciones, pero montado en la ruta de automatizaciones globales.
     """
     class MockHTTPClient:
-        def get(self, url, headers=None): 
-            print(f"[TEST MOCK] GET simulado a: {url}")
-            return {"status": 200, "data": "Mocked GET response"}
-        def post(self, url, json=None, headers=None): 
-            print(f"[TEST MOCK] POST simulado a: {url} con payload: {json}")
-            return {"status": 200, "data": "Mocked POST response"}
+        def get(self, url, headers=None):
+            import requests
+            try:
+                resp = requests.get(url, headers=headers, timeout=5)
+                try: data = resp.json()
+                except: data = resp.text
+                return {"status": resp.status_code, "data": data}
+            except Exception as e:
+                return {"status": 500, "error": str(e)}
+
+        def post(self, url, json=None, headers=None):
+            import requests
+            try:
+                resp = requests.post(url, json=json, headers=headers, timeout=5)
+                try: data = resp.json()
+                except: data = resp.text
+                return {"status": resp.status_code, "data": data}
+            except Exception as e:
+                return {"status": 500, "error": str(e)}
+
+        def put(self, url, json=None, headers=None):
+            import requests
+            try:
+                resp = requests.put(url, json=json, headers=headers, timeout=5)
+                try: data = resp.json()
+                except: data = resp.text
+                return {"status": resp.status_code, "data": data}
+            except Exception as e:
+                return {"status": 500, "error": str(e)}
 
     local_env = {
         "case_data": req.mock_data,
