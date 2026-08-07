@@ -113,8 +113,9 @@ const ModuleDataView = () => {
     return val;
   };
 
+  // Buscamos que se llame EXACTAMENTE "Categoría" o "Categoria", o que esté explícitamente configurado
   const categoryFieldApiName = module?.mobile_config?.mapping?.category || 
-    fields.find(f => f.field_type === 'select' && f.label.toLowerCase().includes('categor'))?.api_name;
+    fields.find(f => f.field_type === 'select' && (f.label.toLowerCase() === 'categoría' || f.label.toLowerCase() === 'categoria'))?.api_name;
     
   const categoryFieldDef = fields.find(f => f.api_name === categoryFieldApiName || f.label === categoryFieldApiName);
   const categoriesList = categoryFieldDef?.options || [];
