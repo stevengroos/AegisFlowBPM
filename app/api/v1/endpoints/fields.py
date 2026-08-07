@@ -52,10 +52,16 @@ class BatchField(BaseModel):
     label: str = Field(..., min_length=1, max_length=150) # 🔥 PENTEST FIX: Límites
     field_type: str = Field(..., max_length=50)
     required: bool = False
-    options: Optional[Union[List[str], dict, Any]] = None
+    
+    # 🔥 FIX CRÍTICO PARA RELACIONES: Asegurar la correcta llegada del diccionario
+    options: Optional[Union[Dict[str, Any], List[str], str]] = None
+    
     show_in_create: bool = True
     is_primary: bool = False
-    subform_config: Optional[Union[List[dict], Any]] = []
+    
+    # 🔥 FIX: Subformularios seguros
+    subform_config: Optional[Union[List[Dict[str, Any]], str]] = []
+    
     order: int = 0
     api_name: Optional[str] = Field(None, max_length=150)
 
@@ -234,9 +240,26 @@ def batch_save_form(
     for f in payload.fields:
         real_section_id = section_id_map.get(f.section_id) if f.section_id else None
 
+        # 🔥 FIX DEFINITIVO DE OPCIONES: Garantizar que se guarda como JSON (Dict o List)
         final_options = f.options
         if f.field_type == 'select' and isinstance(f.options, str):
             final_options = [opt.strip() for opt in f.options.split(',') if opt.strip()]
+        elif f.field_type != 'select' and isinstance(f.options, str):
+            # Si viene como String escapado (Ej: "{\"target_module_id\": 11}"), lo parseamos a JSON real
+            try:
+                if f.options.strip().startswith('{'):
+                    final_options = json.loads(f.options)
+            except:
+                pass
+
+        # Parsear también la configuración del subformulario
+        final_subform_config = f.subform_config
+        if isinstance(f.subform_config, str):
+            try:
+                if f.subform_config.strip().startswith('['):
+                    final_subform_config = json.loads(f.subform_config)
+            except:
+                pass
 
         if isinstance(f.id, int) and f.id > 0: 
             db_field = db.query(models.FormField).filter(models.FormField.id == f.id, models.FormField.company_id == company_id).first()
@@ -244,10 +267,10 @@ def batch_save_form(
                 db_field.label = f.label
                 db_field.field_type = f.field_type
                 db_field.required = f.required
-                db_field.options = final_options
+                db_field.options = final_options # ✅ Guarda el Objeto Real
                 db_field.show_in_create = f.show_in_create
                 db_field.is_primary = f.is_primary
-                db_field.subform_config = f.subform_config
+                db_field.subform_config = final_subform_config # ✅ Guarda el Objeto Real
                 db_field.order = f.order
                 db_field.section_id = real_section_id
 
@@ -259,8 +282,8 @@ def batch_save_form(
             new_f = models.FormField(
                 company_id=company_id, form_id=form_id, section_id=real_section_id,
                 label=f.label, api_name=api_name, field_type=f.field_type,
-                required=f.required, order=f.order, options=final_options,
-                show_in_create=f.show_in_create, is_primary=f.is_primary, subform_config=f.subform_config
+                required=f.required, order=f.order, options=final_options, # ✅
+                show_in_create=f.show_in_create, is_primary=f.is_primary, subform_config=final_subform_config # ✅
             )
             db.add(new_f)
             db.flush()

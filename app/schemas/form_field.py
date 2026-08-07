@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Union
+from typing import List, Optional, Any, Union, Dict
 
 # ==========================================
 # ESQUEMAS PARA SECCIONES (FormSection)
@@ -48,13 +48,12 @@ class AutoNumberConfig(BaseModel):
 # ==========================================
 class FormFieldBase(BaseModel):
     label: str = Field(..., min_length=1, max_length=200, description="El nombre que ve el usuario (ej: 'Fecha de inicio')")
-    
-    # 🔥 CORRECCIÓN: Volvemos a incluir 'date' en la descripción 🔥
     field_type: str = Field(..., max_length=50, description="Tipo: 'text', 'number', 'date', 'currency', 'phone','email', 'auto_number', etc.")
-    
     required: bool = False
     order: int = 0
-    options: Optional[Union[List[str], dict, Any]] = None
+    
+    # 🔥 FIX: Forzamos a Pydantic a respetar Diccionarios para evitar que lo aplaste a String 🔥
+    options: Optional[Union[Dict[str, Any], List[str], str]] = None
     
     is_active: bool = True
     show_in_create: Optional[bool] = True
@@ -62,7 +61,9 @@ class FormFieldBase(BaseModel):
     api_name: Optional[str] = Field(None, max_length=250)
     is_primary: Optional[bool] = False 
     section_id: Optional[int] = None
-    subform_config: Optional[Union[List[dict], Any]] = []
+    
+    # 🔥 FIX: Forzar que subform_config sea explícitamente List[Dict] 🔥
+    subform_config: Optional[Union[List[Dict[str, Any]], str]] = []
     
 class FormFieldCreate(FormFieldBase):
     pass
