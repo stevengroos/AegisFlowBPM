@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Editor from '@monaco-editor/react';
-import { X, Play, Save, Code, Database, Terminal, AlertCircle, CheckCircle2, Loader2, ShieldAlert } from 'lucide-react';
-import api from '../../api/axios'; // Ajusta esta ruta si lo guardas en otro lado
+import { X, Play, Save, Code, Database, Terminal, AlertCircle, CheckCircle2, Loader2, ShieldAlert, Search } from 'lucide-react';
+import api from '../../api/axios';
 
 const CodeEditorModalGlobal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial }) => {
   const [code, setCode] = useState(initialCode || '# Escribe tu lógica aquí...\ncase_data["ejemplo"] = "valor"');
@@ -12,21 +12,50 @@ const CodeEditorModalGlobal = ({ isOpen, onClose, onSave, initialCode, mockDataI
   const [isTesting, setIsTesting] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
 
+  // 🔥 NUEVOS ESTADOS PARA CARGAR REGISTROS 🔥
+  const [loadCaseId, setLoadCaseId] = useState('');
+  const [isLoadingCase, setIsLoadingCase] = useState(false);
+
   useEffect(() => { 
       if (isOpen) {
           setCode(initialCode || '');
           setLastTestedCode(initialCode || '');
           setTestResult(null);
+          setLoadCaseId('');
       }
   }, [isOpen, initialCode]);
 
   if (!isOpen) return null;
 
+  // 🔥 NUEVA FUNCIÓN: CARGAR CASO REAL DESDE EL BACKEND 🔥
+  const handleLoadCase = async () => {
+    if (!loadCaseId.trim()) return;
+    setIsLoadingCase(true);
+    try {
+      const res = await api.get(`/api/v1/cases/${loadCaseId}`);
+      // Solo nos interesa el diccionario "data" interno del caso
+      setMockData(JSON.stringify(res.data.data, null, 2));
+      
+      setTestResult({
+        success: true,
+        console_output: `✅ ¡Registro #${loadCaseId} cargado con éxito!\nPuedes ver sus datos reales en el panel superior.`,
+        modified_data: res.data.data
+      });
+    } catch (error) {
+      setTestResult({
+        success: false,
+        error_message: `Error al cargar el registro #${loadCaseId}`,
+        traceback: error.response?.data?.detail || "No se encontró el registro o no tienes permiso para verlo."
+      });
+    } finally {
+      setIsLoadingCase(false);
+    }
+  };
+
   const handleTestScript = async () => {
     setIsTesting(true);
     setTestResult(null);
     try {
-      // 🔥 AQUI ESTÁ LA DIFERENCIA: Apunta al endpoint de automations.py
       const res = await api.post('/api/v1/automations/test-script', {
         function_code: code,
         mock_data: JSON.parse(mockData)
@@ -94,7 +123,35 @@ const CodeEditorModalGlobal = ({ isOpen, onClose, onSave, initialCode, mockDataI
         {/* DERECHA: MOCK Y CONSOLA */}
         <div className="w-[450px] flex flex-col bg-[#0d1117] overflow-hidden">
            <div className="flex-1 flex flex-col border-b border-gray-800">
-              <div className="px-4 py-3 bg-gray-900 flex items-center justify-between border-b border-gray-800"><span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Database size={14}/> Objeto de Prueba (JSON)</span></div>
+              
+              {/* 🔥 CABECERA CON EL NUEVO BUSCADOR 🔥 */}
+              <div className="px-4 py-3 bg-gray-900 flex items-center justify-between border-b border-gray-800">
+                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <Database size={14}/> Objeto de Prueba
+                 </span>
+                 
+                 <div className="flex items-center gap-2">
+                    <div className="relative">
+                       <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                       <input 
+                          type="text" 
+                          placeholder="ID del Caso..." 
+                          value={loadCaseId}
+                          onChange={e => setLoadCaseId(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleLoadCase()}
+                          className="pl-7 pr-2 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-white outline-none focus:border-blue-500 w-28 transition-colors"
+                       />
+                    </div>
+                    <button 
+                       onClick={handleLoadCase} 
+                       disabled={isLoadingCase || !loadCaseId.trim()} 
+                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                       {isLoadingCase ? <Loader2 size={12} className="animate-spin" /> : "Cargar"}
+                    </button>
+                 </div>
+              </div>
+
               <Editor height="100%" defaultLanguage="json" theme="vs-dark" value={mockData} onChange={(val) => setMockData(val)} options={{ fontSize: 12, minimap: { enabled: false }, lineNumbers: "off", folding: false }} />
            </div>
 
