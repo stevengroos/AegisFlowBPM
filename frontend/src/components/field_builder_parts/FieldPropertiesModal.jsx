@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign, Binary } from 'lucide-react'; 
 import { PALETTE_ITEMS } from './Palette';
@@ -6,14 +6,44 @@ import { PALETTE_ITEMS } from './Palette';
 const FieldPropertiesModal = ({ 
   isOpen, 
   onClose, 
-  editingField, 
-  setEditingField, 
+  editingField: initialEditingField, 
+  setEditingField: parentSetEditingField, 
   onSave, 
   modulesList = [], 
   rolesList = [],   
   profilesList = [],
   localFields 
 }) => {
+  // 🔥 FIX CRÍTICO: Estado local para manejar el parseo seguro de las opciones
+  const [editingField, setLocalEditingField] = useState(null);
+
+  // Cuando el modal se abre, interceptamos los datos y forzamos el parseo de 'options'
+  useEffect(() => {
+    if (isOpen && initialEditingField) {
+      let safeOptions = initialEditingField.options;
+      
+      // Si options viene como string JSON desde el backend, lo convertimos a Objeto
+      if (typeof safeOptions === 'string' && safeOptions.trim().startsWith('{')) {
+        try {
+          safeOptions = JSON.parse(safeOptions);
+        } catch (e) {
+          console.warn("No se pudo parsear las opciones del campo:", e);
+        }
+      }
+
+      setLocalEditingField({
+        ...initialEditingField,
+        options: safeOptions
+      });
+    }
+  }, [isOpen, initialEditingField]);
+
+  // Sincronizar el estado local con el padre
+  const setEditingField = (newVal) => {
+    setLocalEditingField(newVal);
+    parentSetEditingField(newVal);
+  };
+
   if (!isOpen || !editingField) return null;
 
   // Lógica de Subformularios
@@ -29,7 +59,6 @@ const FieldPropertiesModal = ({
     setEditingField({ ...editingField, subform_config: updated });
   };
 
-  // Filtramos los campos numéricos para ayudar al usuario a armar fórmulas
   const numericFields = localFields.filter(f => f.field_type === 'number' && f.id !== editingField.id);
 
   return createPortal(
@@ -43,21 +72,18 @@ const FieldPropertiesModal = ({
         
         <form id="field-edit-form" onSubmit={onSave} className="p-6 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
            
-           {/* NOMBRE DEL CAMPO */}
            <div>
              <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Etiqueta (Label)</label>
-             <input type="text" required value={editingField.label} onChange={(e) => setEditingField({...editingField, label: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" />
+             <input type="text" required value={editingField.label || ''} onChange={(e) => setEditingField({...editingField, label: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" />
            </div>
            
-           {/* CONFIGURACIÓN DE LISTAS DESPLEGABLES */}
            {editingField.field_type === 'select' && (
              <div>
                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Opciones (separadas por coma)</label>
-               <textarea rows={3} value={editingField.options} onChange={(e) => setEditingField({...editingField, options: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" placeholder="Ej: Opción A, Opción B" />
+               <textarea rows={3} value={editingField.options || ''} onChange={(e) => setEditingField({...editingField, options: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all" placeholder="Ej: Opción A, Opción B" />
              </div>
            )}
 
-           {/* CONFIGURACIÓN DE AUTO NÚMERO (SECUENCIA) */}
            {editingField.field_type === 'auto_number' && (
              <div className="bg-orange-50/50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-orange-700 dark:text-orange-400 uppercase mb-1.5 flex items-center gap-1">
@@ -99,7 +125,6 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN DE TELÉFONO */}
            {editingField.field_type === 'phone' && (
              <div className="bg-teal-50/50 dark:bg-teal-900/10 border border-teal-200 dark:border-teal-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-teal-700 dark:text-teal-400 uppercase mb-1.5 flex items-center gap-1">
@@ -133,7 +158,6 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN DE MONEDA / DECIMALES */}
            {editingField.field_type === 'currency' && (
              <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-amber-700 dark:text-amber-400 uppercase mb-1.5 flex items-center gap-1">
@@ -178,7 +202,7 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 FIX: CONFIGURACIÓN RELACIONAL (LOOKUP) 🔥 */}
+           {/* 🔥 FIX SUPREMO: CONFIGURACIÓN RELACIONAL (LOOKUP) 🔥 */}
            {editingField.field_type === 'relation' && (
              <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 p-4 rounded-xl">
                <label className="block text-xs font-bold text-blue-700 dark:text-blue-400 uppercase mb-1.5 flex items-center gap-1"><LinkIcon size={14}/> Módulo Destino (Lookup)</label>
@@ -186,11 +210,11 @@ const FieldPropertiesModal = ({
                  required 
                  value={editingField.options?.target_module_id || ''} 
                  onChange={(e) => {
-                   // Aseguramos que se guarde como INTEGER
                    const val = e.target.value ? parseInt(e.target.value, 10) : '';
                    setEditingField({
                      ...editingField, 
-                     options: { ...editingField.options, target_module_id: val }
+                     // Si no hay un objeto options previo, lo inicializamos
+                     options: { ...(editingField.options || {}), target_module_id: val }
                    });
                  }} 
                  className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-900 dark:text-white transition-all"
@@ -202,7 +226,6 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* 🔥 FIX: CONFIGURACIÓN DE RELACIÓN CON USUARIOS 🔥 */}
            {editingField.field_type === 'user_relation' && (
              <div className="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 p-4 rounded-xl space-y-4">
                <label className="block text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase mb-1.5 flex items-center gap-1">
@@ -217,7 +240,7 @@ const FieldPropertiesModal = ({
                      value={editingField.options?.profile_id || ''} 
                      onChange={(e) => {
                         const val = e.target.value ? parseInt(e.target.value, 10) : '';
-                        setEditingField({...editingField, options: { ...editingField.options, profile_id: val }});
+                        setEditingField({...editingField, options: { ...(editingField.options || {}), profile_id: val }});
                      }} 
                      className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
                    >
@@ -231,7 +254,7 @@ const FieldPropertiesModal = ({
                      value={editingField.options?.role_id || ''} 
                      onChange={(e) => {
                         const val = e.target.value ? parseInt(e.target.value, 10) : '';
-                        setEditingField({...editingField, options: { ...editingField.options, role_id: val }});
+                        setEditingField({...editingField, options: { ...(editingField.options || {}), role_id: val }});
                      }} 
                      className="w-full px-3 py-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
                    >
@@ -244,12 +267,11 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN DE FÓRMULAS MATEMÁTICAS */}
            {editingField.field_type === 'formula' && (
              <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 p-4 rounded-xl space-y-4">
                <div>
                   <label className="block text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase mb-1.5 flex items-center gap-1"><Calculator size={14}/> Editor de Fórmula Matemática</label>
-                  <textarea required rows={2} value={editingField.options} onChange={(e) => setEditingField({...editingField, options: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-emerald-300 dark:border-emerald-700 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm text-gray-900 dark:text-white transition-all font-mono" placeholder="Ej: ([Precio] * [Volumen]) * 0.05" />
+                  <textarea required rows={2} value={typeof editingField.options === 'string' ? editingField.options : ''} onChange={(e) => setEditingField({...editingField, options: e.target.value})} className="w-full px-4 py-2.5 bg-white dark:bg-gray-950 border border-emerald-300 dark:border-emerald-700 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm text-gray-900 dark:text-white transition-all font-mono" placeholder="Ej: ([Precio] * [Volumen]) * 0.05" />
                </div>
                
                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-3 rounded-xl">
@@ -266,7 +288,6 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN DE GEOLOCALIZACIÓN */}
            {editingField.field_type === 'map' && (
              <div className="bg-red-50/50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 p-4 rounded-xl">
                <label className="block text-xs font-bold text-red-700 dark:text-red-400 uppercase mb-1.5 flex items-center gap-1"><MapPin size={14}/> Campo Geográfico</label>
@@ -274,7 +295,6 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONFIGURACIÓN DE TABLAS (SUBFORMULARIOS) */}
            {editingField.field_type === 'subform' && (
              <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                 <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -287,14 +307,12 @@ const FieldPropertiesModal = ({
                          <div className="flex gap-2 items-center">
                            <input type="text" placeholder="Nombre Columna" value={col.label} onChange={e => updateSubformCol(idx, 'label', e.target.value)} className="flex-1 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required/>
                            <select value={col.type} onChange={e => updateSubformCol(idx, 'type', e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
-                              {/* 🔥 Filtramos 'subform', 'map', 'formula', 'user_relation', 'auto_number' que no deben ir en tablas */}
                               {PALETTE_ITEMS.filter(p => !['subform', 'map', 'formula', 'user_relation', 'auto_number'].includes(p.type)).map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
                            </select>
                            <button type="button" onClick={() => removeSubformCol(idx)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
                          </div>
                          {col.type === 'select' && <input type="text" placeholder="Opciones (Ej: Opción 1, Opción 2)" value={col.options || ''} onChange={e => updateSubformCol(idx, 'options', e.target.value)} className="w-full px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required />}
                          
-                         {/* 🔥 FIX RELACIONAL EN SUBFORM 🔥 */}
                          {col.type === 'relation' && (
                            <select 
                              required 
@@ -315,14 +333,12 @@ const FieldPropertiesModal = ({
              </div>
            )}
 
-           {/* CONTROLES GENERALES (OBLIGATORIO, PRINCIPAL, ETC) */}
            <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors" onClick={() => setEditingField({...editingField, is_primary: !editingField.is_primary})}>
                 <input type="checkbox" checked={editingField.is_primary || false} readOnly className="w-4 h-4 rounded text-amber-500 cursor-pointer" />
                 <div className="flex flex-col"><label className="text-sm font-bold text-amber-800 dark:text-amber-500 flex items-center gap-1.5 cursor-pointer"><Star size={16}/> Título Principal del Registro</label><span className="text-xs text-amber-600 dark:text-amber-600/70">Representará a todo el registro en el tablero Kanban.</span></div>
               </div>
               
-              {/* Ocultamos la opción de hacerlo obligatorio si es auto numérico, porque el sistema lo llena solo */}
               {editingField.field_type !== 'auto_number' && (
                 <div className="flex items-center gap-3 px-2 cursor-pointer group" onClick={() => setEditingField({...editingField, required: !editingField.required})}>
                   <input type="checkbox" checked={editingField.required || false} readOnly className="w-4 h-4 rounded text-blue-600 cursor-pointer group-hover:ring-2 ring-blue-500/50" />
