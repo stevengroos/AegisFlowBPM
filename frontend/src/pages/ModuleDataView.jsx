@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { createPortal } from 'react-dom'; 
-import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2, Minus, Check, Folder, ChevronDown, ChevronUp, Link as LinkIcon, Tag } from 'lucide-react'; 
+import { Plus, Loader2, Filter, MoreHorizontal, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2, Box, Columns, CheckSquare, Square, UploadCloud, History, Clock, AlertTriangle, Globe, Copy, X, BookOpen, Terminal, ArrowLeft, Info, LayoutGrid, List, Image as ImageIcon, Edit2, Minus, Check, Folder, ChevronDown, ChevronUp, Link as LinkIcon, Tag, Calendar as CalendarIcon } from 'lucide-react'; 
 import Select, { components } from 'react-select'; 
 
 import CaseModal from '../components/CaseModal';
@@ -12,7 +12,6 @@ import { useNotification } from '../context/NotificationContext';
 import BulkActionsBar from '../components/BulkActionsBar';
 import BulkUpdateModal from '../components/BulkUpdateModal';
 
-// 🔥 OPTIMIZADOR DE RENDIMIENTO PARA LISTAS LARGAS (Evita que el navegador se congele)
 const OptimizedMenuList = (props) => {
   const childrenArray = React.Children.toArray(props.children);
   const MAX_ITEMS_TO_RENDER = 50; 
@@ -28,6 +27,45 @@ const OptimizedMenuList = (props) => {
   );
 };
 
+// Componente para seleccionar Mes y Año
+const MonthYearSelector = ({ value, onChange }) => {
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
+  const months = [
+    { value: '01', label: 'Enero' }, { value: '02', label: 'Febrero' },
+    { value: '03', label: 'Marzo' }, { value: '04', label: 'Abril' },
+    { value: '05', label: 'Mayo' }, { value: '06', label: 'Junio' },
+    { value: '07', label: 'Julio' }, { value: '08', label: 'Agosto' },
+    { value: '09', label: 'Septiembre' }, { value: '10', label: 'Octubre' },
+    { value: '11', label: 'Noviembre' }, { value: '12', label: 'Diciembre' }
+  ];
+
+  const selectedMonth = value?.month || '';
+  const selectedYear = value?.year || currentYear.toString();
+
+  const handleMonthChange = (e) => {
+    const m = e.target.value;
+    onChange(m ? { month: m, year: selectedYear } : null);
+  };
+
+  const handleYearChange = (e) => {
+    onChange({ month: selectedMonth, year: e.target.value });
+  };
+
+  return (
+    <div className="flex gap-2">
+      <select value={selectedMonth} onChange={handleMonthChange} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500">
+        <option value="">Mes...</option>
+        {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+      </select>
+      <select value={selectedYear} onChange={handleYearChange} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500">
+        {years.map(y => <option key={y} value={y}>{y}</option>)}
+      </select>
+    </div>
+  );
+};
+
+
 const ModuleDataView = () => {
   const { moduleId } = useParams(); 
   const navigate = useNavigate(); 
@@ -41,9 +79,7 @@ const ModuleDataView = () => {
   const [allStatuses, setAllStatuses] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   
-  // 🔥 NUEVO ESTADO: DICCIONARIO DE RELACIONES (Traduce ID a Nombre)
   const [relationMap, setRelationMap] = useState({});
-  
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
 
@@ -62,14 +98,10 @@ const ModuleDataView = () => {
   const stockFieldApiName = module?.mobile_config?.mapping?.stock;
   const outOfStockCount = stockFieldApiName ? records.filter(r => Number(r.data[stockFieldApiName] || 0) <= 0).length : 0;
 
-  // ==========================================
-  // 🔥 FORMATO NUMÉRICO Y DE RELACIONES 🔥
-  // ==========================================
   const formatCellValue = (val, fieldType, apiName) => {
     if (val === null || val === undefined || val === '') return '';
     if (typeof val === 'object') return 'Datos...';
     
-    // 🪄 MAGIA RELACIONAL: Si es relación y tenemos el ID mapeado, mostramos el nombre
     if (fieldType === 'relation' && relationMap[apiName] && relationMap[apiName][val]) {
         return relationMap[apiName][val];
     }
@@ -91,7 +123,6 @@ const ModuleDataView = () => {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedToLink, setSelectedToLink] = useState([]);
   const [isCategorySaving, setIsCategorySaving] = useState(false);
-  
   const [categoryPage, setCategoryPage] = useState(1);
   const categoryItemsPerPage = 20;
 
@@ -99,12 +130,10 @@ const ModuleDataView = () => {
     e.preventDefault();
     if (!newCategoryName.trim() || !categoryFieldDef) return;
     if (categoriesList.includes(newCategoryName.trim())) return notify.warning("Esta categoría ya existe.");
-
     setIsCategorySaving(true);
     try {
       const newOptions = [...categoriesList, newCategoryName.trim()];
       await api.put(`/api/v1/fields/${categoryFieldDef.id}`, { ...categoryFieldDef, options: newOptions });
-      
       setFields(fields.map(f => f.id === categoryFieldDef.id ? { ...f, options: newOptions } : f));
       setNewCategoryName('');
       notify.success("Categoría creada con éxito.");
@@ -254,7 +283,6 @@ const ModuleDataView = () => {
         setFields(fetchedFields); 
       }
 
-      // 🔥 EXTRACCIÓN Y TRADUCCIÓN DE RELACIONES EN BATCH 🔥
       const relFields = fetchedFields.filter(f => f.field_type === 'relation');
       const newRelationMap = {};
       
@@ -265,7 +293,6 @@ const ModuleDataView = () => {
               else if (f.options?.target_module_id) targetModId = f.options.target_module_id;
               
               if (targetModId) {
-                  // Traemos los campos y los registros del modulo destino al mismo tiempo
                   const [tFields, tRecords] = await Promise.all([
                       api.get(`/api/v1/fields/?module_id=${targetModId}`, { signal }),
                       api.get(`/api/v1/cases/?module_id=${targetModId}`, { signal })
@@ -278,9 +305,9 @@ const ModuleDataView = () => {
                   });
                   newRelationMap[f.api_name || f.label] = map;
               }
-          } catch (e) { console.error("Error resolviendo relación:", e); }
+          } catch (e) {}
       }));
-      setRelationMap(newRelationMap); // Guardamos el mapa en memoria
+      setRelationMap(newRelationMap); 
 
       const savedColumns = localStorage.getItem(`module_${moduleId}_columns`);
       if (savedColumns) setSelectedColumns(JSON.parse(savedColumns).slice(0, 5)); 
@@ -359,11 +386,48 @@ const ModuleDataView = () => {
     if (startDate && new Date(rec.created_at) < new Date(startDate)) return false;
     if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); if (new Date(rec.created_at) > end) return false; }
     
+    // 🔥 FIX: Lógica de Filtrado Inteligente para Fechas 🔥
     for (const [key, filterValue] of Object.entries(fieldFilters)) {
-      if (filterValue) {
-        let recValue = key === 'SYSTEM_STATUS' ? getStatusName(rec.status_id).toLowerCase() : key === 'SYSTEM_OWNER' ? getUserName(rec.assigned_to || rec.created_by).toLowerCase() : String(rec.data[key] || '').toLowerCase();
-        if (!recValue.includes(filterValue.toLowerCase())) return false;
+      if (!filterValue) continue;
+
+      const fieldDef = fields.find(f => (f.api_name || f.label) === key);
+      
+      // Si es un campo de fecha y el valor guardado es un objeto (Rango)
+      if (fieldDef?.field_type === 'date' && typeof filterValue === 'object') {
+          const recDateStr = rec.data[key];
+          if (!recDateStr) return false;
+          
+          const recDate = new Date(recDateStr);
+          
+          // Caso 1: Rango Inicio/Fin
+          if (filterValue.start || filterValue.end) {
+              if (filterValue.start && recDate < new Date(filterValue.start)) return false;
+              if (filterValue.end) {
+                  const endD = new Date(filterValue.end);
+                  endD.setHours(23, 59, 59, 999);
+                  if (recDate > endD) return false;
+              }
+              continue;
+          }
+          
+          // Caso 2: Mes/Año
+          if (filterValue.month || filterValue.year) {
+              if (filterValue.year && recDate.getFullYear().toString() !== filterValue.year) return false;
+              if (filterValue.month) {
+                  // getMonth es 0-index (0=Enero), filterValue.month es "01" (Enero)
+                  const m = (recDate.getMonth() + 1).toString().padStart(2, '0');
+                  if (m !== filterValue.month) return false;
+              }
+              continue;
+          }
       }
+
+      // Lógica clásica para el resto de campos
+      let recValue = key === 'SYSTEM_STATUS' ? getStatusName(rec.status_id).toLowerCase() 
+                   : key === 'SYSTEM_OWNER' ? getUserName(rec.assigned_to || rec.created_by).toLowerCase() 
+                   : String(rec.data[key] || '').toLowerCase();
+                   
+      if (!recValue.includes(String(filterValue).toLowerCase())) return false;
     }
     return true;
   });
@@ -386,7 +450,6 @@ const ModuleDataView = () => {
     const allHeaders = [...baseHeaders, ...fields.map(f => f.label)];
     const csvRows = filteredAndSortedRecords.map(rec => {
       const baseRow = [rec.id, new Date(rec.created_at).toLocaleDateString(), sanitizeCSV(getUserName(rec.assigned_to || rec.created_by)), sanitizeCSV(getStatusName(rec.status_id))];
-      // 🔥 EXPORTAMOS EL NOMBRE TRADUCIDO EN VEZ DEL ID 🔥
       const dynamicRow = fields.map(f => {
           const apiName = f.api_name || f.label;
           let val = rec.data[apiName];
@@ -439,130 +502,67 @@ const ModuleDataView = () => {
 
   return (
     <>
-      {/* 🔥 PESTAÑAS DE INVENTARIO INTELIGENTE 🔥 */}
       {(stockFieldApiName || categoryFieldDef) && (
         <div className="flex flex-wrap items-center gap-3 mb-6 animate-in slide-in-from-top-4">
-          <button 
-            onClick={() => { setInventoryTab('all'); setCurrentPage(1); }} 
-            className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'all' ? 'bg-blue-600 text-white shadow-blue-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-          >
+          <button onClick={() => { setInventoryTab('all'); setCurrentPage(1); }} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'all' ? 'bg-blue-600 text-white shadow-blue-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
              <Box size={16} /> Inventario ({records.length})
           </button>
-          
           {stockFieldApiName && (
-            <button 
-              onClick={() => { setInventoryTab('out_of_stock'); setCurrentPage(1); }} 
-              className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'out_of_stock' ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-white dark:bg-gray-900 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
-            >
+            <button onClick={() => { setInventoryTab('out_of_stock'); setCurrentPage(1); }} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'out_of_stock' ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-white dark:bg-gray-900 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}>
                <AlertTriangle size={16} /> Agotados ({outOfStockCount})
             </button>
           )}
-
           {categoryFieldDef && (
-            <button 
-              onClick={() => setInventoryTab('categories')} 
-              className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'categories' ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-            >
+            <button onClick={() => setInventoryTab('categories')} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'categories' ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                <Folder size={16} /> Categorías ({categoriesList.length})
             </button>
           )}
         </div>
       )}
 
-      {/* RENDERIZADO DUAL DE INTERFAZ */}
       {inventoryTab === 'categories' ? (
-        
-        // ==========================================
-        // 🔥 VISTA EXCLUSIVA DE CATEGORÍAS 🔥
-        // ==========================================
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-300">
-          
-          {/* LADO IZQUIERDO: NUEVA CATEGORÍA */}
           <div className="bg-white dark:bg-[#1e2330] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm h-fit">
             <div className="flex items-center gap-2 mb-2">
               <Folder className="text-blue-500" size={20} />
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Nueva Categoría</h3>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Organiza tu catálogo creando secciones específicas.</p>
-            
             <form onSubmit={handleCreateCategory}>
               <div className="mb-4">
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Nombre de la categoría</label>
-                <input 
-                  type="text" required 
-                  placeholder="Ej: Electrónica, Accesorios..." 
-                  value={newCategoryName} 
-                  onChange={(e) => setNewCategoryName(e.target.value)} 
-                  className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#151923] text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-sm"
-                />
+                <input type="text" required placeholder="Ej: Electrónica, Accesorios..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#151923] text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-sm"/>
               </div>
-              <button 
-                type="submit" 
-                disabled={isCategorySaving}
-                className="w-full py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-all shadow-sm shadow-blue-500/20 flex items-center justify-center gap-2"
-              >
-                {isCategorySaving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                Crear y Guardar
+              <button type="submit" disabled={isCategorySaving} className="w-full py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-all shadow-sm shadow-blue-500/20 flex items-center justify-center gap-2">
+                {isCategorySaving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Crear y Guardar
               </button>
             </form>
           </div>
-
-          {/* LADO DERECHO: ESTRUCTURA DEL CATÁLOGO */}
           <div className="lg:col-span-2 bg-white dark:bg-[#1e2330] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
-            <div className="mb-6">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Estructura del Catálogo</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Haz clic en una categoría para administrar los productos que contiene.</p>
-            </div>
-
+            <div className="mb-6"><h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Estructura del Catálogo</h3><p className="text-sm text-gray-500 dark:text-gray-400">Haz clic en una categoría para administrar los productos que contiene.</p></div>
             {categoriesList.length === 0 ? (
-               <div className="text-center py-10 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                  <Tag className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-600 mb-3" />
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Aún no has creado ninguna categoría.</p>
-               </div>
+               <div className="text-center py-10 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl"><Tag className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-600 mb-3" /><p className="text-sm font-medium text-gray-500 dark:text-gray-400">Aún no has creado ninguna categoría.</p></div>
             ) : (
               <div className="flex flex-col gap-3">
                 {categoriesList.map(cat => {
                   const isExpanded = expandedCategory === cat;
                   const productsInCat = records.filter(r => r.data[categoryFieldApiName] === cat);
-                  const availableToLink = records.filter(r => r.data[categoryFieldApiName] !== cat).map(r => ({
-                    value: r.id, 
-                    label: primaryField ? r.data[primaryField.api_name || primaryField.label] : `Registro #${r.id}`
-                  }));
-
+                  const availableToLink = records.filter(r => r.data[categoryFieldApiName] !== cat).map(r => ({value: r.id, label: primaryField ? r.data[primaryField.api_name || primaryField.label] : `Registro #${r.id}`}));
                   const totalCategoryPages = Math.ceil(productsInCat.length / categoryItemsPerPage) || 1;
                   const visibleProductsInCat = productsInCat.slice((categoryPage - 1) * categoryItemsPerPage, categoryPage * categoryItemsPerPage);
 
                   return (
                     <div key={cat} className={`border rounded-xl overflow-hidden transition-all ${isExpanded ? 'border-blue-500 shadow-md shadow-blue-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
-                      {/* HEADER DEL ACORDEÓN */}
-                      <div 
-                        onClick={() => { 
-                          setExpandedCategory(isExpanded ? null : cat); 
-                          setSelectedToLink([]); 
-                          setCategoryPage(1); 
-                        }} 
-                        className={`p-4 flex items-center justify-between cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-gray-50/50 dark:bg-[#151923]'}`}
-                      >
-                        <span className={`font-bold text-sm ${isExpanded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                          {cat}
-                        </span>
-                        
+                      <div onClick={() => { setExpandedCategory(isExpanded ? null : cat); setSelectedToLink([]); setCategoryPage(1); }} className={`p-4 flex items-center justify-between cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-gray-50/50 dark:bg-[#151923]'}`}>
+                        <span className={`font-bold text-sm ${isExpanded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>{cat}</span>
                         <div className="flex items-center gap-3">
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat); }} className="text-gray-400 hover:text-red-500 transition-colors p-1" title="Eliminar Categoría">
-                            <Trash2 size={16} />
-                          </button>
-                          <span className="text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-full text-gray-600 dark:text-gray-300 shadow-sm">
-                            {productsInCat.length} artículos
-                          </span>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat); }} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={16} /></button>
+                          <span className="text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-full text-gray-600 dark:text-gray-300 shadow-sm">{productsInCat.length} artículos</span>
                           {isExpanded ? <ChevronUp size={18} className="text-blue-500" /> : <ChevronDown size={18} className="text-gray-400" />}
                         </div>
                       </div>
-
-                      {/* CUERPO DEL ACORDEÓN */}
                       {isExpanded && (
                         <div className="p-5 bg-white dark:bg-[#1e2330] border-t border-blue-100 dark:border-gray-800 animate-in slide-in-from-top-2">
-                          
-                          {/* PRODUCTOS ACTUALES */}
                           <div className="mb-6">
                             <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5"><Box size={14}/> Contenido Actual</h4>
                             {productsInCat.length === 0 ? (
@@ -571,20 +571,13 @@ const ModuleDataView = () => {
                               <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
                                 {visibleProductsInCat.map(p => (
                                   <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50/30 dark:bg-gray-900/30 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate pr-4">
-                                      {primaryField ? p.data[primaryField.api_name || primaryField.label] : `Registro #${p.id}`}
-                                    </span>
-                                    <button onClick={() => handleUnlinkProduct(p.id)} className="text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 rounded transition-colors">
-                                      Quitar
-                                    </button>
+                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate pr-4">{primaryField ? p.data[primaryField.api_name || primaryField.label] : `Registro #${p.id}`}</span>
+                                    <button onClick={() => handleUnlinkProduct(p.id)} className="text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 rounded transition-colors">Quitar</button>
                                   </div>
                                 ))}
-                                
                                 {totalCategoryPages > 1 && (
                                   <div className="flex justify-between items-center px-4 py-2 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                      Página {categoryPage} de {totalCategoryPages}
-                                    </span>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Página {categoryPage} de {totalCategoryPages}</span>
                                     <div className="flex gap-1">
                                       <button onClick={() => setCategoryPage(p => Math.max(1, p - 1))} disabled={categoryPage === 1} className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"><ChevronLeft size={14} /></button>
                                       <button onClick={() => setCategoryPage(p => Math.min(totalCategoryPages, p + 1))} disabled={categoryPage === totalCategoryPages} className="p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"><ChevronRight size={14} /></button>
@@ -594,29 +587,13 @@ const ModuleDataView = () => {
                               </div>
                             )}
                           </div>
-
-                          {/* VINCULAR PRODUCTOS (REUTILIZA SELECT) */}
                           <div>
                             <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5"><LinkIcon size={14}/> Vincular Productos</h4>
                             <div className="flex flex-col sm:flex-row gap-3">
-                              <div className="flex-1">
-                                <Select
-                                  isMulti
-                                  options={availableToLink}
-                                  value={availableToLink.filter(opt => selectedToLink.includes(opt.value))}
-                                  onChange={(selected) => setSelectedToLink(selected ? selected.map(s => s.value) : [])}
-                                  placeholder="Buscar para añadir..."
-                                  styles={customSingleSelectStyles}
-                                  menuPortalTarget={document.body}
-                                  components={{ MenuList: OptimizedMenuList }} 
-                                />
-                              </div>
-                              <button onClick={() => handleLinkProducts(cat)} disabled={selectedToLink.length === 0} className="px-5 py-2 bg-gray-900 hover:bg-black dark:bg-gray-100 dark:hover:bg-white text-white dark:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-bold shadow-sm transition-all">
-                                Guardar
-                              </button>
+                              <div className="flex-1"><Select isMulti options={availableToLink} value={availableToLink.filter(opt => selectedToLink.includes(opt.value))} onChange={(selected) => setSelectedToLink(selected ? selected.map(s => s.value) : [])} placeholder="Buscar para añadir..." styles={customSingleSelectStyles} menuPortalTarget={document.body} components={{ MenuList: OptimizedMenuList }} /></div>
+                              <button onClick={() => handleLinkProducts(cat)} disabled={selectedToLink.length === 0} className="px-5 py-2 bg-gray-900 hover:bg-black dark:bg-gray-100 dark:hover:bg-white text-white dark:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-bold shadow-sm transition-all">Guardar</button>
                             </div>
                           </div>
-
                         </div>
                       )}
                     </div>
@@ -626,12 +603,7 @@ const ModuleDataView = () => {
             )}
           </div>
         </div>
-
       ) : (
-
-        // ==========================================
-        // 🔥 VISTA CLÁSICA DE DATOS (TABLA / TARJETAS) 🔥
-        // ==========================================
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
@@ -640,14 +612,11 @@ const ModuleDataView = () => {
             </div>
             
             <div className="flex flex-wrap items-center gap-2">
-
-              {/* CONMUTADOR DE VISTAS */}
               <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 mr-2">
                 <button onClick={() => setViewMode('table')} className={`p-1.5 rounded-md flex items-center justify-center transition-all ${viewMode === 'table' ? 'bg-white dark:bg-gray-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`} title="Vista de Tabla"><List size={18} /></button>
                 <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md flex items-center justify-center transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-gray-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`} title="Vista de Galería / Tarjetas"><LayoutGrid size={18} /></button>
               </div>
               
-              {/* BOTONES DE EXPORTACIÓN / WEBHOOKS */}
               <div className="flex items-center bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800/80 rounded-lg shadow-sm mr-1 overflow-hidden">
                 <button onClick={exportToCSV} className="px-3 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 text-xs font-semibold border-r border-gray-200 dark:border-gray-800/80" title="Exportar a CSV"><Download size={14} /> <span className="hidden sm:inline">Exportar</span></button>
                 {canCreate && (
@@ -661,7 +630,6 @@ const ModuleDataView = () => {
                 )}
               </div>
 
-              {/* BOTONES DE COLUMNAS, FILTROS Y NUEVO */}
               <div className="relative" ref={columnSelectorRef}>
                 <button onClick={() => setShowColumnSelector(!showColumnSelector)} className={`px-3 py-2 rounded-lg transition-colors shadow-sm border flex items-center gap-1.5 text-xs font-semibold ${showColumnSelector ? 'bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800/50 dark:text-blue-400' : 'bg-white dark:bg-gray-900/50 border-gray-200 dark:border-gray-800/80 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}><Columns size={14} /> <span className="hidden sm:inline">Columnas</span></button>
                 {showColumnSelector && (
@@ -743,21 +711,51 @@ const ModuleDataView = () => {
                     const fieldLabel = isSystemStatus ? 'Estado del Registro' : isSystemOwner ? 'Propietario / Asignado a' : (fieldDef?.label || key);
 
                     return (
-                      <div key={key} className="flex items-end gap-3 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700/50">
-                        <div className="flex-1 min-w-0">
-                          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1 truncate">{fieldLabel}</label>
+                      <div key={key} className="flex flex-col sm:flex-row sm:items-end gap-3 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700/50">
+                        <div className="flex-1 w-full">
+                          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 truncate">{fieldLabel}</label>
                           
-                          {isSystemStatus ? (
-                            <Select options={allStatuses.map(s => ({ value: s.name, label: s.name }))} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier estado..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
+                          {/* 🔥 FIX: INTERFAZ AVANZADA PARA FECHAS 🔥 */}
+                          {fieldDef?.field_type === 'date' ? (
+                            <div className="space-y-3 bg-white dark:bg-gray-950 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                               <div className="flex items-center gap-4">
+                                  <label className="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300 cursor-pointer">
+                                     <input type="radio" name={`date-mode-${key}`} checked={!fieldFilters[key]?.mode || fieldFilters[key]?.mode === 'range'} onChange={() => handleFilterValueChange(key, { mode: 'range', start: '', end: '' })} className="text-blue-500 focus:ring-blue-500" />
+                                     Rango Libre
+                                  </label>
+                                  <label className="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300 cursor-pointer">
+                                     <input type="radio" name={`date-mode-${key}`} checked={fieldFilters[key]?.mode === 'month'} onChange={() => handleFilterValueChange(key, { mode: 'month', month: '', year: new Date().getFullYear().toString() })} className="text-blue-500 focus:ring-blue-500" />
+                                     Por Mes / Año
+                                  </label>
+                               </div>
+
+                               {(!fieldFilters[key]?.mode || fieldFilters[key]?.mode === 'range') ? (
+                                   <div className="flex gap-2 items-center">
+                                       <div className="relative flex-1">
+                                          <CalendarIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                          <input type="date" value={fieldFilters[key]?.start || ''} onChange={e => handleFilterValueChange(key, { ...fieldFilters[key], mode: 'range', start: e.target.value })} className="w-full pl-8 pr-2 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500" />
+                                       </div>
+                                       <span className="text-gray-400 text-xs font-bold px-1">y</span>
+                                       <div className="relative flex-1">
+                                          <CalendarIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                          <input type="date" value={fieldFilters[key]?.end || ''} onChange={e => handleFilterValueChange(key, { ...fieldFilters[key], mode: 'range', end: e.target.value })} className="w-full pl-8 pr-2 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500" />
+                                       </div>
+                                   </div>
+                               ) : (
+                                   <MonthYearSelector value={fieldFilters[key]} onChange={(val) => handleFilterValueChange(key, { mode: 'month', ...val })} />
+                               )}
+                            </div>
+                          ) : isSystemStatus ? (
+                            <Select options={allStatuses.map(s => ({ value: s.name, label: s.name }))} value={fieldFilters[key] && typeof fieldFilters[key] === 'string' ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier estado..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
                           ) : isSystemOwner ? (
-                            <Select options={allUsers.map(u => { const name = u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email; return { value: name, label: name }; })} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier propietario..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
+                            <Select options={allUsers.map(u => { const name = u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.email; return { value: name, label: name }; })} value={fieldFilters[key] && typeof fieldFilters[key] === 'string' ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier propietario..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
                           ) : fieldDef?.field_type === 'select' ? (
-                            <Select options={fieldDef.options?.map(opt => ({ value: opt, label: opt })) || []} value={fieldFilters[key] ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier valor..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
+                            <Select options={fieldDef.options?.map(opt => ({ value: opt, label: opt })) || []} value={fieldFilters[key] && typeof fieldFilters[key] === 'string' ? { value: fieldFilters[key], label: fieldFilters[key] } : null} onChange={opt => handleFilterValueChange(key, opt ? opt.value : '')} placeholder="Cualquier valor..." isClearable styles={customSingleSelectStyles} menuPortalTarget={document.body} menuPosition={'fixed'} components={{ MenuList: OptimizedMenuList }} />
                           ) : (
-                            <input type="text" placeholder="Contiene..." value={fieldFilters[key] || ''} onChange={e => handleFilterValueChange(key, e.target.value)} className="w-full px-3 py-2 min-h-[38px] text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500" />
+                            <input type="text" placeholder="Contiene..." value={typeof fieldFilters[key] === 'string' ? fieldFilters[key] : ''} onChange={e => handleFilterValueChange(key, e.target.value)} className="w-full px-3 py-2 min-h-[38px] text-sm border border-gray-200 dark:border-gray-700 rounded-lg outline-none bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-blue-500" />
                           )}
                         </div>
-                        <button onClick={() => handleRemoveFieldFilter(key)} className="mb-0.5 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors shrink-0" title="Quitar filtro"><Trash2 size={18} /></button>
+                        <button onClick={() => handleRemoveFieldFilter(key)} className="mb-0.5 sm:mb-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors shrink-0" title="Quitar filtro"><Trash2 size={18} /></button>
                       </div>
                     );
                   })}
@@ -854,7 +852,6 @@ const ModuleDataView = () => {
                               );
                             }
                             
-                            // 🔥 FORMATO INTELIGENTE DE CELDA (MUESTRA NOMBRES EN VEZ DE IDs)
                             const apiName = field.api_name || field.label;
                             const rawVal = rec.data[apiName];
                             return (
@@ -935,7 +932,6 @@ const ModuleDataView = () => {
                               <div key={field.id} className="flex justify-between items-center text-xs border-b border-gray-50 dark:border-gray-800/50 pb-2 last:border-0 last:pb-0">
                                 <span className="text-gray-500 dark:text-gray-400 truncate max-w-[45%] pr-2" title={field.label}>{field.label}</span>
                                 <span className="font-medium text-gray-900 dark:text-gray-200 truncate max-w-[50%] text-right" title={rawVal}>
-                                  {/* 🔥 MUESTRA EL NOMBRE TRADUCIDO EN LA TARJETA TAMBIÉN 🔥 */}
                                   {rawVal !== undefined && rawVal !== '' ? formatCellValue(rawVal, field.field_type, apiName) : '-'}
                                 </span>
                               </div>
