@@ -93,7 +93,6 @@ def create_dashboard(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    # 🔥 CORRECCIÓN: Validar manage_dashboards en lugar de manage_modules 🔥
     check_settings_permission(db, current_user, "manage_dashboards")
     
     new_dashboard = models.Dashboard(**dashboard_in.dict(), company_id=current_user.company_id)
@@ -154,7 +153,6 @@ def delete_dashboard(
     if not dashboard: raise HTTPException(404, "Dashboard no encontrado")
     
     for report in dashboard.reports:
-        # 🔥 PENTEST FIX: Limpiar caché usando la llave compuesta
         cache_key = get_cache_key(current_user.company_id, report.id)
         REPORT_CACHE.pop(cache_key, None)
         
@@ -196,7 +194,6 @@ def update_dashboard_layout(
             layout = dict(report.grid_layout) if report.grid_layout else {}
             layout["order"] = item.order
             report.grid_layout = layout
-            # 🔥 PENTEST FIX: Limpiar caché usando la llave compuesta
             cache_key = get_cache_key(current_user.company_id, report.id)
             REPORT_CACHE.pop(cache_key, None)
 
@@ -257,7 +254,6 @@ def update_report(
     db.commit()
     db.refresh(report)
     
-    # 🔥 PENTEST FIX: Limpiar caché usando la llave compuesta
     cache_key = get_cache_key(current_user.company_id, report.id)
     REPORT_CACHE.pop(cache_key, None)
     
@@ -280,7 +276,6 @@ def delete_report(
     report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
     if not report: raise HTTPException(404, "Reporte no encontrado")
     
-    # 🔥 PENTEST FIX: Limpiar caché usando la llave compuesta
     cache_key = get_cache_key(current_user.company_id, report.id)
     REPORT_CACHE.pop(cache_key, None)
     
@@ -341,7 +336,6 @@ def evaluate_group(data: dict, group: dict) -> bool:
     return True
 
 
-# 🔥 PENTEST FIX: DICCIONARIO DE FUNCIONES SEGURAS PARA EL ENTORNO EXEC 🔥
 SAFE_BUILTINS = {
     "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict, "float": float, 
     "int": int, "len": len, "list": list, "max": max, "min": min, "round": round, 
@@ -356,7 +350,6 @@ def execute_report(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    # 🔥 PENTEST FIX: Lectura de caché segura
     cache_key = get_cache_key(current_user.company_id, report_id)
     cached = REPORT_CACHE.get(cache_key)
     if cached and (datetime.now() - cached["timestamp"]) < timedelta(minutes=CACHE_EXPIRATION_MINUTES):
@@ -375,7 +368,7 @@ def execute_report(
         y_axis_field = config.get("y_axis_field")
         
         x_axis = config.get("x_axis")
-        x_axis_interval = config.get("x_axis_interval", "month") # 🔥 Recibe el intervalo
+        x_axis_interval = config.get("x_axis_interval", "month") 
         
         raw_filters_str = config.get("raw_filters", "{}") 
         
@@ -391,7 +384,6 @@ def execute_report(
             try:
                 filter_rules = json.loads(raw_filters_str) if raw_filters_str else {}
                 
-                # 🔥 MAGIA: Extraer datos JSON y mezclar con metadatos del sistema (created_at, status_id)
                 filtered_cases_data = []
                 for c in cases:
                     case_payload = {**c.data, "created_at": c.created_at, "status_id": c.status_id}
@@ -404,16 +396,21 @@ def execute_report(
                 if df.empty:
                      final_response = {"report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": []}
                 else:
+                    # 🔥 FIX CRÍTICO: LIMPIEZA DE FORMATOS DE MONEDA (Gs) 🔥
+                    if y_axis_type in ["sum", "avg"] and y_axis_field and y_axis_field in df.columns:
+                        # Convertimos todo a string y eliminamos puntos, letras o símbolos
+                        df[y_axis_field] = df[y_axis_field].astype(str).str.replace(r'[^\d]', '', regex=True)
+                        # Convertimos el texto limpio a números reales, reemplazando vacíos por 0
+                        df[y_axis_field] = pd.to_numeric(df[y_axis_field], errors='coerce').fillna(0)
+
                     if not x_axis:
                         if y_axis_type == "count": total = len(df)
                         else:
-                            df[y_axis_field] = pd.to_numeric(df[y_axis_field], errors='coerce').fillna(0)
                             total = df[y_axis_field].sum() if y_axis_type == "sum" else df[y_axis_field].mean()
                         final_data = [{"name": "Total", "value": round(total, 2)}]
                     else:
                         if x_axis not in df.columns: raise HTTPException(400, f"El campo para el Eje X '{x_axis}' no existe en este módulo.")
                         
-                        # 🔥 MAGIA DE PANDAS: Agrupación de Tiempo Inteligente 🔥
                         if x_axis == 'created_at':
                             df[x_axis] = pd.to_datetime(df[x_axis], errors='coerce')
                             
@@ -426,20 +423,16 @@ def execute_report(
                             elif x_axis_interval == 'year':
                                 df[x_axis] = df[x_axis].dt.strftime('%Y')
                         else:
-                            # Comportamiento normal para texto
                             df[x_axis] = df[x_axis].replace("", "Sin definir")
                         
                         if y_axis_type == "count":
                             grouped = df.groupby(x_axis).size().to_dict()
                         else:
-                            if y_axis_field not in df.columns: raise HTTPException(400, f"El campo métrico '{y_axis_field}' no existe.")
-                            df[y_axis_field] = pd.to_numeric(df[y_axis_field], errors='coerce').fillna(0)
                             if y_axis_type == "sum": grouped = df.groupby(x_axis)[y_axis_field].sum().to_dict()
                             elif y_axis_type == "avg": grouped = df.groupby(x_axis)[y_axis_field].mean().to_dict()
 
                         final_data = [{"name": str(k), "value": round(v, 2)} for k, v in grouped.items()]
                         
-                        # Si es fecha, ordenamos por nombre (cronológicamente). Si no, por valor (los mas grandes primero)
                         if x_axis == 'created_at':
                             final_data = sorted(final_data, key=lambda x: x["name"])
                         else:
@@ -454,7 +447,6 @@ def execute_report(
                 raise HTTPException(400, f"Error calculando métricas: {str(e)}")
 
     else:
-        # 🔥 PENTEST FIX: Ejecución segura con Builtins controlados 🔥
         local_env = {
             "db": SandboxDB(db), "models": models, "pd": pd,
             "company_id": current_user.company_id, "user_id": current_user.id, "result": None 
@@ -517,7 +509,6 @@ def test_python_script(
     }
     
     try:
-        # 🔥 PENTEST FIX: Entorno aislado
         exec(payload.function_code, {"__builtins__": SAFE_BUILTINS}, local_env)
         final_data = local_env.get("result")
         if final_data is None: 
