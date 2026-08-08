@@ -16,7 +16,6 @@ const getOperatorsByFieldType = (fieldType) => {
   const textOps = [{ name: '==', label: 'es igual a' }, { name: '!=', label: 'no es igual a' }, { name: 'contains', label: 'contiene' }, { name: 'notContains', label: 'no contiene' }, { name: 'null', label: 'está vacío' }, { name: 'notNull', label: 'no está vacío' }];
   const numberOps = [{ name: '==', label: 'es igual a' }, { name: '!=', label: 'no es igual a' }, { name: '>', label: 'es mayor que' }, { name: '<', label: 'es menor que' }, { name: '>=', label: 'es mayor o igual' }, { name: '<=', label: 'es menor o igual' }, { name: 'null', label: 'está vacío' }, { name: 'notNull', label: 'no está vacío' }];
   
-  // 🔥 FIX 1: AGREGAMOS LOS OPERADORES DE RANGO PARA FECHAS 🔥
   const dateOps = [
     { name: '==', label: 'es la fecha' }, 
     { name: 'between', label: 'entre (rango)' }, 
@@ -34,7 +33,7 @@ const getOperatorsByFieldType = (fieldType) => {
   return textOps; 
 };
 
-// 🔥 FIX 2: ENSEÑAMOS AL BACKEND CÓMO TRADUCIR LOS NUEVOS OPERADORES A PANDAS 🔥
+// 🔥 FIX 1: LÓGICA DE PANDAS MEJORADA Y SEGURA 🔥
 const buildPandasQuery = (ruleGroup) => {
   if (!ruleGroup.rules || ruleGroup.rules.length === 0) return '';
   const combinator = ruleGroup.combinator === 'and' ? ' and ' : ' or ';
@@ -55,25 +54,25 @@ const buildPandasQuery = (ruleGroup) => {
       case 'null': return `\`${field}\` == ""`; 
       case 'notNull': return `\`${field}\` != ""`;
       
-      // NUEVOS OPERADORES DE FECHA
       case 'after': return `\`${field}\` > "${value}"`;
       case 'before': return `\`${field}\` < "${value}"`;
       case 'between': 
-        // Cuando es 'between', el valor es una coma separada "fecha_inicio,fecha_fin"
         const dates = value ? value.split(',') : ['', ''];
-        return `(\`${field}\` >= "${dates[0]}" and \`${field}\` <= "${dates[1]}")`;
+        // Evitar que la consulta explote si el usuario no ha llenado ambos calendarios
+        if (!dates[0] || !dates[1]) return ''; 
+        // Agregamos 23:59:59 a la fecha de fin para que incluya todo ese último día
+        return `(\`${field}\` >= "${dates[0]}" and \`${field}\` <= "${dates[1]} 23:59:59")`;
         
       default: return `\`${field}\` == "${value}"`;
     }
   }).filter(r => r !== '');
+  
   return rules.join(combinator);
 };
 
-// 🔥 FIX 3: RENDERIZADOR PERSONALIZADO PARA CALENDARIOS EN REACT-QUERYBUILDER 🔥
 const CustomValueEditor = (props) => {
   const { fieldData, operator, value, handleOnChange } = props;
 
-  // Si es un campo de fecha
   if (fieldData.type === 'date' || fieldData.type === 'datetime') {
     if (operator === 'between') {
       const dates = value ? value.split(',') : ['', ''];
@@ -83,20 +82,19 @@ const CustomValueEditor = (props) => {
             type="date" 
             value={dates[0]} 
             onChange={(e) => handleOnChange(`${e.target.value},${dates[1]}`)} 
-            className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white flex-1 text-sm"
+            className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white flex-1 text-sm shadow-sm"
           />
           <span className="text-gray-400 font-bold text-xs">y</span>
           <input 
             type="date" 
             value={dates[1]} 
             onChange={(e) => handleOnChange(`${dates[0]},${e.target.value}`)} 
-            className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white flex-1 text-sm"
+            className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white flex-1 text-sm shadow-sm"
           />
         </div>
       );
     }
     
-    // Si no es between, dibujamos un solo calendario
     return (
       <div className="relative flex-1">
         <Calendar size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -104,24 +102,22 @@ const CustomValueEditor = (props) => {
           type="date" 
           value={value || ''} 
           onChange={(e) => handleOnChange(e.target.value)} 
-          className="w-full pl-8 pr-2 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm"
+          className="w-full pl-8 pr-2 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm shadow-sm"
         />
       </div>
     );
   }
 
-  // Comportamiento por defecto para texto y números
   return (
     <input 
       type="text" 
       value={value || ''} 
       onChange={(e) => handleOnChange(e.target.value)} 
       placeholder="Valor..."
-      className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 flex-1 outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm"
+      className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 flex-1 outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm shadow-sm"
     />
   );
 };
-
 
 const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) => {
   const [buildMode, setBuildMode] = useState('visual'); 
@@ -176,11 +172,15 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
             { api_name: 'status_id', label: 'Estado del Registro', field_type: 'select' }
           ];
           
-          const allFields = [...systemFields, ...res.data];
-          setModuleFields(allFields);
+          // 🔥 FIX 2: NORMALIZAMOS LOS CAMPOS. Si el api_name está vacío, forzamos usar el label.
+          // Esto evita que Y-Axis, X-Axis o los Filtros intenten buscar una columna vacía en Pandas.
+          const normalizedFields = [...systemFields, ...res.data].map(f => ({
+            ...f,
+            api_name: f.api_name || f.label
+          }));
           
-          // Mapeamos para el Query Builder
-          setQueryBuilderFields(allFields.map(f => ({ name: f.api_name, label: f.label, type: f.field_type })));
+          setModuleFields(normalizedFields);
+          setQueryBuilderFields(normalizedFields.map(f => ({ name: f.api_name, label: f.label, type: f.field_type })));
         })
         .catch(err => { if (err.name !== 'CanceledError') console.error("Error", err); });
       return () => controller.abort();
@@ -307,7 +307,6 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
                     <Filter size={16} className="text-purple-500" /> Condiciones y Filtros
                   </label>
                   
-                  {/* 🔥 INYECTAMOS NUESTRO RENDERIZADOR PARA QUE USE LOS CALENDARIOS 🔥 */}
                   <QueryBuilder 
                     fields={queryBuilderFields} 
                     query={filterRules} 
