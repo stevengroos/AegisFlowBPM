@@ -312,6 +312,20 @@ def evaluate_rule(data: dict, rule: dict) -> bool:
         if operator == "notContains": return str(target_value).lower() not in str(actual_value).lower()
         if operator == "null": return actual_value == ""
         if operator == "notNull": return actual_value != ""
+        
+        # 🔥 FIX DEFINITIVO: NUEVOS OPERADORES DE FECHA 🔥
+        if operator == "after": return str(actual_value) > str(target_value)
+        if operator == "before": return str(actual_value) < str(target_value)
+        if operator == "between":
+            # El frontend manda el valor como "FechaInicio,FechaFin"
+            dates = str(target_value).split(",")
+            if len(dates) == 2:
+                start_date = dates[0].strip()
+                # Le agregamos la última hora del día para que incluya ventas de esa misma tarde
+                end_date = dates[1].strip() + " 23:59:59" 
+                return start_date <= str(actual_value) <= end_date
+            return False
+            
     except (ValueError, TypeError):
         return False
         
