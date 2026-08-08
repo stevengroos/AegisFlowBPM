@@ -407,7 +407,8 @@ def execute_report(
                         if y_axis_type == "count": total = len(df)
                         else:
                             total = df[y_axis_field].sum() if y_axis_type == "sum" else df[y_axis_field].mean()
-                        final_data = [{"name": "Total", "value": round(total, 2)}]
+                        # 🔥 FIX AQUÍ: Forzamos la conversión a float() de Python
+                        final_data = [{"name": "Total", "value": round(float(total), 2)}]
                     else:
                         if x_axis not in df.columns: raise HTTPException(400, f"El campo para el Eje X '{x_axis}' no existe en este módulo.")
                         
@@ -431,7 +432,8 @@ def execute_report(
                             if y_axis_type == "sum": grouped = df.groupby(x_axis)[y_axis_field].sum().to_dict()
                             elif y_axis_type == "avg": grouped = df.groupby(x_axis)[y_axis_field].mean().to_dict()
 
-                        final_data = [{"name": str(k), "value": round(v, 2)} for k, v in grouped.items()]
+                        # 🔥 FIX AQUÍ: Envolvemos 'v' (el valor de Numpy) en float(v)
+                        final_data = [{"name": str(k), "value": round(float(v), 2)} for k, v in grouped.items()]
                         
                         if x_axis == 'created_at':
                             final_data = sorted(final_data, key=lambda x: x["name"])
