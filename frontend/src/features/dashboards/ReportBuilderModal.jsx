@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, MousePointerSquareDashed, Code, Play, CheckCircle2, AlertTriangle, Filter, Loader2 } from 'lucide-react';
+import { X, Save, MousePointerSquareDashed, Code, Play, CheckCircle2, AlertTriangle, Filter, Loader2, Calendar } from 'lucide-react';
 import { QueryBuilder } from 'react-querybuilder';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import api from '../../api/axios';
@@ -15,7 +15,17 @@ const qbTranslations = {
 const getOperatorsByFieldType = (fieldType) => {
   const textOps = [{ name: '==', label: 'es igual a' }, { name: '!=', label: 'no es igual a' }, { name: 'contains', label: 'contiene' }, { name: 'notContains', label: 'no contiene' }, { name: 'null', label: 'está vacío' }, { name: 'notNull', label: 'no está vacío' }];
   const numberOps = [{ name: '==', label: 'es igual a' }, { name: '!=', label: 'no es igual a' }, { name: '>', label: 'es mayor que' }, { name: '<', label: 'es menor que' }, { name: '>=', label: 'es mayor o igual' }, { name: '<=', label: 'es menor o igual' }, { name: 'null', label: 'está vacío' }, { name: 'notNull', label: 'no está vacío' }];
-  const dateOps = [{ name: '==', label: 'es la fecha' }, { name: '!=', label: 'no es la fecha' }, { name: '>', label: 'después de' }, { name: '<', label: 'antes de' }, { name: 'null', label: 'está vacío' }, { name: 'notNull', label: 'no está vacío' }];
+  
+  // 🔥 FIX 1: AGREGAMOS LOS OPERADORES DE RANGO PARA FECHAS 🔥
+  const dateOps = [
+    { name: '==', label: 'es la fecha' }, 
+    { name: 'between', label: 'entre (rango)' }, 
+    { name: 'after', label: 'después de' }, 
+    { name: 'before', label: 'antes de' }, 
+    { name: 'null', label: 'está vacío' }, 
+    { name: 'notNull', label: 'no está vacío' }
+  ];
+  
   const booleanOps = [{ name: '==', label: 'es' }];
   
   if (['number', 'currency'].includes(fieldType)) return numberOps;
@@ -24,6 +34,7 @@ const getOperatorsByFieldType = (fieldType) => {
   return textOps; 
 };
 
+// 🔥 FIX 2: ENSEÑAMOS AL BACKEND CÓMO TRADUCIR LOS NUEVOS OPERADORES A PANDAS 🔥
 const buildPandasQuery = (ruleGroup) => {
   if (!ruleGroup.rules || ruleGroup.rules.length === 0) return '';
   const combinator = ruleGroup.combinator === 'and' ? ' and ' : ' or ';
@@ -31,24 +42,86 @@ const buildPandasQuery = (ruleGroup) => {
   const rules = ruleGroup.rules.map(rule => {
     if (rule.rules) return `(${buildPandasQuery(rule)})`; 
     const { field, operator, value } = rule;
-    const val = (typeof value === 'string' && isNaN(value)) ? `"${value}"` : (value || '""');
     
     switch (operator) {
-      case '==': return `\`${field}\` == ${val}`;
-      case '!=': return `\`${field}\` != ${val}`;
-      case '<': return `\`${field}\` < ${val}`;
-      case '>': return `\`${field}\` > ${val}`;
-      case '<=': return `\`${field}\` <= ${val}`;
-      case '>=': return `\`${field}\` >= ${val}`;
-      case 'contains': return `\`${field}\`.str.contains(${val}, na=False)`;
-      case 'notContains': return `~\`${field}\`.str.contains(${val}, na=False)`;
+      case '==': return `\`${field}\` == "${value}"`;
+      case '!=': return `\`${field}\` != "${value}"`;
+      case '<': return `\`${field}\` < ${value}`;
+      case '>': return `\`${field}\` > ${value}`;
+      case '<=': return `\`${field}\` <= ${value}`;
+      case '>=': return `\`${field}\` >= ${value}`;
+      case 'contains': return `\`${field}\`.str.contains("${value}", na=False)`;
+      case 'notContains': return `~\`${field}\`.str.contains("${value}", na=False)`;
       case 'null': return `\`${field}\` == ""`; 
       case 'notNull': return `\`${field}\` != ""`;
-      default: return `\`${field}\` == ${val}`;
+      
+      // NUEVOS OPERADORES DE FECHA
+      case 'after': return `\`${field}\` > "${value}"`;
+      case 'before': return `\`${field}\` < "${value}"`;
+      case 'between': 
+        // Cuando es 'between', el valor es una coma separada "fecha_inicio,fecha_fin"
+        const dates = value ? value.split(',') : ['', ''];
+        return `(\`${field}\` >= "${dates[0]}" and \`${field}\` <= "${dates[1]}")`;
+        
+      default: return `\`${field}\` == "${value}"`;
     }
   }).filter(r => r !== '');
   return rules.join(combinator);
 };
+
+// 🔥 FIX 3: RENDERIZADOR PERSONALIZADO PARA CALENDARIOS EN REACT-QUERYBUILDER 🔥
+const CustomValueEditor = (props) => {
+  const { fieldData, operator, value, handleOnChange } = props;
+
+  // Si es un campo de fecha
+  if (fieldData.type === 'date' || fieldData.type === 'datetime') {
+    if (operator === 'between') {
+      const dates = value ? value.split(',') : ['', ''];
+      return (
+        <div className="flex items-center gap-2 flex-1">
+          <input 
+            type="date" 
+            value={dates[0]} 
+            onChange={(e) => handleOnChange(`${e.target.value},${dates[1]}`)} 
+            className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white flex-1 text-sm"
+          />
+          <span className="text-gray-400 font-bold text-xs">y</span>
+          <input 
+            type="date" 
+            value={dates[1]} 
+            onChange={(e) => handleOnChange(`${dates[0]},${e.target.value}`)} 
+            className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white flex-1 text-sm"
+          />
+        </div>
+      );
+    }
+    
+    // Si no es between, dibujamos un solo calendario
+    return (
+      <div className="relative flex-1">
+        <Calendar size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input 
+          type="date" 
+          value={value || ''} 
+          onChange={(e) => handleOnChange(e.target.value)} 
+          className="w-full pl-8 pr-2 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm"
+        />
+      </div>
+    );
+  }
+
+  // Comportamiento por defecto para texto y números
+  return (
+    <input 
+      type="text" 
+      value={value || ''} 
+      onChange={(e) => handleOnChange(e.target.value)} 
+      placeholder="Valor..."
+      className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 flex-1 outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm"
+    />
+  );
+};
+
 
 const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) => {
   const [buildMode, setBuildMode] = useState('visual'); 
@@ -60,12 +133,10 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
   
   const [reportForm, setReportForm] = useState({
     name: '', chart_type: 'bar',
-    // 🔥 Añadido x_axis_interval para manejar meses, semanas o días
     visual_config: { module_id: '', y_axis_type: 'count', y_axis_field: '', x_axis: '', x_axis_interval: 'month', metric_icon: 'file', metric_subtitle: '', filter_query: '' },
     function_code: `# Escribe tu código Python aquí.\ncases = db.query(models.Case).filter(models.Case.company_id == company_id).all()\ndf = pd.DataFrame([c.data for c in cases])\nresult = [{"name": "Total", "value": len(df)}]`
   });
 
-  // Inicialización al abrir el modal
   useEffect(() => {
     if (isOpen) {
       setTestResult(null);
@@ -95,22 +166,20 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
     }
   }, [isOpen, reportToEdit]);
 
-  // Cargar campos dinámicamente según el módulo seleccionado
   useEffect(() => {
     if (reportForm.visual_config.module_id && isOpen) {
       const controller = new AbortController();
       api.get(`/api/v1/fields/?module_id=${reportForm.visual_config.module_id}`, { signal: controller.signal })
         .then(res => {
-          // 🔥 MAGIA: INYECTAMOS LOS CAMPOS NATIVOS DEL SISTEMA 🔥
           const systemFields = [
-            { api_name: 'created_at', label: 'Fecha de Creación (Sistema)', field_type: 'date' },
-            { api_name: 'status_id', label: 'Estado del Registro (Sistema)', field_type: 'select' }
+            { api_name: 'created_at', label: 'Fecha de Creación', field_type: 'date' },
+            { api_name: 'status_id', label: 'Estado del Registro', field_type: 'select' }
           ];
           
           const allFields = [...systemFields, ...res.data];
           setModuleFields(allFields);
           
-          // Mapeamos todo para el Query Builder
+          // Mapeamos para el Query Builder
           setQueryBuilderFields(allFields.map(f => ({ name: f.api_name, label: f.label, type: f.field_type })));
         })
         .catch(err => { if (err.name !== 'CanceledError') console.error("Error", err); });
@@ -159,11 +228,11 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nombre del Gráfico</label>
-              <input type="text" value={reportForm.name} onChange={e => setReportForm({...reportForm, name: e.target.value})} className="w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white shadow-sm" placeholder="Ej: Casos por Estado" />
+              <input type="text" value={reportForm.name} onChange={e => setReportForm({...reportForm, name: e.target.value})} className="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white shadow-sm" placeholder="Ej: Ventas Abril" />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Tipo de Visualización</label>
-              <select value={reportForm.chart_type} onChange={e => setReportForm({...reportForm, chart_type: e.target.value})} className="w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white cursor-pointer shadow-sm">
+              <select value={reportForm.chart_type} onChange={e => setReportForm({...reportForm, chart_type: e.target.value})} className="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white cursor-pointer shadow-sm">
                 <option value="bar">Gráfico de Barras</option>
                 <option value="line">Gráfico de Líneas</option>
                 <option value="pie">Gráfico Circular</option>
@@ -186,7 +255,7 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white dark:bg-gray-950 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
                   <label className="block text-xs font-bold text-blue-500 uppercase mb-3">1. Fuente de Datos</label>
-                  <select value={reportForm.visual_config.module_id} onChange={e => setReportForm({...reportForm, visual_config: {...reportForm.visual_config, module_id: e.target.value}})} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm outline-none text-gray-900 dark:text-white">
+                  <select value={reportForm.visual_config.module_id} onChange={e => setReportForm({...reportForm, visual_config: {...reportForm.visual_config, module_id: e.target.value}})} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 text-gray-900 dark:text-white">
                     <option value="">Selecciona un módulo...</option>
                     {modules.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
@@ -194,7 +263,7 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
                 
                 <div className="bg-white dark:bg-gray-950 p-4 rounded-xl shadow-sm border-l-4 border-l-emerald-500">
                   <label className="block text-xs font-bold text-emerald-500 uppercase mb-3">2. Eje Y (Valores)</label>
-                  <select value={reportForm.visual_config.y_axis_type} onChange={e => setReportForm({...reportForm, visual_config: {...reportForm.visual_config, y_axis_type: e.target.value}})} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-3 outline-none text-gray-900 dark:text-white">
+                  <select value={reportForm.visual_config.y_axis_type} onChange={e => setReportForm({...reportForm, visual_config: {...reportForm.visual_config, y_axis_type: e.target.value}})} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-3 outline-none focus:border-blue-500 text-gray-900 dark:text-white">
                     <option value="count">Contar Registros (Cantidad)</option>
                     <option value="sum">Sumar Valores Numéricos</option>
                     <option value="avg">Promediar Valores Numéricos</option>
@@ -208,7 +277,6 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
                   <label className="block text-xs font-bold text-amber-500 uppercase mb-3">3. Eje X (Categorías)</label>
                   <SearchableSelect options={moduleFields} value={reportForm.visual_config.x_axis} onChange={(val) => setReportForm({...reportForm, visual_config: {...reportForm.visual_config, x_axis: val}})} placeholder="Buscar campo para agrupar..." />
                   
-                  {/* 🔥 RENDERIZADO DINÁMICO: SOLO SI EL CAMPO ES TIPO FECHA 🔥 */}
                   {(() => {
                     const selectedField = moduleFields.find(f => f.api_name === reportForm.visual_config.x_axis);
                     if (selectedField && (selectedField.field_type === 'date' || selectedField.field_type === 'datetime')) {
@@ -235,11 +303,24 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
 
               {reportForm.visual_config.module_id && queryBuilderFields.length > 0 && (
                 <div className="bg-gray-50 dark:bg-[#1e1e1e] p-5 rounded-xl border border-gray-200 dark:border-gray-800">
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-4 flex items-center gap-2"><Filter size={16} className="text-purple-500" /> Condiciones y Filtros</label>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-4 flex items-center gap-2">
+                    <Filter size={16} className="text-purple-500" /> Condiciones y Filtros
+                  </label>
+                  
+                  {/* 🔥 INYECTAMOS NUESTRO RENDERIZADOR PARA QUE USE LOS CALENDARIOS 🔥 */}
                   <QueryBuilder 
-                    fields={queryBuilderFields} query={filterRules} onQueryChange={setFilterRules} translations={qbTranslations}
+                    fields={queryBuilderFields} 
+                    query={filterRules} 
+                    onQueryChange={setFilterRules} 
+                    translations={qbTranslations}
                     getOperators={(fieldName) => getOperatorsByFieldType(queryBuilderFields.find(f => f.name === fieldName)?.type)}
-                    controlClassnames={{ ruleGroup: 'bg-white dark:bg-[#252526] p-3 mb-2 rounded border dark:border-gray-700', rule: 'flex gap-2 items-center mb-2', value: 'bg-white dark:bg-gray-900 border rounded p-1.5 flex-1 outline-none text-gray-900 dark:text-white', fields: 'bg-white dark:bg-gray-800 border rounded p-1.5 outline-none text-gray-900 dark:text-white', operators: 'bg-white dark:bg-gray-800 border rounded p-1.5 outline-none text-gray-900 dark:text-white' }}
+                    controlElements={{ valueEditor: CustomValueEditor }} 
+                    controlClassnames={{ 
+                      ruleGroup: 'bg-white dark:bg-[#252526] p-4 mb-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm', 
+                      rule: 'flex gap-3 items-center mb-3', 
+                      fields: 'bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm', 
+                      operators: 'bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:border-blue-500 text-gray-900 dark:text-white text-sm min-w-[140px]' 
+                    }}
                   />
                 </div>
               )}
@@ -259,7 +340,7 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
               </div>
               <div className="rounded-xl overflow-hidden shadow-inner border border-gray-800 flex flex-col h-full bg-[#0d1117]">
                 <div className="bg-[#161b22] px-4 py-2 border-b border-gray-800 text-xs font-mono text-gray-400">Salida de Consola</div>
-                <div className="p-4 overflow-y-auto font-mono text-sm">
+                <div className="p-4 overflow-y-auto font-mono text-sm custom-scrollbar">
                   {testResult?.success ? (
                     <pre className="text-emerald-300 bg-emerald-950/30 p-3 rounded-lg border border-emerald-900/50 whitespace-pre-wrap">{JSON.stringify(testResult.data, null, 2)}</pre>
                   ) : testResult?.error ? (
@@ -272,8 +353,8 @@ const ReportBuilderModal = ({ isOpen, onClose, onSave, reportToEdit, modules }) 
         </div>
 
         <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end">
-          <button onClick={submitSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2">
-            <Save size={16} /> {reportToEdit ? 'Actualizar' : 'Guardar'}
+          <button onClick={submitSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-md shadow-blue-900/20 transition-all active:scale-95">
+            <Save size={16} /> {reportToEdit ? 'Actualizar' : 'Guardar Gráfico'}
           </button>
         </div>
       </div>
