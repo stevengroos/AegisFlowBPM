@@ -410,12 +410,37 @@ def execute_report(
                 if df.empty:
                      final_response = {"report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": []}
                 else:
-                    # 🔥 FIX CRÍTICO: LIMPIEZA DE FORMATOS DE MONEDA (Gs) 🔥
+                    # 🔥 FIX CRÍTICO: LIMPIEZA INTELIGENTE DE MONEDAS Y EXCEL 🔥
                     if y_axis_type in ["sum", "avg"] and y_axis_field and y_axis_field in df.columns:
-                        # Convertimos todo a string y eliminamos puntos, letras o símbolos
-                        df[y_axis_field] = df[y_axis_field].astype(str).str.replace(r'[^\d]', '', regex=True)
-                        # Convertimos el texto limpio a números reales, reemplazando vacíos por 0
-                        df[y_axis_field] = pd.to_numeric(df[y_axis_field], errors='coerce').fillna(0)
+                        def parse_currency(val):
+                            import pandas as pd
+                            import re
+                            if pd.isna(val): return 0.0
+                            # Si ya es un número nativo (como los importados de Excel), lo dejamos intacto
+                            if isinstance(val, (int, float)): return float(val)
+                            
+                            # Si es texto (cargado a mano en el formulario), lo limpiamos
+                            v_str = re.sub(r'[^\d\.,\-]', '', str(val).strip())
+                            if not v_str: return 0.0
+                            
+                            if '.' in v_str and ',' in v_str:
+                                v_str = v_str.replace('.', '').replace(',', '.')
+                            elif ',' in v_str:
+                                v_str = v_str.replace(',', '.')
+                            elif '.' in v_str:
+                                if v_str.count('.') > 1:
+                                    v_str = v_str.replace('.', '')
+                                else:
+                                    # Si tiene 3 dígitos después del punto, asumimos que es separador de miles (ej: 50.000)
+                                    if len(v_str.split('.')[1]) == 3:
+                                        v_str = v_str.replace('.', '')
+                            try: 
+                                return float(v_str)
+                            except: 
+                                return 0.0
+
+                        # Aplicamos el filtro fila por fila
+                        df[y_axis_field] = df[y_axis_field].apply(parse_currency)
 
                     if not x_axis:
                         if y_axis_type == "count": total = len(df)
