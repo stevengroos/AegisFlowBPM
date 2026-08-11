@@ -97,6 +97,8 @@ const ModuleDataView = () => {
 
   const stockFieldApiName = module?.mobile_config?.mapping?.stock;
   const outOfStockCount = stockFieldApiName ? records.filter(r => Number(r.data[stockFieldApiName] || 0) <= 0).length : 0;
+  // 🔥 NUEVO: Contamos los que tienen más de 0
+  const withStockCount = stockFieldApiName ? records.filter(r => Number(r.data[stockFieldApiName] || 0) > 0).length : 0;
 
   const formatCellValue = (val, fieldType, apiName) => {
     if (val === null || val === undefined || val === '') return '';
@@ -389,6 +391,10 @@ const ModuleDataView = () => {
     if (inventoryTab === 'out_of_stock' && stockFieldApiName) {
       if (Number(rec.data[stockFieldApiName] || 0) > 0) return false;
     }
+    // 🔥 NUEVA REGLA: Ocultar los que tienen 0 o menos si estamos en "Con Stock"
+    if (inventoryTab === 'with_stock' && stockFieldApiName) {
+      if (Number(rec.data[stockFieldApiName] || 0) <= 0) return false;
+    }
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const matchId = rec.id.toString().includes(term);
@@ -521,13 +527,22 @@ const ModuleDataView = () => {
           <button onClick={() => { setInventoryTab('all'); setCurrentPage(1); }} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'all' ? 'bg-blue-600 text-white shadow-blue-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
              <Box size={16} /> Inventario ({records.length})
           </button>
+          
           {stockFieldApiName && (
-            <button onClick={() => { setInventoryTab('out_of_stock'); setCurrentPage(1); }} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'out_of_stock' ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-white dark:bg-gray-900 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}>
-               <AlertTriangle size={16} /> Agotados ({outOfStockCount})
-            </button>
+            <>
+              {/* 🔥 NUEVO BOTÓN: Con Stock (Color Verde Esmeralda) 🔥 */}
+              <button onClick={() => { setInventoryTab('with_stock'); setCurrentPage(1); }} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'with_stock' ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-white dark:bg-gray-900 border border-emerald-100 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
+                 <Check size={16} /> Con Stock ({withStockCount})
+              </button>
+
+              <button onClick={() => { setInventoryTab('out_of_stock'); setCurrentPage(1); }} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'out_of_stock' ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-white dark:bg-gray-900 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}>
+                 <AlertTriangle size={16} /> Agotados ({outOfStockCount})
+              </button>
+            </>
           )}
+
           {categoryFieldDef && (
-            <button onClick={() => setInventoryTab('categories')} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'categories' ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+            <button onClick={() => setInventoryTab('categories')} className={`px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm flex items-center gap-2 ${inventoryTab === 'categories' ? 'bg-purple-500 text-white shadow-purple-500/30' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                <Folder size={16} /> Categorías ({categoriesList.length})
             </button>
           )}
