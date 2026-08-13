@@ -486,6 +486,13 @@ def test_python_script(
         def post(self, url, json=None, headers=None): 
             print(f"[TEST MOCK] POST simulado a: {url} con payload: {json}")
             return {"status": 200, "data": "Mocked POST response"}
+        # 🔥 FIX: Agregamos PUT y DELETE al simulador de Transiciones 🔥
+        def put(self, url, json=None, headers=None): 
+            print(f"[TEST MOCK] PUT simulado a: {url} con payload: {json}")
+            return {"status": 200, "data": "Mocked PUT response"}
+        def delete(self, url, headers=None): 
+            print(f"[TEST MOCK] DELETE simulado a: {url}")
+            return {"status": 200, "data": "Mocked DELETE response"}
 
     # 2. Preparamos el entorno aislado (Sandbox)
     local_env = {

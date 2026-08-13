@@ -180,6 +180,18 @@ class SafeHTTPClient:
             return {"status": resp.status_code, "data": data}
         except Exception as e:
             return {"status": 500, "error": str(e)}
+        
+    # 🔥 NUEVO: Agregar el método DELETE para completar el cliente 🔥
+    def delete(self, url: str, headers: dict = None):
+        if not self._is_safe_url(url):
+            return {"status": 403, "error": "URL bloqueada por políticas de seguridad (SSRF)."}
+        try:
+            resp = requests.delete(url, headers=headers, timeout=3)
+            try: data = resp.json()
+            except: data = resp.text
+            return {"status": resp.status_code, "data": data}
+        except Exception as e:
+            return {"status": 500, "error": str(e)}
 
 # =======================================================
 # 🔥 EJECUTOR DE WEBHOOKS SEGURO (iPaaS) 🔥

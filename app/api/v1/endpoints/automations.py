@@ -145,7 +145,7 @@ def delete_rule(
 @router.put("/{rule_id}", response_model=AutomationRuleResponse)
 def update_rule(
     rule_id: int,
-    rule_in: AutomationRuleUpdate, # 🔥 Usamos el nuevo esquema
+    rule_in: AutomationRuleUpdate, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_user)
@@ -174,7 +174,6 @@ def update_rule(
         "is_active": rule.is_active
     }
 
-    # 🔥 FIX: exclude_unset=True permite actualizar solo los campos enviados sin sobrescribir con nulos
     update_data = rule_in.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(rule, key, value)
@@ -235,6 +234,17 @@ def test_global_python_script(
             import requests
             try:
                 resp = requests.put(url, json=json, headers=headers, timeout=5)
+                try: data = resp.json()
+                except: data = resp.text
+                return {"status": resp.status_code, "data": data}
+            except Exception as e:
+                return {"status": 500, "error": str(e)}
+
+        # 🔥 FIX: Agregamos DELETE al cliente HTTP de pruebas 🔥
+        def delete(self, url, headers=None):
+            import requests
+            try:
+                resp = requests.delete(url, headers=headers, timeout=5)
                 try: data = resp.json()
                 except: data = resp.text
                 return {"status": resp.status_code, "data": data}
