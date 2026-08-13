@@ -266,7 +266,8 @@ def test_global_python_script(
     safe_builtins = {
         "print": print, "int": int, "float": float, "str": str,
         "bool": bool, "len": len, "round": round, "abs": abs,
-        "sum": sum, "min": min, "max": max, "dict": dict, "list": list
+        "sum": sum, "min": min, "max": max, "dict": dict, "list": list,
+        "type": type, "isinstance": isinstance
     }
 
     try:

@@ -519,7 +519,8 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
             safe_builtins = {
                 "print": print, "int": int, "float": float, "str": str,
                 "bool": bool, "len": len, "round": round, "abs": abs,
-                "sum": sum, "min": min, "max": max, "dict": dict, "list": list
+                "sum": sum, "min": min, "max": max, "dict": dict, "list": list,
+                "type": type, "isinstance": isinstance
             }
             
             try:
@@ -1369,7 +1370,8 @@ def change_case_status(
                     safe_builtins = {
                         "print": print, "int": int, "float": float, "str": str,
                         "bool": bool, "len": len, "round": round, "abs": abs,
-                        "sum": sum, "min": min, "max": max, "dict": dict, "list": list
+                        "sum": sum, "min": min, "max": max, "dict": dict, "list": list,
+                        "type": type, "isinstance": isinstance
                     }
                     
                     try:
