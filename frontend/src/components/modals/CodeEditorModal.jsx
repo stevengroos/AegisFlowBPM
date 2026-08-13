@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Editor from '@monaco-editor/react';
-import { X, Play, Save, Code, Database, Terminal, AlertCircle, CheckCircle2, Loader2, ShieldAlert } from 'lucide-react';
+import { X, Play, Save, Code, Database, Terminal, AlertCircle, CheckCircle2, Loader2, ShieldAlert, Search } from 'lucide-react';
 import api from '../../api/axios';
 
 const CodeEditorModal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial }) => {
   const [code, setCode] = useState(initialCode || '# Escribe tu lógica aquí...\ncase_data["ejemplo"] = "valor"');
-  
-  // 🔥 NUEVO: Rastreamos el último código que pasó la prueba exitosamente
   const [lastTestedCode, setLastTestedCode] = useState(initialCode || ''); 
 
   const [mockData, setMockData] = useState(JSON.stringify(mockDataInitial || { nombre: "Juan", monto: 100 }, null, 2));
@@ -15,15 +13,45 @@ const CodeEditorModal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial
   const [isTesting, setIsTesting] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
 
+  // 🔥 NUEVOS ESTADOS PARA CARGAR REGISTROS 🔥
+  const [loadCaseId, setLoadCaseId] = useState('');
+  const [isLoadingCase, setIsLoadingCase] = useState(false);
+
   useEffect(() => { 
       if (isOpen) {
           setCode(initialCode || '');
           setLastTestedCode(initialCode || '');
           setTestResult(null);
+          setLoadCaseId(''); // Limpiamos el ID al abrir
       }
   }, [isOpen, initialCode]);
 
   if (!isOpen) return null;
+
+  // 🔥 NUEVA FUNCIÓN: CARGAR CASO REAL DESDE EL BACKEND 🔥
+  const handleLoadCase = async () => {
+    if (!loadCaseId.trim()) return;
+    setIsLoadingCase(true);
+    try {
+      const res = await api.get(`/api/v1/cases/${loadCaseId}`);
+      // Solo nos interesa el diccionario "data" interno del caso
+      setMockData(JSON.stringify(res.data.data, null, 2));
+      
+      setTestResult({
+        success: true,
+        console_output: `✅ ¡Registro #${loadCaseId} cargado con éxito!\nPuedes ver sus datos reales en el panel superior.`,
+        modified_data: res.data.data
+      });
+    } catch (error) {
+      setTestResult({
+        success: false,
+        error_message: `Error al cargar el registro #${loadCaseId}`,
+        traceback: error.response?.data?.detail || "No se encontró el registro o no tienes permiso para verlo."
+      });
+    } finally {
+      setIsLoadingCase(false);
+    }
+  };
 
   const handleTestScript = async () => {
     setIsTesting(true);
@@ -35,11 +63,10 @@ const CodeEditorModal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial
       });
       setTestResult(res.data);
       
-      // 🔥 LÓGICA DE VALIDACIÓN: Si pasó, guardamos este código exacto como "Seguro"
       if (res.data.success) {
           setLastTestedCode(code);
       } else {
-          setLastTestedCode(null); // Si falló, borramos el rastro seguro
+          setLastTestedCode(null); 
       }
       
     } catch (err) {
@@ -48,13 +75,12 @@ const CodeEditorModal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial
         error_message: err.response?.data?.detail || "Error de sintaxis o conexión",
         traceback: "Verifica que el JSON de prueba sea válido y el código no tenga errores."
       });
-      setLastTestedCode(null); // Si el JSON está mal, tampoco es seguro
+      setLastTestedCode(null); 
     } finally {
       setIsTesting(false);
     }
   };
 
-  // 🔥 NUEVO: ¿El botón de guardar debe estar habilitado?
   const isCodeSafeToSave = code === lastTestedCode;
 
   return createPortal(
@@ -67,13 +93,12 @@ const CodeEditorModal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial
             <Code size={20} className="text-green-500" />
           </div>
           <div>
-            <h2 className="text-white font-bold text-sm">Editor Low-Code (Python Sandbox)</h2>
+            <h2 className="text-white font-bold text-sm">Editor Low-Code (Transiciones BPM)</h2>
             <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">AegisFlow Enterprise</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          
           {!isCodeSafeToSave && code.length > 0 && (
              <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest flex items-center gap-1.5 animate-pulse mr-2">
                 <ShieldAlert size={14}/> Prueba requerida antes de guardar
@@ -89,7 +114,6 @@ const CodeEditorModal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial
             Probar Script
           </button>
           
-          {/* 🔥 BOTÓN DE GUARDAR DINÁMICO 🔥 */}
           <button 
             onClick={() => onSave(code)}
             disabled={!isCodeSafeToSave}
@@ -135,11 +159,35 @@ const CodeEditorModal = ({ isOpen, onClose, onSave, initialCode, mockDataInitial
            
            {/* PANEL: DATOS DE ENTRADA (MOCK) */}
            <div className="flex-1 flex flex-col border-b border-gray-800">
+              
+              {/* 🔥 CABECERA CON EL NUEVO BUSCADOR 🔥 */}
               <div className="px-4 py-3 bg-gray-900 flex items-center justify-between border-b border-gray-800">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                  <Database size={14}/> Objeto de Prueba (JSON)
-                </span>
+                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <Database size={14}/> Objeto de Prueba
+                 </span>
+                 
+                 <div className="flex items-center gap-2">
+                    <div className="relative">
+                       <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                       <input 
+                          type="text" 
+                          placeholder="ID del Caso..." 
+                          value={loadCaseId}
+                          onChange={e => setLoadCaseId(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleLoadCase()}
+                          className="pl-7 pr-2 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-white outline-none focus:border-blue-500 w-28 transition-colors"
+                       />
+                    </div>
+                    <button 
+                       onClick={handleLoadCase} 
+                       disabled={isLoadingCase || !loadCaseId.trim()} 
+                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                       {isLoadingCase ? <Loader2 size={12} className="animate-spin" /> : "Cargar"}
+                    </button>
+                 </div>
               </div>
+
               <Editor
                 height="100%"
                 defaultLanguage="json"
