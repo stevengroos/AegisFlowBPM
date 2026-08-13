@@ -479,20 +479,24 @@ def test_python_script(
     Captura los 'print()' y los errores de sintaxis para mostrarlos en el frontend.
     """
     # 1. Creamos un Mock del Cliente HTTP para no disparar webhooks reales durante la prueba
+    # 1. Creamos un Mock del Cliente HTTP para no disparar webhooks reales durante la prueba
     class MockHTTPClient:
         def get(self, url, headers=None): 
             print(f"[TEST MOCK] GET simulado a: {url}")
-            return {"status": 200, "data": "Mocked GET response"}
+            # Devolvemos un diccionario real, no un string
+            return {"status": 200, "data": {"status": "success", "message": "Simulado", "case_id": 9999}}
+            
         def post(self, url, json=None, headers=None): 
             print(f"[TEST MOCK] POST simulado a: {url} con payload: {json}")
-            return {"status": 200, "data": "Mocked POST response"}
-        # 🔥 FIX: Agregamos PUT y DELETE al simulador de Transiciones 🔥
+            return {"status": 200, "data": {"status": "success", "message": "Simulado", "case_id": 9999}}
+            
         def put(self, url, json=None, headers=None): 
             print(f"[TEST MOCK] PUT simulado a: {url} con payload: {json}")
-            return {"status": 200, "data": "Mocked PUT response"}
+            return {"status": 200, "data": {"status": "success", "message": "Simulado", "case_id": 9999}}
+            
         def delete(self, url, headers=None): 
             print(f"[TEST MOCK] DELETE simulado a: {url}")
-            return {"status": 200, "data": "Mocked DELETE response"}
+            return {"status": 200, "data": {"status": "success", "message": "Simulado", "case_id": 9999}}
 
     # 2. Preparamos el entorno aislado (Sandbox)
     local_env = {
