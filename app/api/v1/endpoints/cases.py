@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import make_transient
 from sqlalchemy import or_
 import math
+from sqlalchemy.orm.attributes import flag_modified
 
 
 from app.core.emails import send_security_alert_async
@@ -645,11 +646,14 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
             ui_changed = True
 
     if data_changed:
-        # 🔥 FIX: Si la automatización cambió algún valor, recalculamos las fórmulas finales 🔥
+        # 🔥 FIX: Recalculamos fórmulas del caso base si una automatización cambió sus datos 🔥
         updated_data = calculate_formulas(db, case.form_id, updated_data)
         case.data = updated_data
+        flag_modified(case, "data") # 🔥 ESTO OBLIGA A LA BD A GUARDAR EL JSON 🔥
+
     if ui_changed:
         case.ui_rules = updated_ui
+        flag_modified(case, "ui_rules") # 🔥 ESTO GUARDA LAS REGLAS DE UI 🔥
 
 
 # =======================================================
