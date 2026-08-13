@@ -73,7 +73,7 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
       className={`bg-gray-950 text-gray-300 flex flex-col border-r border-gray-800 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'} z-50`}
     >
       <div className={`p-6 flex items-center ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}>
-        <h2 className="text-2xl font-bold tracking-tight text-white">{isSidebarOpen ? "BPM" : "B"}</h2>
+        <h2 className="text-2xl font-bold tracking-tight text-white">{isSidebarOpen ? "AEGISFLOW" : "A"}</h2>
       </div>
       
       <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
