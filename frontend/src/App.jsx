@@ -55,9 +55,10 @@ function App() {
           {/* 🔥 NUEVO: ENVOLVEMOS LA APP CON EL CHAT PROVIDER 🔥 */}
           <SupportChatProvider>
             <Suspense fallback={<FullScreenLoader />}>
+
+              <CookieBanner /> {/* NUEVO: Banner de cookies */}
               <Routes>
-                {/* 🔥 EL BANNER FLOTARÁ EN TODA LA APLICACIÓN 🔥 */}
-                <CookieBanner />
+                
                 {/* RUTAS PÚBLICAS Y REDIRECCIONES */}
                 {/* 🔥 FIX: Ahora la raíz apunta a nuestra nueva Landing Page en lugar de redirigir al Dashboard 🔥 */}
                 <Route path="/" element={<LandingPage />} />
