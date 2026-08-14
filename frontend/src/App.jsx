@@ -15,6 +15,9 @@ import { NotificationProvider } from './context/NotificationContext';
 // 🔥 NUEVO: IMPORTAMOS EL PROVEEDOR DEL CHAT 🔥
 import { SupportChatProvider } from './context/SupportChatContext'; 
 
+// 🔥 NUEVA LANDING PAGE (WEB) 🔥
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+
 const StoreHome = lazy(() => import('./pages/StoreHome'));
 const StoreProductDetail = lazy(() => import('./pages/StoreProductDetail'));
 
@@ -53,7 +56,8 @@ function App() {
               <Routes>
                 
                 {/* RUTAS PÚBLICAS Y REDIRECCIONES */}
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                {/* 🔥 FIX: Ahora la raíz apunta a nuestra nueva Landing Page en lugar de redirigir al Dashboard 🔥 */}
+                <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<Login />} />
                 
                 {/* 🔥 FASE 6: RUTA PARA ATRAPAR EL TOKEN DE SSO 🔥 */}
