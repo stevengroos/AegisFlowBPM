@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -11,7 +11,8 @@ import {
   ChevronDown, Fingerprint, Menu, X
 } from 'lucide-react';
 
-import MiniSandbox from '../components/MiniSandbox';
+// Carga diferida (Lazy Load) para evitar bloquear el renderizado inicial
+const MiniSandbox = lazy(() => import('../components/MiniSandbox'));
 import SEO from '../components/SEO'; // 🔥 IMPORTACIÓN DEL COMPONENTE SEO 🔥
 
 const SpotlightCard = ({ children, className = "" }) => {
@@ -515,7 +516,13 @@ export default function LandingPage() {
             <p className="text-gray-400 text-lg max-w-2xl mx-auto">No tienes que ser programador para transformar tu empresa. Arrastra, conecta y automatiza. Haz la prueba aquí mismo:</p>
           </motion.div>
           <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: 0.2, duration: 0.5 }}>
-            <MiniSandbox />
+            <Suspense fallback={
+              <div className="w-full h-[400px] bg-[#0A0D12] rounded-3xl border border-white/10 flex items-center justify-center animate-pulse shadow-2xl">
+                <p className="text-blue-500/50 font-mono text-sm">Cargando entorno interactivo...</p>
+              </div>
+            }>
+              <MiniSandbox />
+            </Suspense>
           </motion.div>
         </div>
       </section>
