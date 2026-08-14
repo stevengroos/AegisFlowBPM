@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <defs>
+    <!-- Degradado extraído de tu UI: Del Azul del gráfico al Púrpura del Chat -->
+    <linearGradient id="aegisUiGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6" /> <!-- Azul vibrante -->
+      <stop offset="100%" stop-color="#7C3AED" /> <!-- Púrpura/Índigo del widget -->
+    </linearGradient>
+  </defs>
+
+  <!-- Escudo Base Sólido (Aegis) -->
+  <path d="M200 35 L70 90 L70 210 C70 300 130 355 200 380 C270 355 330 300 330 210 L330 90 Z" 
+        fill="url(#aegisUiGradient)" />
+
+  <!-- Líneas de Transición del Flujo (BPM) -->
+  <path d="M130 140 L200 200 L270 160 M200 200 L200 290" 
+        stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Nodos del Flujo (Blanco puro para máximo contraste) -->
+  <circle cx="130" cy="140" r="18" fill="#FFFFFF" />
+  <circle cx="270" cy="160" r="18" fill="#FFFFFF" />
+  <!-- Nodo Central (Decisión) un poco más grande -->
+  <circle cx="200" cy="200" r="24" fill="#FFFFFF" />
+  <circle cx="200" cy="290" r="18" fill="#FFFFFF" />
+
+  <!-- Perforaciones en los nodos (Para que el degradado del fondo se asome) -->
+  <circle cx="130" cy="140" r="6" fill="#4B5563" opacity="0.3" />
+  <circle cx="270" cy="160" r="6" fill="#4B5563" opacity="0.3" />
+  <circle cx="200" cy="200" r="8" fill="#4B5563" opacity="0.3" />
+  <circle cx="200" cy="290" r="6" fill="#4B5563" opacity="0.3" />
+</svg>
