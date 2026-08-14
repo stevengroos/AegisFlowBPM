@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import 'react-querybuilder/dist/query-builder.css';
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* 🔥 MAGIA PARA EL SCROLL SUAVE Y EL NAVBAR FIJO 🔥 */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 100px; /* Evita que el navbar tape los títulos al hacer clic en los links */
+}
+
+/* 🖨️ CONFIGURACIÓN DE IMPRESIÓN (MANTENIDA INTACTA) */
 @media print {
   /* 1. Ocultar todo por defecto al imprimir */
   body * {

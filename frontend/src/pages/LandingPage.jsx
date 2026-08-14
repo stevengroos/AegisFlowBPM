@@ -8,10 +8,11 @@ import {
   Terminal, Lock, UserCog, Zap, Calculator,
   PenTool, Rocket, BarChart3,
   ShoppingCart, Landmark, Truck, Headset,
-  ChevronDown, Fingerprint, Menu, X // 🔥 NUEVO ÍCONO PARA EL FAQ
+  ChevronDown, Fingerprint, Menu, X
 } from 'lucide-react';
 
 import MiniSandbox from '../components/MiniSandbox';
+import SEO from '../components/SEO'; // 🔥 IMPORTACIÓN DEL COMPONENTE SEO 🔥
 
 const SpotlightCard = ({ children, className = "" }) => {
   const divRef = useRef(null);
@@ -46,7 +47,6 @@ const SpotlightCard = ({ children, className = "" }) => {
   );
 };
 
-// 🔥 NUEVO: COMPONENTE DE ACORDEÓN PARA PREGUNTAS FRECUENTES 🔥
 const FAQItem = ({ question, answer }) => {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -113,7 +113,6 @@ const industries = [
   }
 ];
 
-// 🔥 NUEVO: DATOS PARA FAQ 🔥
 const faqs = [
   {
     question: '¿Necesito saber programar para usar AegisFlow?',
@@ -136,12 +135,19 @@ const faqs = [
 export default function LandingPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0); 
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // 🔥 NUEVO ESTADO
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white selection:bg-blue-500/30 font-sans overflow-x-hidden">
       
-      {/* 🔥 NAVBAR MEJORADO CON VERSIÓN MÓVIL 🔥 */}
+      {/* 🔥 MAGIA DE SEO INYECTADA AQUÍ 🔥 */}
+      <SEO 
+        title="AegisFlow | El Motor BPM Enterprise Definitivo"
+        description="Adapta el software a tu empresa, no tu empresa al software. Diseña flujos de trabajo y ecosistemas digitales sin escribir código."
+        url="https://www.aegisflowbpm.com"
+      />
+
+      {/* NAVBAR */}
       <nav className="fixed top-0 w-full z-50 bg-[#0B0F19]/80 backdrop-blur-md border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -151,7 +157,6 @@ export default function LandingPage() {
             </span>
           </div>
 
-          {/* Menú Desktop */}
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
             <a href="#soluciones" className="hover:text-white transition-colors">Soluciones</a>
             <a href="#metodologia" className="hover:text-white transition-colors">Cómo Funciona</a>
@@ -165,7 +170,6 @@ export default function LandingPage() {
             </button>
           </div>
 
-          {/* Botón Hamburguesa Mobile */}
           <button 
             className="md:hidden text-gray-400 hover:text-white focus:outline-none"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -174,7 +178,6 @@ export default function LandingPage() {
           </button>
         </div>
 
-        {/* Dropdown Menu Mobile */}
         <AnimatePresence>
           {isMobileMenuOpen && (
             <motion.div 
@@ -199,7 +202,6 @@ export default function LandingPage() {
           )}
         </AnimatePresence>
       </nav>
-
 
       {/* HERO SECTION */}
       <main className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
@@ -237,10 +239,7 @@ export default function LandingPage() {
               Un BPM no es solo un sistema. Es el cerebro operativo de tu empresa. Transforma tareas caóticas, cuellos de botella y trabajo manual en flujos automatizados, predecibles y medibles.
             </p>
           </div>
-          {/* 🔥 ANIMACIÓN DE CAOS RESPONSIVA 🔥 */}
           <div className="relative flex flex-col md:flex-row items-center justify-center h-auto md:h-64 w-full gap-8 md:gap-0 mt-10 md:mt-0">
-            
-            {/* Caos (Se apilan en móvil, posición libre en desktop) */}
             <div className="flex gap-4 md:contents">
               <motion.div initial={{ x: -50, opacity: 0 }} whileInView={{ x: [0, 10, 0], opacity: 1, rotate: [-10, 10, -10] }} transition={{ duration: 4, repeat: Infinity }} className="md:absolute md:left-[20%] md:top-1/4 text-red-400/50">
                 <FileSpreadsheet className="w-12 h-12" />
@@ -402,7 +401,6 @@ export default function LandingPage() {
                 </p>
             </motion.div>
 
-          {/* Línea Láser conectora de fondo */}
           <div className="absolute top-[50%] left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent hidden lg:block -z-10"></div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -416,7 +414,6 @@ export default function LandingPage() {
                 <h3 className="text-xl font-bold mb-3">CRM & Ventas</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">Gestiona prospectos, automatiza el seguimiento y calcula comisiones.</p>
               </div>
-              {/* Mockup Kanban */}
               <div className="absolute -bottom-8 -right-4 w-56 h-36 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_30px_rgba(59,130,246,0.1)] p-4 flex gap-3 transform rotate-6 transition-transform group-hover:rotate-0">
                  <div className="flex-1 space-y-2">
                    <div className="w-1/2 h-2 bg-gray-700 rounded-full mb-3"></div>
@@ -439,7 +436,6 @@ export default function LandingPage() {
                 <h3 className="text-xl font-bold mb-3">Gestor de Inventario</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">Controla stock en múltiples bodegas y automatiza alertas de reabastecimiento.</p>
               </div>
-              {/* Mockup Listado de Stock */}
               <div className="absolute -bottom-4 -right-4 w-52 h-36 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_30px_rgba(16,185,129,0.1)] p-4 flex flex-col gap-2 transform -rotate-3 transition-transform group-hover:rotate-0">
                 <div className="flex items-center justify-between bg-white/5 p-2.5 rounded-md border border-white/5">
                   <div className="w-16 h-2 bg-gray-600 rounded-full"></div>
@@ -465,7 +461,6 @@ export default function LandingPage() {
                 <h3 className="text-xl font-bold mb-3">Catálogo Web (B2C)</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">Expón tus productos al público en una app móvil ocultando información interna.</p>
               </div>
-              {/* Mockup Teléfono Móvil */}
               <div className="absolute -bottom-10 right-6 w-36 h-48 bg-[#0A0D12] rounded-t-[1.5rem] border-t-4 border-l-4 border-r-4 border-gray-800 shadow-[0_-10px_40px_rgba(168,85,247,0.15)] p-2.5 transform rotate-12 transition-transform group-hover:rotate-0">
                  <div className="w-12 h-3 bg-gray-800 rounded-b-xl mx-auto mb-4"></div>
                  <div className="w-full h-16 bg-purple-500/20 rounded-lg mb-3 border border-purple-500/30"></div>
@@ -484,14 +479,12 @@ export default function LandingPage() {
                 <h3 className="text-xl font-bold mb-3">Créditos y Cobros</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">Calcula saldos, programa fechas de vencimiento y audita pagos.</p>
               </div>
-              {/* Mockup Gráfico de Barras */}
               <div className="absolute -bottom-6 -right-2 w-48 h-36 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_30px_rgba(249,115,22,0.1)] p-5 flex flex-col justify-end transform -rotate-6 transition-transform group-hover:rotate-0">
                  <div className="flex items-end gap-3 h-full">
                    <div className="w-1/4 bg-orange-500/20 border-t border-orange-500/50 rounded-t-sm h-[40%]"></div>
                    <div className="w-1/4 bg-orange-500/40 border-t border-orange-500/50 rounded-t-sm h-[60%]"></div>
                    <div className="w-1/4 bg-white/10 rounded-t-sm h-[30%]"></div>
                    <div className="w-1/4 bg-orange-500/80 border-t border-orange-400 rounded-t-sm h-[90%] shadow-[0_0_15px_rgba(249,115,22,0.6)] relative">
-                     {/* Falso tooltip */}
                      <div className="absolute -top-6 left-1/2 -translate-x-1/2 w-8 h-4 bg-white rounded flex items-center justify-center">
                        <div className="w-4 h-1 bg-gray-800 rounded-full"></div>
                      </div>
@@ -536,20 +529,15 @@ export default function LandingPage() {
                   <h3 className="text-2xl font-bold mb-2 text-white">Blueprints (Drag & Drop)</h3>
                   <p className="text-gray-400">Diseña procesos sin escribir código. Mapea estados y transiciones en un lienzo interactivo basado en BPMN.</p>
                 </div>
-                {/* Ilustración de fondo: Nodos y Cuadrícula */}
                 <div className="absolute right-0 bottom-0 w-full md:w-2/3 h-full pointer-events-none">
-                  {/* Cuadrícula de puntos */}
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
-                  {/* Líneas conectadas animadas */}
                   <svg className="absolute bottom-4 right-4 w-[250px] h-[200px]" viewBox="0 0 200 150">
                     <path d="M 30,120 C 80,120 100,50 160,40" fill="none" stroke="#3B82F6" strokeWidth="3" strokeDasharray="6 6" className="animate-[dash_3s_linear_infinite]" style={{ strokeDashoffset: 100 }} />
                     <circle cx="30" cy="120" r="8" fill="#0B0F19" stroke="#3B82F6" strokeWidth="3" />
                     <circle cx="160" cy="40" r="8" fill="#0B0F19" stroke="#8B5CF6" strokeWidth="3" />
-                    {/* Falsos tags de los nodos */}
                     <rect x="15" y="135" width="30" height="8" rx="4" fill="#3B82F6" opacity="0.3" />
                     <rect x="145" y="55" width="30" height="8" rx="4" fill="#8B5CF6" opacity="0.3" />
                   </svg>
-                  {/* Resplandor */}
                   <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-blue-500/10 rounded-full blur-[60px]"></div>
                 </div>
               </div>
@@ -563,12 +551,10 @@ export default function LandingPage() {
                   <h3 className="text-xl font-bold mb-2 text-white">Formularios Dinámicos</h3>
                   <p className="text-gray-400 text-sm">Interfaz controlada por el servidor (Server-Driven UI). Modifica un campo y actualiza todo el sistema en tiempo real.</p>
                 </div>
-                {/* Interfaz abstracta asomando en la esquina */}
                 <div className="absolute -bottom-8 -right-8 w-48 h-48 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_40px_rgba(16,185,129,0.15)] p-5 flex flex-col gap-3 transform -rotate-6 transition-transform group-hover:rotate-0">
                   <div className="w-1/2 h-2 bg-gray-700 rounded-full"></div>
                   <div className="w-full h-8 bg-white/5 rounded-md border border-white/10"></div>
                   <div className="w-3/4 h-2 bg-gray-700 rounded-full mt-2"></div>
-                  {/* Falso campo de éxito */}
                   <div className="w-full h-8 bg-emerald-500/20 rounded-md border border-emerald-500/30 flex items-center px-2 gap-2">
                     <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
                     <div className="w-1/2 h-2 bg-emerald-400/50 rounded-full"></div>
@@ -580,16 +566,13 @@ export default function LandingPage() {
             {/* 🔥 TARJETA 3: LOW CODE (CON TERMINAL ARREGLADA) 🔥 */}
             <SpotlightCard className="md:col-span-3 p-0">
               <div className="flex flex-col md:flex-row h-full w-full">
-                {/* Texto a la izquierda */}
                 <div className="p-8 md:w-1/3 flex flex-col justify-center border-b md:border-b-0 md:border-r border-white/10 relative z-10 bg-white/5">
                   <Terminal className="w-10 h-10 text-orange-400 mb-4" />
                   <h3 className="text-2xl font-bold mb-2 text-white">Automatizaciones (Low-Code)</h3>
                   <p className="text-gray-400 text-sm md:text-base">Reglas de negocio sin límites. Usa código Python en nuestro Sandbox interactivo para operaciones complejas, o clics para tareas simples.</p>
                 </div>
                 
-                {/* Ventana de Terminal a la derecha */}
                 <div className="md:w-2/3 flex-1 bg-[#0A0D12] relative overflow-hidden font-mono text-xs md:text-sm flex flex-col">
-                  {/* Barra superior estilo macOS */}
                   <div className="bg-[#161B22] px-4 py-3 flex items-center border-b border-white/5 gap-2 shrink-0">
                     <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
                     <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
@@ -597,7 +580,6 @@ export default function LandingPage() {
                     <div className="mx-auto text-xs text-gray-500 font-sans tracking-wide">sandbox.py</div>
                   </div>
                   
-                  {/* Código con Syntax Highlighting */}
                   <div className="p-6 text-gray-300 relative z-10 overflow-x-auto leading-relaxed">
                     <p><span className="text-[#FF7B72]">def</span> <span className="text-[#D2A8FF]">process_rules</span>(data):</p>
                     <p className="ml-4 text-[#8B949E] italic"># Motor Sandbox AegisFlow</p>
@@ -609,7 +591,6 @@ export default function LandingPage() {
                     <p className="ml-4 text-[#FF7B72]">return <span className="text-white">{"{"}</span> <span className="text-[#A5D6FF]">'status'</span>: <span className="text-[#79C0FF]">200</span>, <span className="text-[#A5D6FF]">'updated'</span>: <span className="text-[#79C0FF]">True</span> <span className="text-white">{"}"}</span></p>
                   </div>
                   
-                  {/* Resplandor de fondo naranja tenue */}
                   <div className="absolute bottom-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-[80px] pointer-events-none"></div>
                 </div>
               </div>
@@ -622,12 +603,10 @@ export default function LandingPage() {
       {/* SECCIÓN 5: SEGURIDAD ENTERPRISE */}
       <section id="seguridad" className="py-24 relative overflow-hidden bg-[#0B0F19]">
         
-        {/* Fondo estilo Radar / Cuadrícula de Seguridad */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-30"></div>
 
         <div className="max-w-7xl mx-auto px-6 relative z-10 flex flex-col items-center text-center">
           
-          {/* Escudo Central con Animación de Pulso Activo */}
           <div className="relative mb-8 mt-4">
             <div className="absolute inset-0 bg-blue-500 rounded-full blur-[40px] opacity-40 animate-pulse"></div>
             <div className="relative bg-[#0B0F19] p-4 rounded-3xl border border-blue-500/30">
@@ -640,17 +619,14 @@ export default function LandingPage() {
             Construido bajo arquitectura Zero Trust. Un sistema que maneja los datos operativos de tu empresa debe inspirar confianza absoluta.
           </p>
 
-          {/* Grid de 3 Tarjetas Avanzadas */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full auto-rows-fr">
             
-            {/* TARJETA 1: AUDITORÍA (JSON LOG) */}
             <SpotlightCard className="text-left w-full">
               <div className="p-8 flex flex-col h-full">
                 <Lock className="w-10 h-10 text-blue-400 mb-4" />
                 <h4 className="text-xl font-bold mb-2">Auditoría Inmutable</h4>
                 <p className="text-gray-400 text-sm mb-8">Cumplimiento ISO 27001 con registros forenses. Compara el estado de cada variable modificada.</p>
                 
-                {/* Mockup de Código JSON Diferencial */}
                 <div className="mt-auto bg-[#0A0D12] rounded-xl p-4 font-mono text-xs border border-white/5 relative overflow-hidden shadow-inner">
                   <div className="absolute top-0 left-0 w-1 h-full bg-blue-500/50"></div>
                   <div className="text-red-400 line-through opacity-70 mb-1">- "estado": "borrador"</div>
@@ -663,14 +639,12 @@ export default function LandingPage() {
               </div>
             </SpotlightCard>
 
-            {/* TARJETA 2: CONTROL DE ACCESO (RBAC) */}
             <SpotlightCard className="text-left w-full">
               <div className="p-8 flex flex-col h-full">
                 <UserCog className="w-10 h-10 text-purple-400 mb-4" />
                 <h4 className="text-xl font-bold mb-2">Control Jerárquico</h4>
                 <p className="text-gray-400 text-sm mb-8">Seguridad estricta a nivel de campo (Field-Level Security) y control de acceso basado en roles (RBAC).</p>
                 
-                {/* Mockup de Filas Bloqueadas */}
                 <div className="mt-auto flex flex-col gap-3">
                   <div className="h-10 bg-purple-500/10 border border-purple-500/30 rounded-lg flex items-center px-4 gap-3 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
                     <CheckCircle2 className="w-4 h-4 text-purple-400" />
@@ -685,14 +659,12 @@ export default function LandingPage() {
               </div>
             </SpotlightCard>
 
-            {/* TARJETA 3: SSO & MFA (BIOMETRICS) */}
             <SpotlightCard className="text-left w-full">
               <div className="p-8 flex flex-col h-full">
                 <Zap className="w-10 h-10 text-emerald-400 mb-4" />
                 <h4 className="text-xl font-bold mb-2">SSO & MFA Nativo</h4>
                 <p className="text-gray-400 text-sm mb-8">Integraciones de inicio de sesión único con Autenticación Multifactor obligatoria para blindar identidades.</p>
                 
-                {/* Mockup de Autenticación */}
                 <div className="mt-auto bg-[#0A0D12] rounded-xl p-4 border border-white/5 flex items-center justify-between">
                   <div className="relative flex items-center justify-center w-12 h-12">
                     <div className="absolute inset-0 border-2 border-emerald-500/30 rounded-full animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
