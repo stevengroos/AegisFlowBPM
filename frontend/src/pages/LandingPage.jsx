@@ -173,6 +173,8 @@ export default function LandingPage() {
           <button 
             className="md:hidden text-gray-400 hover:text-white focus:outline-none"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label={isMobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
+            aria-expanded={isMobileMenuOpen}
           >
             {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -627,7 +629,7 @@ export default function LandingPage() {
             <SpotlightCard className="text-left w-full">
               <div className="p-8 flex flex-col h-full">
                 <Lock className="w-10 h-10 text-blue-400 mb-4" />
-                <h4 className="text-xl font-bold mb-2">Auditoría Inmutable</h4>
+                <h3 className="text-xl font-bold mb-2">Auditoría Inmutable</h3>
                 <p className="text-gray-400 text-sm mb-8">Cumplimiento ISO 27001 con registros forenses. Compara el estado de cada variable modificada.</p>
                 
                 <div className="mt-auto bg-[#0A0D12] rounded-xl p-4 font-mono text-xs border border-white/5 relative overflow-hidden shadow-inner">
@@ -636,7 +638,7 @@ export default function LandingPage() {
                   <div className="text-emerald-400 mb-3">+ "estado": "aprobado"</div>
                   <div className="flex justify-between items-center border-t border-white/5 pt-2 mt-2">
                     <span className="text-blue-300">"usr": "admin"</span>
-                    <span className="text-gray-600 text-[10px]">14-Aug 11:08Z</span>
+                    <span className="text-gray-500 text-[10px]">14-Aug 11:08Z</span>
                   </div>
                 </div>
               </div>
@@ -645,7 +647,7 @@ export default function LandingPage() {
             <SpotlightCard className="text-left w-full">
               <div className="p-8 flex flex-col h-full">
                 <UserCog className="w-10 h-10 text-purple-400 mb-4" />
-                <h4 className="text-xl font-bold mb-2">Control Jerárquico</h4>
+                <h3 className="text-xl font-bold mb-2">Control Jerárquico</h3>
                 <p className="text-gray-400 text-sm mb-8">Seguridad estricta a nivel de campo (Field-Level Security) y control de acceso basado en roles (RBAC).</p>
                 
                 <div className="mt-auto flex flex-col gap-3">
@@ -666,7 +668,7 @@ export default function LandingPage() {
             <SpotlightCard className="text-left w-full">
               <div className="p-8 flex flex-col h-full">
                 <Zap className="w-10 h-10 text-emerald-400 mb-4" />
-                <h4 className="text-xl font-bold mb-2">SSO & MFA Nativo</h4>
+                <h3 className="text-xl font-bold mb-2">SSO & MFA Nativo</h3>
                 <p className="text-gray-400 text-sm mb-8">Integraciones de inicio de sesión único con Autenticación Multifactor obligatoria para blindar identidades.</p>
                 
                 <div className="mt-auto bg-[#0A0D12] rounded-xl p-4 border border-white/5 flex items-center justify-between">
@@ -734,13 +736,13 @@ export default function LandingPage() {
         <button onClick={() => navigate('/login')} className="px-8 py-4 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all shadow-[0_0_30px_rgba(37,99,235,0.4)] mb-20">
           Comenzar Ahora
         </button>
-        <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-gray-500 text-sm mb-6">
+        <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-gray-400 text-sm mb-6">
           <a href="/privacidad" className="hover:text-gray-300 transition-colors">Políticas de Privacidad</a>
           <span className="hidden md:block">•</span>
           <a href="/terminos" className="hover:text-gray-300 transition-colors">Términos y Condiciones</a>
         </div>
-        <div className="text-gray-600 text-sm">
-          © 2026 AegisFlow BPM. Todos los derechos reservados.
+        <div className="text-gray-500 text-sm">
+            © 2026 AegisFlow BPM. Todos los derechos reservados.
         </div>
       </footer>
     </div>
