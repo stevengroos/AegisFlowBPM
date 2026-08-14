@@ -1,0 +1,8 @@
+# AegisFlow BPM
+
+AegisFlow es un motor BPM de nivel Enterprise que permite modelar, automatizar y escalar procesos de negocio sin escribir código. Adapta el software a tu empresa a través de una arquitectura drag & drop, formularios dinámicos y automatizaciones low-code.
+
+## Enlaces Oficiales
+- [Página Principal](https://www.aegisflowbpm.com)
+- [Iniciar Sesión](https://www.aegisflowbpm.com/login)
+- [Políticas de Privacidad](https://www.aegisflowbpm.com/privacidad)

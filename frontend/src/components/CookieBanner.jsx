@@ -41,7 +41,8 @@ export default function CookieBanner() {
               </div>
               <div className="flex-1">
                 <h3 className="text-white font-bold mb-2">Valoramos tu privacidad</h3>
-                <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                {/* 🔥 FIX: Contraste mejorado (text-gray-300) 🔥 */}
+                <p className="text-gray-300 text-sm leading-relaxed mb-6">
                   Utilizamos cookies esenciales para que la plataforma funcione, y analíticas para mejorar tu experiencia. ¿Aceptas su uso?
                 </p>
                 <div className="flex gap-3">
@@ -59,9 +60,11 @@ export default function CookieBanner() {
                   </button>
                 </div>
               </div>
+              {/* 🔥 FIX: Etiqueta aria-label para accesibilidad IA/Lectores y contraste mejorado 🔥 */}
               <button 
                 onClick={handleDecline}
-                className="text-gray-500 hover:text-white transition-colors"
+                className="text-gray-400 hover:text-white transition-colors"
+                aria-label="Cerrar banner de cookies"
               >
                 <X className="w-5 h-5" />
               </button>
