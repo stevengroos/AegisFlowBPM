@@ -8,7 +8,7 @@ import {
   Terminal, Lock, UserCog, Zap, Calculator,
   PenTool, Rocket, BarChart3,
   ShoppingCart, Landmark, Truck, Headset,
-  ChevronDown, Fingerprint // 🔥 NUEVO ÍCONO PARA EL FAQ
+  ChevronDown, Fingerprint, Menu, X // 🔥 NUEVO ÍCONO PARA EL FAQ
 } from 'lucide-react';
 
 import MiniSandbox from '../components/MiniSandbox';
@@ -136,11 +136,12 @@ const faqs = [
 export default function LandingPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0); 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // 🔥 NUEVO ESTADO
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white selection:bg-blue-500/30 font-sans overflow-x-hidden">
       
-      {/* NAVBAR */}
+      {/* 🔥 NAVBAR MEJORADO CON VERSIÓN MÓVIL 🔥 */}
       <nav className="fixed top-0 w-full z-50 bg-[#0B0F19]/80 backdrop-blur-md border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -149,6 +150,8 @@ export default function LandingPage() {
               Aegis<span className="text-blue-500">Flow</span>
             </span>
           </div>
+
+          {/* Menú Desktop */}
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
             <a href="#soluciones" className="hover:text-white transition-colors">Soluciones</a>
             <a href="#metodologia" className="hover:text-white transition-colors">Cómo Funciona</a>
@@ -161,8 +164,42 @@ export default function LandingPage() {
               Iniciar Sesión
             </button>
           </div>
+
+          {/* Botón Hamburguesa Mobile */}
+          <button 
+            className="md:hidden text-gray-400 hover:text-white focus:outline-none"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
         </div>
+
+        {/* Dropdown Menu Mobile */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden bg-[#0B0F19] border-b border-white/10 overflow-hidden"
+            >
+              <div className="px-6 py-4 flex flex-col gap-4 text-gray-300">
+                <a href="#soluciones" onClick={() => setIsMobileMenuOpen(false)}>Soluciones</a>
+                <a href="#metodologia" onClick={() => setIsMobileMenuOpen(false)}>Cómo Funciona</a>
+                <a href="#industrias" onClick={() => setIsMobileMenuOpen(false)}>Industrias</a>
+                <a href="#faq" onClick={() => setIsMobileMenuOpen(false)}>FAQ</a>
+                <button 
+                  onClick={() => navigate('/login')}
+                  className="w-full mt-2 px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold flex justify-center"
+                >
+                  Iniciar Sesión
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
+
 
       {/* HERO SECTION */}
       <main className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
@@ -200,19 +237,26 @@ export default function LandingPage() {
               Un BPM no es solo un sistema. Es el cerebro operativo de tu empresa. Transforma tareas caóticas, cuellos de botella y trabajo manual en flujos automatizados, predecibles y medibles.
             </p>
           </div>
-          <div className="relative flex flex-col md:flex-row items-center justify-center h-64 w-full">
-            <motion.div initial={{ x: -100, opacity: 0, rotate: -20 }} whileInView={{ x: 100, opacity: [1, 1, 0], rotate: 180, scale: 0.5 }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute left-1/4 top-1/4 text-red-400/50">
-              <FileSpreadsheet className="w-12 h-12" />
-            </motion.div>
-            <motion.div initial={{ x: -100, opacity: 0, y: 50 }} whileInView={{ x: 120, opacity: [1, 1, 0], y: 0, scale: 0.5 }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} className="absolute left-1/4 bottom-1/4 text-orange-400/50">
-              <Mail className="w-10 h-10" />
-            </motion.div>
-            <div className="z-10 bg-[#0B0F19] p-4 rounded-full shadow-[0_0_50px_rgba(59,130,246,0.3)]">
-              <img src="/aegisflow-logo.svg" alt="AegisFlow" className="w-24 h-24" />
+          {/* 🔥 ANIMACIÓN DE CAOS RESPONSIVA 🔥 */}
+          <div className="relative flex flex-col md:flex-row items-center justify-center h-auto md:h-64 w-full gap-8 md:gap-0 mt-10 md:mt-0">
+            
+            {/* Caos (Se apilan en móvil, posición libre en desktop) */}
+            <div className="flex gap-4 md:contents">
+              <motion.div initial={{ x: -50, opacity: 0 }} whileInView={{ x: [0, 10, 0], opacity: 1, rotate: [-10, 10, -10] }} transition={{ duration: 4, repeat: Infinity }} className="md:absolute md:left-[20%] md:top-1/4 text-red-400/50">
+                <FileSpreadsheet className="w-12 h-12" />
+              </motion.div>
+              <motion.div initial={{ x: -50, opacity: 0 }} whileInView={{ x: [0, -10, 0], opacity: 1, rotate: [10, -10, 10] }} transition={{ duration: 3, repeat: Infinity, delay: 0.5 }} className="md:absolute md:left-[25%] md:bottom-1/4 text-orange-400/50">
+                <Mail className="w-10 h-10" />
+              </motion.div>
             </div>
-            <motion.div initial={{ x: -50, opacity: 0 }} whileInView={{ x: 100, opacity: [0, 1, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: 1 }} className="absolute right-1/3 text-emerald-400 flex gap-4">
+
+            <div className="z-10 bg-[#0B0F19] p-4 rounded-full shadow-[0_0_50px_rgba(59,130,246,0.3)]">
+              <img src="/aegisflow-logo.svg" alt="AegisFlow" className="w-24 h-24 md:w-32 md:h-32" />
+            </div>
+
+            <motion.div initial={{ x: 50, opacity: 0 }} whileInView={{ x: [0, 20, 0], opacity: 1 }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} className="md:absolute md:right-[20%] text-emerald-400 flex gap-4">
               <CheckCircle2 className="w-8 h-8" />
-              <ArrowRight className="w-8 h-8" />
+              <ArrowRight className="hidden md:block w-8 h-8" />
               <Database className="w-8 h-8" />
             </motion.div>
           </div>
@@ -715,9 +759,9 @@ export default function LandingPage() {
           Comenzar Ahora
         </button>
         <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-gray-500 text-sm mb-6">
-          <button onClick={() => navigate('/privacidad')} className="hover:text-gray-300 transition-colors">Políticas de Privacidad</button>
+          <a href="/privacidad" className="hover:text-gray-300 transition-colors">Políticas de Privacidad</a>
           <span className="hidden md:block">•</span>
-          <button onClick={() => navigate('/terminos')} className="hover:text-gray-300 transition-colors">Términos y Condiciones</button>
+          <a href="/terminos" className="hover:text-gray-300 transition-colors">Términos y Condiciones</a>
         </div>
         <div className="text-gray-600 text-sm">
           © 2026 AegisFlow BPM. Todos los derechos reservados.
