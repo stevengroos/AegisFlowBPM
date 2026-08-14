@@ -5,12 +5,12 @@ import {
   ArrowRight, Activity, Database, Layers, 
   Workflow, Smartphone, LineChart, ShieldCheck, 
   Mail, FileSpreadsheet, MessageSquare, CheckCircle2,
-  Terminal, Lock, UserCog, Zap, Calculator
+  Terminal, Lock, UserCog, Zap, Calculator,
+  PenTool, Rocket, BarChart3 // 🔥 ÍCONOS NUEVOS PARA EL PASO A PASO
 } from 'lucide-react';
-// Al inicio de tu archivo LandingPage.jsx, junto a los otros imports
+
 import MiniSandbox from '../components/MiniSandbox';
 
-// 🔥 1. COMPONENTE DE MICRO-INTERACCIÓN (EFECTO LINTERNA) 🔥
 const SpotlightCard = ({ children, className = "" }) => {
   const divRef = useRef(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -61,8 +61,8 @@ export default function LandingPage() {
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
             <a href="#soluciones" className="hover:text-white transition-colors">Soluciones</a>
+            <a href="#metodologia" className="hover:text-white transition-colors">Cómo Funciona</a>
             <a href="#plataforma" className="hover:text-white transition-colors">Plataforma</a>
-            <a href="#motor" className="hover:text-white transition-colors">Tecnología</a>
             <a href="#seguridad" className="hover:text-white transition-colors">Seguridad</a>
             <button 
               onClick={() => navigate('/login')}
@@ -74,13 +74,10 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* HERO SECTION CON NODOS ANIMADOS */}
+      {/* HERO SECTION */}
       <main className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
-        
-        {/* Luces de Fondo */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] -z-10 pointer-events-none" />
         
-        {/* 🔥 2. ANIMACIÓN DE NODOS FLOTANTES EN EL FONDO 🔥 */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
           <motion.div animate={{ y: [0, -20, 0], opacity: [0.3, 0.6, 0.3] }} transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }} className="absolute top-1/4 left-1/4 w-32 h-[1px] bg-gradient-to-r from-blue-500 to-transparent rotate-45" />
           <motion.div animate={{ y: [0, 20, 0], opacity: [0.2, 0.5, 0.2] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut", delay: 1 }} className="absolute bottom-1/3 right-1/4 w-48 h-[1px] bg-gradient-to-r from-transparent to-purple-500 -rotate-12" />
@@ -106,7 +103,7 @@ export default function LandingPage() {
         </motion.div>
       </main>
 
-      {/* SECCIÓN 2: DE CAOS A ORDEN (ANIMACIÓN INTERACTIVA) */}
+      {/* SECCIÓN 2: DE CAOS A ORDEN */}
       <section id="soluciones" className="py-24 relative border-t border-white/5 bg-gradient-to-b from-[#0B0F19] to-[#0d1323] overflow-hidden">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-20">
@@ -116,39 +113,19 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* 🔥 3. ANIMACIÓN VISUAL: CAOS ABSORBIDO POR EL ESCUDO 🔥 */}
           <div className="relative flex flex-col md:flex-row items-center justify-center h-64 w-full">
-            
-            {/* Elementos Caóticos (Izquierda) */}
-            <motion.div 
-              initial={{ x: -100, opacity: 0, rotate: -20 }}
-              whileInView={{ x: 100, opacity: [1, 1, 0], rotate: 180, scale: 0.5 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute left-1/4 top-1/4 text-red-400/50"
-            >
+            <motion.div initial={{ x: -100, opacity: 0, rotate: -20 }} whileInView={{ x: 100, opacity: [1, 1, 0], rotate: 180, scale: 0.5 }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute left-1/4 top-1/4 text-red-400/50">
               <FileSpreadsheet className="w-12 h-12" />
             </motion.div>
-            <motion.div 
-              initial={{ x: -100, opacity: 0, y: 50 }}
-              whileInView={{ x: 120, opacity: [1, 1, 0], y: 0, scale: 0.5 }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-              className="absolute left-1/4 bottom-1/4 text-orange-400/50"
-            >
+            <motion.div initial={{ x: -100, opacity: 0, y: 50 }} whileInView={{ x: 120, opacity: [1, 1, 0], y: 0, scale: 0.5 }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} className="absolute left-1/4 bottom-1/4 text-orange-400/50">
               <Mail className="w-10 h-10" />
             </motion.div>
 
-            {/* Escudo Central (AegisFlow) */}
             <div className="z-10 bg-[#0B0F19] p-4 rounded-full shadow-[0_0_50px_rgba(59,130,246,0.3)]">
               <img src="/aegisflow-logo.svg" alt="AegisFlow" className="w-24 h-24" />
             </div>
 
-            {/* Flujo Ordenado (Derecha) */}
-            <motion.div 
-              initial={{ x: -50, opacity: 0 }}
-              whileInView={{ x: 100, opacity: [0, 1, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: 1 }}
-              className="absolute right-1/3 text-emerald-400 flex gap-4"
-            >
+            <motion.div initial={{ x: -50, opacity: 0 }} whileInView={{ x: 100, opacity: [0, 1, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: 1 }} className="absolute right-1/3 text-emerald-400 flex gap-4">
               <CheckCircle2 className="w-8 h-8" />
               <ArrowRight className="w-8 h-8" />
               <Database className="w-8 h-8" />
@@ -157,7 +134,60 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* SECCIÓN 3: CONSTRUYE TU PROPIO ERP (TARJETAS GLASMORPHISM + SPOTLIGHT) */}
+      {/* 🔥 NUEVO: SECCIÓN 2.5 - EL PUENTE NARRATIVO (CÓMO FUNCIONA) 🔥 */}
+      <section id="metodologia" className="py-24 relative bg-[#06090F]">
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-20">
+            <h2 className="text-3xl md:text-5xl font-bold mb-6">De la idea a la ejecución en 4 pasos</h2>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+              No necesitas meses de desarrollo tradicional. AegisFlow te da las herramientas para orquestar toda tu empresa a la velocidad de tu pensamiento.
+            </p>
+          </motion.div>
+
+          <div className="relative grid grid-cols-1 md:grid-cols-4 gap-8">
+            {/* Línea conectora de fondo (Solo visible en Desktop) */}
+            <div className="hidden md:block absolute top-12 left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-emerald-500/20" />
+
+            {/* Paso 1 */}
+            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="relative flex flex-col items-center text-center group">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-blue-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-blue-500 group-hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] transition-all">
+                <PenTool className="w-10 h-10 text-blue-400" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-white">1. Mapea tu proceso</h3>
+              <p className="text-gray-400 text-sm">Dibuja el flujo exacto de tu negocio en nuestro lienzo visual. Mapea estados y transiciones sin código.</p>
+            </motion.div>
+
+            {/* Paso 2 */}
+            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="relative flex flex-col items-center text-center group">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-purple-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-purple-500 group-hover:shadow-[0_0_30px_rgba(168,85,247,0.3)] transition-all">
+                <Zap className="w-10 h-10 text-purple-400" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-white">2. Automatiza reglas</h3>
+              <p className="text-gray-400 text-sm">Añade cálculos de variables, alertas y validaciones. Deja que los robots hagan el trabajo repetitivo y matemático.</p>
+            </motion.div>
+
+            {/* Paso 3 */}
+            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="relative flex flex-col items-center text-center group">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-emerald-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-emerald-500 group-hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all">
+                <Rocket className="w-10 h-10 text-emerald-400" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-white">3. Despliega al instante</h3>
+              <p className="text-gray-400 text-sm">Con un solo clic, tu proceso se convierte en formularios dinámicos listos para que tu equipo opere.</p>
+            </motion.div>
+
+            {/* Paso 4 */}
+            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.4 }} className="relative flex flex-col items-center text-center group">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-orange-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-orange-500 group-hover:shadow-[0_0_30px_rgba(249,115,22,0.3)] transition-all">
+                <BarChart3 className="w-10 h-10 text-orange-400" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-white">4. Mide y Optimiza</h3>
+              <p className="text-gray-400 text-sm">Analiza cuellos de botella en tiempo real. Visualiza los datos de tu empresa en tus propios dashboards gerenciales.</p>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECCIÓN 3: CONSTRUYE TU PROPIO ERP */}
       <section id="plataforma" className="py-24 relative">
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
         <div className="max-w-7xl mx-auto px-6 relative z-10">
@@ -169,15 +199,12 @@ export default function LandingPage() {
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* 🔥 4. USO DEL SPOTLIGHT CARD 🔥 */}
             <SpotlightCard className="p-8 hover:border-blue-500/50">
               <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-6 text-blue-400 group-hover:scale-110 transition-transform">
                 <Activity className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold mb-3">CRM & Ventas</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Gestiona prospectos, automatiza el seguimiento y calcula comisiones.
-              </p>
+              <p className="text-gray-400 text-sm leading-relaxed">Gestiona prospectos, automatiza el seguimiento y calcula comisiones.</p>
             </SpotlightCard>
 
             <SpotlightCard className="p-8 hover:border-emerald-500/50">
@@ -185,9 +212,7 @@ export default function LandingPage() {
                 <Layers className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold mb-3">Gestor de Inventario</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Controla stock en múltiples bodegas y automatiza alertas de reabastecimiento.
-              </p>
+              <p className="text-gray-400 text-sm leading-relaxed">Controla stock en múltiples bodegas y automatiza alertas de reabastecimiento.</p>
             </SpotlightCard>
 
             <SpotlightCard className="p-8 hover:border-purple-500/50">
@@ -195,9 +220,7 @@ export default function LandingPage() {
                 <Smartphone className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold mb-3">Catálogo Web (B2C)</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Expón tus productos al público en una app móvil ocultando información interna estratégica.
-              </p>
+              <p className="text-gray-400 text-sm leading-relaxed">Expón tus productos al público en una app móvil ocultando información interna estratégica.</p>
             </SpotlightCard>
 
             <SpotlightCard className="p-8 hover:border-orange-500/50">
@@ -205,36 +228,20 @@ export default function LandingPage() {
                 <Calculator className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold mb-3">Créditos y Cobranzas</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Calcula saldos, programa fechas de vencimiento y audita pagos.
-              </p>
+              <p className="text-gray-400 text-sm leading-relaxed">Calcula saldos, programa fechas de vencimiento y audita pagos.</p>
             </SpotlightCard>
           </div>
         </div>
       </section>
 
-      {/* 🔥 NUEVA SECCIÓN: INTERACTIVE SANDBOX 🔥 */}
-      <section className="py-24 relative overflow-hidden">
+      {/* INTERACTIVE SANDBOX */}
+      <section className="py-24 relative overflow-hidden bg-[#0B0F19]">
         <div className="max-w-5xl mx-auto px-6 relative z-10">
-          <motion.div 
-            initial={{ opacity: 0, y: 40 }} 
-            whileInView={{ opacity: 1, y: 0 }} 
-            viewport={{ once: true }} 
-            className="text-center mb-12"
-          >
+          <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
             <h2 className="text-3xl md:text-5xl font-bold mb-6">Experimenta la magia tú mismo</h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-              No tienes que ser programador para transformar tu empresa. Arrastra, conecta y automatiza. Haz la prueba aquí mismo:
-            </p>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">No tienes que ser programador para transformar tu empresa. Arrastra, conecta y automatiza. Haz la prueba aquí mismo:</p>
           </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-          >
-            {/* AQUÍ INYECTAMOS NUESTRO COMPONENTE INTERACTIVO */}
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: 0.2, duration: 0.5 }}>
             <MiniSandbox />
           </motion.div>
         </div>
@@ -245,9 +252,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6">
           <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold mb-6">El Motor (Features Core)</h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-              Explotamos las capacidades de un BPM Enterprise, presentándolas como superpoderes.
-            </p>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">Explotamos las capacidades de un BPM Enterprise, presentándolas como superpoderes.</p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[300px]">
@@ -292,9 +297,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 relative z-10 flex flex-col items-center text-center">
           <ShieldCheck className="w-20 h-20 text-blue-500 mb-6 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
           <h2 className="text-3xl md:text-5xl font-bold mb-6">Seguridad Nivel Enterprise</h2>
-          <p className="text-gray-400 text-lg max-w-2xl mb-16">
-            Un sistema que maneja datos corporativos debe inspirar confianza total.
-          </p>
+          <p className="text-gray-400 text-lg max-w-2xl mb-16">Un sistema que maneja datos corporativos debe inspirar confianza total.</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
             <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-left">
               <Lock className="w-8 h-8 text-blue-400 mb-4" />
@@ -318,24 +321,14 @@ export default function LandingPage() {
       {/* FOOTER & CTA FINAL */}
       <footer className="border-t border-white/10 bg-[#06090F] pt-20 pb-10 text-center">
         <h2 className="text-3xl md:text-4xl font-bold mb-8">¿Listo para transformar tu empresa?</h2>
-        <button 
-          onClick={() => navigate('/login')}
-          className="px-8 py-4 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all shadow-[0_0_30px_rgba(37,99,235,0.4)] mb-20"
-        >
+        <button onClick={() => navigate('/login')} className="px-8 py-4 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all shadow-[0_0_30px_rgba(37,99,235,0.4)] mb-20">
           Comenzar Ahora
         </button>
-        
-        {/* Enlaces Legales */}
         <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-gray-500 text-sm mb-6">
-          <button onClick={() => navigate('/privacidad')} className="hover:text-gray-300 transition-colors">
-            Políticas de Privacidad
-          </button>
+          <button onClick={() => navigate('/privacidad')} className="hover:text-gray-300 transition-colors">Políticas de Privacidad</button>
           <span className="hidden md:block">•</span>
-          <button onClick={() => navigate('/terminos')} className="hover:text-gray-300 transition-colors">
-            Términos y Condiciones
-          </button>
+          <button onClick={() => navigate('/terminos')} className="hover:text-gray-300 transition-colors">Términos y Condiciones</button>
         </div>
-
         <div className="text-gray-600 text-sm">
           © 2026 AegisFlow BPM. Todos los derechos reservados.
         </div>
