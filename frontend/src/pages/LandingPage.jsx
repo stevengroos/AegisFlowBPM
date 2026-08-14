@@ -7,7 +7,8 @@ import {
   Mail, FileSpreadsheet, MessageSquare, CheckCircle2,
   Terminal, Lock, UserCog, Zap, Calculator,
   PenTool, Rocket, BarChart3,
-  ShoppingCart, Landmark, Truck, Headset // 🔥 NUEVOS ÍCONOS PARA INDUSTRIAS
+  ShoppingCart, Landmark, Truck, Headset,
+  ChevronDown // 🔥 NUEVO ÍCONO PARA EL FAQ
 } from 'lucide-react';
 
 import MiniSandbox from '../components/MiniSandbox';
@@ -45,7 +46,38 @@ const SpotlightCard = ({ children, className = "" }) => {
   );
 };
 
-// 🔥 NUEVO: DATOS PARA LA SECCIÓN DE INDUSTRIAS 🔥
+// 🔥 NUEVO: COMPONENTE DE ACORDEÓN PARA PREGUNTAS FRECUENTES 🔥
+const FAQItem = ({ question, answer }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="border-b border-white/10 py-4">
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        className="flex w-full justify-between items-center text-left focus:outline-none group"
+      >
+        <span className="text-lg font-medium text-gray-200 group-hover:text-blue-400 transition-colors">
+          {question}
+        </span>
+        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180 text-blue-400' : ''}`} />
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }} 
+            animate={{ height: 'auto', opacity: 1 }} 
+            exit={{ height: 0, opacity: 0 }} 
+            className="overflow-hidden"
+          >
+            <p className="pt-4 text-gray-400 leading-relaxed pb-2">
+              {answer}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const industries = [
   {
     id: 'retail',
@@ -81,9 +113,29 @@ const industries = [
   }
 ];
 
+// 🔥 NUEVO: DATOS PARA FAQ 🔥
+const faqs = [
+  {
+    question: '¿Necesito saber programar para usar AegisFlow?',
+    answer: 'No. El 90% de AegisFlow se controla mediante interfaces visuales de arrastrar y soltar (Drag & Drop). Sin embargo, si tienes un equipo técnico, nuestro Sandbox de Python les permite inyectar código puro para integraciones o matemáticas hipercomplejas.'
+  },
+  {
+    question: '¿Puedo integrar AegisFlow con mi ERP o base de datos actual?',
+    answer: 'Absolutamente. AegisFlow cuenta con Webhooks nativos y una API RESTful que permite que tus sistemas actuales hablen con nuestros flujos de trabajo en tiempo real, tanto para enviar como para recibir datos.'
+  },
+  {
+    question: '¿Mis datos corporativos están seguros?',
+    answer: 'La seguridad es nuestra prioridad. Cumplimos con estándares ISO 27001, forzamos Autenticación Multifactor (MFA), y operamos con Seguridad a Nivel de Campo (FLS), garantizando que cada usuario vea solo lo que su rol le permite.'
+  },
+  {
+    question: '¿Cuánto tiempo tarda la implementación?',
+    answer: 'Mientras que un desarrollo tradicional o la parametrización de un ERP legacy puede tomar de 6 a 12 meses, nuestros clientes despliegan sus primeros flujos operativos y formularios dinámicos en cuestión de días.'
+  }
+];
+
 export default function LandingPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState(0); // 🔥 ESTADO PARA LAS PESTAÑAS DE INDUSTRIA 🔥
+  const [activeTab, setActiveTab] = useState(0); 
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white selection:bg-blue-500/30 font-sans overflow-x-hidden">
@@ -101,7 +153,7 @@ export default function LandingPage() {
             <a href="#soluciones" className="hover:text-white transition-colors">Soluciones</a>
             <a href="#metodologia" className="hover:text-white transition-colors">Cómo Funciona</a>
             <a href="#industrias" className="hover:text-white transition-colors">Industrias</a>
-            <a href="#plataforma" className="hover:text-white transition-colors">Plataforma</a>
+            <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
             <button 
               onClick={() => navigate('/login')}
               className="px-6 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-2"
@@ -210,7 +262,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 🔥 NUEVO: SECCIÓN 2.7 - SOLUCIONES POR INDUSTRIA (TABS) 🔥 */}
+      {/* SECCIÓN 2.7: SOLUCIONES POR INDUSTRIA (TABS) */}
       <section id="industrias" className="py-24 relative bg-[#0B0F19]">
         <div className="max-w-6xl mx-auto px-6 relative z-10">
           <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
@@ -220,7 +272,6 @@ export default function LandingPage() {
             </p>
           </motion.div>
 
-          {/* Menú de Pestañas */}
           <div className="flex flex-wrap justify-center gap-4 mb-12">
             {industries.map((ind, index) => {
               const Icon = ind.icon;
@@ -242,7 +293,6 @@ export default function LandingPage() {
             })}
           </div>
 
-          {/* Contenido Animado de la Pestaña Activa */}
           <div className="relative min-h-[300px]">
             <AnimatePresence mode="wait">
               <motion.div
@@ -272,10 +322,8 @@ export default function LandingPage() {
                     </ul>
                   </div>
                   
-                  {/* Ilustración abstracta de la UI */}
                   <div className="bg-[#06090F] p-6 rounded-2xl border border-gray-800 shadow-2xl relative overflow-hidden h-64">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-600 to-transparent opacity-30"></div>
-                    {/* Mockup de elementos del BPM */}
                     <div className="flex flex-col gap-4">
                       <div className="w-full h-8 bg-gray-800/50 rounded-md flex items-center px-4">
                         <div className="w-24 h-2 bg-gray-600 rounded-full"></div>
@@ -290,7 +338,6 @@ export default function LandingPage() {
                         <div className="w-24 h-8 bg-gray-800/50 rounded-md"></div>
                       </div>
                     </div>
-                    {/* Brillo dinámico basado en el color */}
                     <div className={`absolute -bottom-20 -right-20 w-64 h-64 bg-${industries[activeTab].color}-500/10 rounded-full blur-3xl pointer-events-none`}></div>
                   </div>
                 </div>
@@ -300,7 +347,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* SECCIÓN 3: CONSTRUYE TU PROPIO ERP (Mantenemos Spotlight Cards) */}
+      {/* SECCIÓN 3: CONSTRUYE TU PROPIO ERP */}
       <section id="plataforma" className="py-24 relative border-t border-white/5">
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
         <div className="max-w-7xl mx-auto px-6 relative z-10">
@@ -420,6 +467,42 @@ export default function LandingPage() {
               <h4 className="text-lg font-bold mb-2">SSO & MFA Obligatorio</h4>
               <p className="text-gray-400 text-sm">Integraciones de inicio de sesión único con Autenticación Multifactor para blindar identidades.</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 🔥 NUEVO: SECCIÓN DE MÉTRICAS (TRUST SIGNALS) 🔥 */}
+      <section className="py-16 border-t border-white/5 bg-[#06090F]">
+        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 text-center divide-y md:divide-y-0 md:divide-x divide-white/10">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="p-6">
+            <h3 className="text-5xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-blue-600 mb-4">80%</h3>
+            <p className="text-white font-bold text-xl mb-2">Menos trabajo manual</p>
+            <p className="text-gray-500 text-sm">Al automatizar cálculos, asignaciones y envío de correos, tu equipo se enfoca en vender.</p>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="p-6">
+            <h3 className="text-5xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 to-emerald-600 mb-4">10x</h3>
+            <p className="text-white font-bold text-xl mb-2">Más rápido de implementar</p>
+            <p className="text-gray-500 text-sm">Despliega módulos y reglas de negocio en días. Olvídate de los proyectos de software interminables.</p>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="p-6">
+            <h3 className="text-5xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-purple-400 to-purple-600 mb-4">99.9%</h3>
+            <p className="text-white font-bold text-xl mb-2">Uptime Garantizado</p>
+            <p className="text-gray-500 text-sm">Infraestructura resiliente construida para escalar. Desde 1 hasta 100,000 registros sin fricción.</p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* 🔥 NUEVO: SECCIÓN FAQ (PREGUNTAS FRECUENTES) 🔥 */}
+      <section id="faq" className="py-24 relative bg-[#0B0F19]">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-5xl font-bold mb-6">Preguntas Frecuentes</h2>
+            <p className="text-gray-400 text-lg">Todo lo que necesitas saber sobre el motor operativo de AegisFlow.</p>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
+            {faqs.map((faq, index) => (
+              <FAQItem key={index} question={faq.question} answer={faq.answer} />
+            ))}
           </div>
         </div>
       </section>
