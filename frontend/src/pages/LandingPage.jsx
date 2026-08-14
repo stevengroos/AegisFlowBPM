@@ -324,6 +324,18 @@ export default function LandingPage() {
         >
           Comenzar Ahora
         </button>
+        
+        {/* Enlaces Legales */}
+        <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-gray-500 text-sm mb-6">
+          <button onClick={() => navigate('/privacidad')} className="hover:text-gray-300 transition-colors">
+            Políticas de Privacidad
+          </button>
+          <span className="hidden md:block">•</span>
+          <button onClick={() => navigate('/terminos')} className="hover:text-gray-300 transition-colors">
+            Términos y Condiciones
+          </button>
+        </div>
+
         <div className="text-gray-600 text-sm">
           © 2026 AegisFlow BPM. Todos los derechos reservados.
         </div>
