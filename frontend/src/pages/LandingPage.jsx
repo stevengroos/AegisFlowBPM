@@ -221,13 +221,14 @@ export default function LandingPage() {
         </div>
         
         {/* 🔥 FIX: Contenedor estático para arreglar el LCP de PageSpeed 🔥 */}
-        <div className="max-w-4xl relative z-10">
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
-            No adaptes tu empresa al software. <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-              Adapta el software a tu empresa.
-            </span>
-          </h1>
+        {/* 🔥 FIX: content-visibility fuerza al navegador a pintar esto inmediatamente 🔥 */}
+        <div className="max-w-4xl relative z-10" style={{ contentVisibility: 'auto', containIntrinsicSize: '500px' }}>
+            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
+                No adaptes tu empresa al software. <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                Adapta el software a tu empresa.
+                </span>
+            </h1>
           <p className="text-lg md:text-xl text-gray-400 mb-12 max-w-2xl mx-auto leading-relaxed">
             El motor BPM que te permite modelar, automatizar y escalar cualquier proceso de negocio en tiempo récord. Crea tu propio ecosistema digital.
           </p>
