@@ -593,7 +593,7 @@ export default function LandingPage() {
                     <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
                     <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
                     <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
-                    <div className="mx-auto text-xs text-gray-500 font-sans tracking-wide">sandbox.py</div>
+                    <div className="mx-auto text-xs text-gray-400 font-sans tracking-wide">sandbox.py</div>
                   </div>
                   
                   <div className="p-6 text-gray-300 relative z-10 overflow-x-auto leading-relaxed">
