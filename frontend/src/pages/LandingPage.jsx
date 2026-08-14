@@ -8,7 +8,7 @@ import {
   Terminal, Lock, UserCog, Zap, Calculator,
   PenTool, Rocket, BarChart3,
   ShoppingCart, Landmark, Truck, Headset,
-  ChevronDown // 🔥 NUEVO ÍCONO PARA EL FAQ
+  ChevronDown, Fingerprint // 🔥 NUEVO ÍCONO PARA EL FAQ
 } from 'lucide-react';
 
 import MiniSandbox from '../components/MiniSandbox';
@@ -505,27 +505,98 @@ export default function LandingPage() {
       </section>
 
       {/* SECCIÓN 5: SEGURIDAD ENTERPRISE */}
-      <section id="seguridad" className="py-24 relative overflow-hidden">
+      <section id="seguridad" className="py-24 relative overflow-hidden bg-[#0B0F19]">
+        
+        {/* Fondo estilo Radar / Cuadrícula de Seguridad */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-30"></div>
+
         <div className="max-w-7xl mx-auto px-6 relative z-10 flex flex-col items-center text-center">
-          <ShieldCheck className="w-20 h-20 text-blue-500 mb-6 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+          
+          {/* Escudo Central con Animación de Pulso Activo */}
+          <div className="relative mb-8 mt-4">
+            <div className="absolute inset-0 bg-blue-500 rounded-full blur-[40px] opacity-40 animate-pulse"></div>
+            <div className="relative bg-[#0B0F19] p-4 rounded-3xl border border-blue-500/30">
+              <ShieldCheck className="w-16 h-16 text-blue-400 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+            </div>
+          </div>
+
           <h2 className="text-3xl md:text-5xl font-bold mb-6">Seguridad Nivel Enterprise</h2>
-          <p className="text-gray-400 text-lg max-w-2xl mb-16">Un sistema que maneja datos corporativos debe inspirar confianza total.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
-            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-left">
-              <Lock className="w-8 h-8 text-blue-400 mb-4" />
-              <h4 className="text-lg font-bold mb-2">Auditoría Global Inmutable</h4>
-              <p className="text-gray-400 text-sm">Cumplimiento de estándares ISO 27001 con visores JSON y trazabilidad absoluta.</p>
-            </div>
-            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-left">
-              <UserCog className="w-8 h-8 text-purple-400 mb-4" />
-              <h4 className="text-lg font-bold mb-2">Control Jerárquico (RBAC & FLS)</h4>
-              <p className="text-gray-400 text-sm">Seguridad estricta a nivel de campo (Field-Level Security) y control de acceso basado en roles.</p>
-            </div>
-            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-left">
-              <Zap className="w-8 h-8 text-emerald-400 mb-4" />
-              <h4 className="text-lg font-bold mb-2">SSO & MFA Obligatorio</h4>
-              <p className="text-gray-400 text-sm">Integraciones de inicio de sesión único con Autenticación Multifactor para blindar identidades.</p>
-            </div>
+          <p className="text-gray-400 text-lg max-w-2xl mb-16">
+            Construido bajo arquitectura Zero Trust. Un sistema que maneja los datos operativos de tu empresa debe inspirar confianza absoluta.
+          </p>
+
+          {/* Grid de 3 Tarjetas Avanzadas */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full auto-rows-fr">
+            
+            {/* TARJETA 1: AUDITORÍA (JSON LOG) */}
+            <SpotlightCard className="text-left w-full">
+              <div className="p-8 flex flex-col h-full">
+                <Lock className="w-10 h-10 text-blue-400 mb-4" />
+                <h4 className="text-xl font-bold mb-2">Auditoría Inmutable</h4>
+                <p className="text-gray-400 text-sm mb-8">Cumplimiento ISO 27001 con registros forenses. Compara el estado de cada variable modificada.</p>
+                
+                {/* Mockup de Código JSON Diferencial */}
+                <div className="mt-auto bg-[#0A0D12] rounded-xl p-4 font-mono text-xs border border-white/5 relative overflow-hidden shadow-inner">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-blue-500/50"></div>
+                  <div className="text-red-400 line-through opacity-70 mb-1">- "estado": "borrador"</div>
+                  <div className="text-emerald-400 mb-3">+ "estado": "aprobado"</div>
+                  <div className="flex justify-between items-center border-t border-white/5 pt-2 mt-2">
+                    <span className="text-blue-300">"usr": "admin"</span>
+                    <span className="text-gray-600 text-[10px]">14-Aug 11:08Z</span>
+                  </div>
+                </div>
+              </div>
+            </SpotlightCard>
+
+            {/* TARJETA 2: CONTROL DE ACCESO (RBAC) */}
+            <SpotlightCard className="text-left w-full">
+              <div className="p-8 flex flex-col h-full">
+                <UserCog className="w-10 h-10 text-purple-400 mb-4" />
+                <h4 className="text-xl font-bold mb-2">Control Jerárquico</h4>
+                <p className="text-gray-400 text-sm mb-8">Seguridad estricta a nivel de campo (Field-Level Security) y control de acceso basado en roles (RBAC).</p>
+                
+                {/* Mockup de Filas Bloqueadas */}
+                <div className="mt-auto flex flex-col gap-3">
+                  <div className="h-10 bg-purple-500/10 border border-purple-500/30 rounded-lg flex items-center px-4 gap-3 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
+                    <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                    <div className="h-2 w-1/2 bg-purple-400/50 rounded-full"></div>
+                  </div>
+                  <div className="h-10 bg-white/5 border border-white/10 rounded-lg flex items-center px-4 gap-3 opacity-50 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                    <Lock className="w-4 h-4 text-gray-500" />
+                    <div className="h-2 w-2/3 bg-gray-600 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+            </SpotlightCard>
+
+            {/* TARJETA 3: SSO & MFA (BIOMETRICS) */}
+            <SpotlightCard className="text-left w-full">
+              <div className="p-8 flex flex-col h-full">
+                <Zap className="w-10 h-10 text-emerald-400 mb-4" />
+                <h4 className="text-xl font-bold mb-2">SSO & MFA Nativo</h4>
+                <p className="text-gray-400 text-sm mb-8">Integraciones de inicio de sesión único con Autenticación Multifactor obligatoria para blindar identidades.</p>
+                
+                {/* Mockup de Autenticación */}
+                <div className="mt-auto bg-[#0A0D12] rounded-xl p-4 border border-white/5 flex items-center justify-between">
+                  <div className="relative flex items-center justify-center w-12 h-12">
+                    <div className="absolute inset-0 border-2 border-emerald-500/30 rounded-full animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
+                    <div className="relative z-10 w-10 h-10 bg-emerald-500/20 border border-emerald-500/50 rounded-full flex items-center justify-center backdrop-blur-sm">
+                      <Fingerprint className="w-5 h-5 text-emerald-400" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex gap-1.5">
+                      {[1,2,3,4,5,6].map(i => (
+                        <div key={i} className={`w-2 h-2 rounded-full ${i > 4 ? 'bg-gray-700' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`}></div>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-emerald-400/80 font-mono tracking-widest">VERIFYING...</div>
+                  </div>
+                </div>
+              </div>
+            </SpotlightCard>
+
           </div>
         </div>
       </section>
