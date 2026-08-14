@@ -171,7 +171,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 transition-colors duration-300 relative p-4 font-sans">
+    <main className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 transition-colors duration-300 relative p-4 font-sans">
       <div className="absolute top-6 right-6">
         <DarkModeToggle />
       </div>
@@ -229,7 +229,8 @@ const Login = () => {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={status.loading || setupLoading}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors focus:outline-none disabled:opacity-50"
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors focus:outline-none disabled:opacity-50"
                   >
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
@@ -357,7 +358,7 @@ const Login = () => {
         )}
 
       </div>
-    </div>
+    </main>
   );
 };
 
