@@ -212,7 +212,9 @@ export default function LandingPage() {
           <motion.circle animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 3 }} className="absolute top-1/4 left-1/4 w-4 h-4 bg-blue-500 rounded-full blur-sm" />
           <motion.circle animate={{ scale: [1, 1.5, 1] }} transition={{ repeat: Infinity, duration: 4, delay: 1 }} className="absolute bottom-1/3 right-1/4 w-6 h-6 bg-purple-500 rounded-full blur-sm" />
         </div>
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: "easeOut" }} className="max-w-4xl relative z-10">
+        
+        {/* 🔥 FIX: Contenedor estático para arreglar el LCP de PageSpeed 🔥 */}
+        <div className="max-w-4xl relative z-10">
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
             No adaptes tu empresa al software. <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
@@ -227,7 +229,7 @@ export default function LandingPage() {
               Agendar una Demo <ArrowRight className="w-5 h-5" />
             </button>
           </div>
-        </motion.div>
+        </div>
       </main>
 
       {/* SECCIÓN 2: DE CAOS A ORDEN */}
@@ -392,7 +394,8 @@ export default function LandingPage() {
 
       {/* SECCIÓN 3: CONSTRUYE TU PROPIO ERP */}
       <section id="plataforma" className="py-24 relative border-t border-white/5">
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
+        {/* 🔥 FIX: URL LOCAL DEL RUIDO 🔥 */}
+        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
         <div className="max-w-7xl mx-auto px-6 relative z-10">
             <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
                 <h2 className="text-3xl md:text-5xl font-bold mb-6">Módulos sin límites</h2>
@@ -651,7 +654,8 @@ export default function LandingPage() {
                     <div className="h-2 w-1/2 bg-purple-400/50 rounded-full"></div>
                   </div>
                   <div className="h-10 bg-white/5 border border-white/10 rounded-lg flex items-center px-4 gap-3 opacity-50 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                    {/* 🔥 FIX: URL LOCAL DEL RUIDO 🔥 */}
+                    <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 mix-blend-overlay"></div>
                     <Lock className="w-4 h-4 text-gray-500" />
                     <div className="h-2 w-2/3 bg-gray-600 rounded-full"></div>
                   </div>
