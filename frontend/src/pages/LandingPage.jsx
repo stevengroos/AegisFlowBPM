@@ -351,12 +351,12 @@ export default function LandingPage() {
       <section id="plataforma" className="py-24 relative border-t border-white/5">
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
         <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold mb-6">Módulos sin límites</h2>
-            <p className="text-gray-400 text-lg max-w-2xl">
-              Crea un multiverso de módulos que hablen entre sí. Lo que antes te tomaba meses de desarrollo, ahora toma horas.
-            </p>
-          </motion.div>
+            <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+                <h2 className="text-3xl md:text-5xl font-bold mb-6">Módulos sin límites</h2>
+                <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+                    Crea un multiverso de módulos que hablen entre sí. Lo que antes te tomaba meses de desarrollo, ahora toma horas.
+                </p>
+            </motion.div>
 
           {/* Línea Láser conectora de fondo */}
           <div className="absolute top-[50%] left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent hidden lg:block -z-10"></div>
