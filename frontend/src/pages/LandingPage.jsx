@@ -21,8 +21,13 @@ const SpotlightCard = ({ children, className = "" }) => {
 
   const handleMouseMove = (e) => {
     if (!divRef.current) return;
-    const rect = divRef.current.getBoundingClientRect();
-    setPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    
+    // 🔥 FIX DE RENDIMIENTO: Usamos requestAnimationFrame para evitar la "Redistribución forzada"
+    requestAnimationFrame(() => {
+      if (!divRef.current) return;
+      const rect = divRef.current.getBoundingClientRect();
+      setPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    });
   };
 
   return (
@@ -634,11 +639,11 @@ export default function LandingPage() {
                 
                 <div className="mt-auto bg-[#0A0D12] rounded-xl p-4 font-mono text-xs border border-white/5 relative overflow-hidden shadow-inner">
                   <div className="absolute top-0 left-0 w-1 h-full bg-blue-500/50"></div>
-                  <div className="text-red-400 line-through opacity-70 mb-1">- "estado": "borrador"</div>
+                  <div className="text-red-400 line-through mb-1">- "estado": "borrador"</div>
                   <div className="text-emerald-400 mb-3">+ "estado": "aprobado"</div>
                   <div className="flex justify-between items-center border-t border-white/5 pt-2 mt-2">
                     <span className="text-blue-300">"usr": "admin"</span>
-                    <span className="text-gray-500 text-[10px]">14-Aug 11:08Z</span>
+                    <span className="text-gray-400 text-[10px]">14-Aug 11:08Z</span>
                   </div>
                 </div>
               </div>
@@ -741,7 +746,7 @@ export default function LandingPage() {
           <span className="hidden md:block">•</span>
           <a href="/terminos" className="hover:text-gray-300 transition-colors">Términos y Condiciones</a>
         </div>
-        <div className="text-gray-500 text-sm">
+        <div className="text-gray-400 text-sm">
             © 2026 AegisFlow BPM. Todos los derechos reservados.
         </div>
       </footer>
