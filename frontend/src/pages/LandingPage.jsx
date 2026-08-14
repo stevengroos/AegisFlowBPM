@@ -220,9 +220,7 @@ export default function LandingPage() {
           <motion.circle animate={{ scale: [1, 1.5, 1] }} transition={{ repeat: Infinity, duration: 4, delay: 1 }} className="absolute bottom-1/3 right-1/4 w-6 h-6 bg-purple-500 rounded-full blur-sm" />
         </div>
         
-        {/* 🔥 FIX: Contenedor estático para arreglar el LCP de PageSpeed 🔥 */}
-        {/* 🔥 FIX: content-visibility fuerza al navegador a pintar esto inmediatamente 🔥 */}
-        <div className="max-w-4xl relative z-10" style={{ contentVisibility: 'auto', containIntrinsicSize: '500px' }}>
+       <div className="max-w-4xl relative z-10">
             <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
                 No adaptes tu empresa al software. <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
