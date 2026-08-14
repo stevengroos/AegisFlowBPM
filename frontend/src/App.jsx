@@ -17,6 +17,8 @@ import { SupportChatProvider } from './context/SupportChatContext';
 
 // 🔥 NUEVA LANDING PAGE (WEB) 🔥
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const CookieBanner = lazy(() => import('./components/CookieBanner')); // NUEVO
+const LegalPage = lazy(() => import('./pages/LegalPage')); // NUEVO
 
 const StoreHome = lazy(() => import('./pages/StoreHome'));
 const StoreProductDetail = lazy(() => import('./pages/StoreProductDetail'));
@@ -54,11 +56,15 @@ function App() {
           <SupportChatProvider>
             <Suspense fallback={<FullScreenLoader />}>
               <Routes>
-                
+                {/* 🔥 EL BANNER FLOTARÁ EN TODA LA APLICACIÓN 🔥 */}
+                <CookieBanner />
                 {/* RUTAS PÚBLICAS Y REDIRECCIONES */}
                 {/* 🔥 FIX: Ahora la raíz apunta a nuestra nueva Landing Page en lugar de redirigir al Dashboard 🔥 */}
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<Login />} />
+                {/* 🔥 NUEVAS RUTAS LEGALES 🔥 */}
+                <Route path="/privacidad" element={<LegalPage title="Políticas de Privacidad" lastUpdated="14 de Agosto, 2026" />} />
+                <Route path="/terminos" element={<LegalPage title="Términos y Condiciones" lastUpdated="14 de Agosto, 2026" />} />
                 
                 {/* 🔥 FASE 6: RUTA PARA ATRAPAR EL TOKEN DE SSO 🔥 */}
                 <Route path="/sso-success" element={<SsoSuccess />} />
