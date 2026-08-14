@@ -1,19 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Esto separa a React en un archivo ligero
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          // Esto separa las animaciones pesadas para no bloquear la carga
-          framer: ['framer-motion'],
-          // Esto encapsula los íconos
-          icons: ['lucide-react']
+        // 🔥 FIX: Transformado de Objeto a Función para compatibilidad con Vite 8+
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            // Empaquetamos las animaciones
+            if (id.includes('framer-motion')) {
+              return 'framer';
+            }
+            // Empaquetamos los íconos
+            if (id.includes('lucide-react')) {
+              return 'icons';
+            }
+            // Empaquetamos el núcleo de React
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor';
+            }
+          }
         }
       }
     }
