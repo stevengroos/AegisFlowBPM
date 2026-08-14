@@ -410,37 +410,96 @@ export default function LandingPage() {
             <h2 className="text-3xl md:text-5xl font-bold mb-6">El Motor (Features Core)</h2>
             <p className="text-gray-400 text-lg max-w-2xl mx-auto">Explotamos las capacidades de un BPM Enterprise, presentándolas como superpoderes.</p>
           </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[300px]">
-            <SpotlightCard className="md:col-span-2 p-8">
-              <Workflow className="w-10 h-10 text-blue-400 mb-4" />
-              <h3 className="text-2xl font-bold mb-2">Blueprints (Drag & Drop)</h3>
-              <p className="text-gray-400 max-w-md">Diseña procesos sin escribir código. Mapea estados y transiciones en un lienzo interactivo basado en BPMN.</p>
-            </SpotlightCard>
-            <SpotlightCard className="p-8">
-              <Database className="w-10 h-10 text-emerald-400 mb-4" />
-              <h3 className="text-xl font-bold mb-2">Formularios Dinámicos</h3>
-              <p className="text-gray-400 text-sm">Interfaz controlada por el servidor (Server-Driven UI). Modifica un campo y actualiza todo el sistema en tiempo real.</p>
-            </SpotlightCard>
-            <SpotlightCard className="md:col-span-3 p-0 flex flex-col md:flex-row">
-              <div className="p-8 md:w-1/3 border-r border-white/10">
-                <Terminal className="w-10 h-10 text-orange-400 mb-4" />
-                <h3 className="text-2xl font-bold mb-2">Automatizaciones (Low-Code)</h3>
-                <p className="text-gray-400">Reglas de negocio sin límites. Usa código Python en nuestro Sandbox interactivo para operaciones complejas, o clics para tareas simples.</p>
-              </div>
-              <div className="md:w-2/3 bg-[#0A0D12] p-6 font-mono text-sm text-green-400 relative">
-                <div className="absolute top-4 right-4 flex gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[340px]">
+            
+            {/* 🔥 TARJETA 1: BLUEPRINTS (CON GRÁFICO ABSTRACTO) 🔥 */}
+            <SpotlightCard className="md:col-span-2 p-0">
+              <div className="p-8 relative h-full flex flex-col justify-start overflow-hidden">
+                <div className="relative z-10 md:w-2/3">
+                  <Workflow className="w-10 h-10 text-blue-400 mb-4" />
+                  <h3 className="text-2xl font-bold mb-2 text-white">Blueprints (Drag & Drop)</h3>
+                  <p className="text-gray-400">Diseña procesos sin escribir código. Mapea estados y transiciones en un lienzo interactivo basado en BPMN.</p>
                 </div>
-                <div className="mt-4 opacity-80">
-                  <p><span className="text-purple-400">def</span> <span className="text-blue-400">process_rules</span>(data):</p>
-                  <p className="ml-4 text-gray-500"># Motor Sandbox AegisFlow</p>
-                  <p className="ml-4">status = evaluate_sla(data)</p>
-                  <p className="ml-4 text-blue-300">return <span className="text-white">{"{ 'status': 200 }"}</span></p>
+                {/* Ilustración de fondo: Nodos y Cuadrícula */}
+                <div className="absolute right-0 bottom-0 w-full md:w-2/3 h-full pointer-events-none">
+                  {/* Cuadrícula de puntos */}
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+                  {/* Líneas conectadas animadas */}
+                  <svg className="absolute bottom-4 right-4 w-[250px] h-[200px]" viewBox="0 0 200 150">
+                    <path d="M 30,120 C 80,120 100,50 160,40" fill="none" stroke="#3B82F6" strokeWidth="3" strokeDasharray="6 6" className="animate-[dash_3s_linear_infinite]" style={{ strokeDashoffset: 100 }} />
+                    <circle cx="30" cy="120" r="8" fill="#0B0F19" stroke="#3B82F6" strokeWidth="3" />
+                    <circle cx="160" cy="40" r="8" fill="#0B0F19" stroke="#8B5CF6" strokeWidth="3" />
+                    {/* Falsos tags de los nodos */}
+                    <rect x="15" y="135" width="30" height="8" rx="4" fill="#3B82F6" opacity="0.3" />
+                    <rect x="145" y="55" width="30" height="8" rx="4" fill="#8B5CF6" opacity="0.3" />
+                  </svg>
+                  {/* Resplandor */}
+                  <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-blue-500/10 rounded-full blur-[60px]"></div>
                 </div>
               </div>
             </SpotlightCard>
+
+            {/* 🔥 TARJETA 2: FORMULARIOS (CON MINI UI FLOTANTE) 🔥 */}
+            <SpotlightCard className="p-0">
+              <div className="p-8 relative h-full flex flex-col justify-start overflow-hidden">
+                <div className="relative z-10">
+                  <Database className="w-10 h-10 text-emerald-400 mb-4" />
+                  <h3 className="text-xl font-bold mb-2 text-white">Formularios Dinámicos</h3>
+                  <p className="text-gray-400 text-sm">Interfaz controlada por el servidor (Server-Driven UI). Modifica un campo y actualiza todo el sistema en tiempo real.</p>
+                </div>
+                {/* Interfaz abstracta asomando en la esquina */}
+                <div className="absolute -bottom-8 -right-8 w-48 h-48 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_40px_rgba(16,185,129,0.15)] p-5 flex flex-col gap-3 transform -rotate-6 transition-transform group-hover:rotate-0">
+                  <div className="w-1/2 h-2 bg-gray-700 rounded-full"></div>
+                  <div className="w-full h-8 bg-white/5 rounded-md border border-white/10"></div>
+                  <div className="w-3/4 h-2 bg-gray-700 rounded-full mt-2"></div>
+                  {/* Falso campo de éxito */}
+                  <div className="w-full h-8 bg-emerald-500/20 rounded-md border border-emerald-500/30 flex items-center px-2 gap-2">
+                    <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                    <div className="w-1/2 h-2 bg-emerald-400/50 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+            </SpotlightCard>
+
+            {/* 🔥 TARJETA 3: LOW CODE (CON TERMINAL ARREGLADA) 🔥 */}
+            <SpotlightCard className="md:col-span-3 p-0">
+              <div className="flex flex-col md:flex-row h-full w-full">
+                {/* Texto a la izquierda */}
+                <div className="p-8 md:w-1/3 flex flex-col justify-center border-b md:border-b-0 md:border-r border-white/10 relative z-10 bg-white/5">
+                  <Terminal className="w-10 h-10 text-orange-400 mb-4" />
+                  <h3 className="text-2xl font-bold mb-2 text-white">Automatizaciones (Low-Code)</h3>
+                  <p className="text-gray-400 text-sm md:text-base">Reglas de negocio sin límites. Usa código Python en nuestro Sandbox interactivo para operaciones complejas, o clics para tareas simples.</p>
+                </div>
+                
+                {/* Ventana de Terminal a la derecha */}
+                <div className="md:w-2/3 flex-1 bg-[#0A0D12] relative overflow-hidden font-mono text-xs md:text-sm flex flex-col">
+                  {/* Barra superior estilo macOS */}
+                  <div className="bg-[#161B22] px-4 py-3 flex items-center border-b border-white/5 gap-2 shrink-0">
+                    <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
+                    <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
+                    <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
+                    <div className="mx-auto text-xs text-gray-500 font-sans tracking-wide">sandbox.py</div>
+                  </div>
+                  
+                  {/* Código con Syntax Highlighting */}
+                  <div className="p-6 text-gray-300 relative z-10 overflow-x-auto leading-relaxed">
+                    <p><span className="text-[#FF7B72]">def</span> <span className="text-[#D2A8FF]">process_rules</span>(data):</p>
+                    <p className="ml-4 text-[#8B949E] italic"># Motor Sandbox AegisFlow</p>
+                    <p className="ml-4">status <span className="text-[#FF7B72]">=</span> evaluate_sla(data)</p>
+                    <br/>
+                    <p className="ml-4"><span className="text-[#FF7B72]">if</span> status <span className="text-[#FF7B72]">==</span> <span className="text-[#A5D6FF]">'CRITICAL'</span>:</p>
+                    <p className="ml-8 text-[#79C0FF]">trigger_webhook<span className="text-gray-300">(</span><span className="text-[#A5D6FF]">'/alerts'</span><span className="text-gray-300">)</span></p>
+                    <br/>
+                    <p className="ml-4 text-[#FF7B72]">return <span className="text-white">{"{"}</span> <span className="text-[#A5D6FF]">'status'</span>: <span className="text-[#79C0FF]">200</span>, <span className="text-[#A5D6FF]">'updated'</span>: <span className="text-[#79C0FF]">True</span> <span className="text-white">{"}"}</span></p>
+                  </div>
+                  
+                  {/* Resplandor de fondo naranja tenue */}
+                  <div className="absolute bottom-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-[80px] pointer-events-none"></div>
+                </div>
+              </div>
+            </SpotlightCard>
+            
           </div>
         </div>
       </section>
