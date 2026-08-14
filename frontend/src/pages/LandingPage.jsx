@@ -1,12 +1,13 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ArrowRight, Activity, Database, Layers, 
   Workflow, Smartphone, LineChart, ShieldCheck, 
   Mail, FileSpreadsheet, MessageSquare, CheckCircle2,
   Terminal, Lock, UserCog, Zap, Calculator,
-  PenTool, Rocket, BarChart3 // 🔥 ÍCONOS NUEVOS PARA EL PASO A PASO
+  PenTool, Rocket, BarChart3,
+  ShoppingCart, Landmark, Truck, Headset // 🔥 NUEVOS ÍCONOS PARA INDUSTRIAS
 } from 'lucide-react';
 
 import MiniSandbox from '../components/MiniSandbox';
@@ -44,8 +45,45 @@ const SpotlightCard = ({ children, className = "" }) => {
   );
 };
 
+// 🔥 NUEVO: DATOS PARA LA SECCIÓN DE INDUSTRIAS 🔥
+const industries = [
+  {
+    id: 'retail',
+    icon: ShoppingCart,
+    title: 'Retail & E-commerce',
+    color: 'blue',
+    features: ['Sincronización multitienda', 'Alertas de stock mínimo automáticas', 'Catálogo B2C con precios dinámicos'],
+    desc: 'Conecta tu inventario con tus ventas. Automatiza el reabastecimiento y permite que tus clientes compren directamente en una app generada por AegisFlow.'
+  },
+  {
+    id: 'finance',
+    icon: Landmark,
+    title: 'Finanzas & Créditos',
+    color: 'emerald',
+    features: ['Cálculo de intereses moratorios', 'Flujos de aprobación por jerarquía', 'Auditoría forense de desembolsos'],
+    desc: 'Elimina el riesgo humano en la evaluación crediticia. Orquesta reglas matemáticas complejas y restringe quién aprueba cada monto con permisos de alta seguridad.'
+  },
+  {
+    id: 'logistics',
+    icon: Truck,
+    title: 'Logística & Operaciones',
+    color: 'purple',
+    features: ['Trazabilidad de estados de envío', 'Asignación automática de flotas', 'Disparos de notificaciones al cliente'],
+    desc: 'Mapea la ruta exacta de tu operación. AegisFlow cambia automáticamente el estado del caso e informa a tus clientes en tiempo real sin abrir WhatsApp.'
+  },
+  {
+    id: 'services',
+    icon: Headset,
+    title: 'Servicios & Tickets',
+    color: 'orange',
+    features: ['Enrutamiento inteligente de casos', 'Medición de SLA y tiempos de respuesta', 'Escalamientos automáticos'],
+    desc: 'Nunca más un correo perdido. Centraliza las solicitudes de tus clientes, asígnalas al agente con menos carga de trabajo y visualiza el rendimiento general.'
+  }
+];
+
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState(0); // 🔥 ESTADO PARA LAS PESTAÑAS DE INDUSTRIA 🔥
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white selection:bg-blue-500/30 font-sans overflow-x-hidden">
@@ -62,8 +100,8 @@ export default function LandingPage() {
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
             <a href="#soluciones" className="hover:text-white transition-colors">Soluciones</a>
             <a href="#metodologia" className="hover:text-white transition-colors">Cómo Funciona</a>
+            <a href="#industrias" className="hover:text-white transition-colors">Industrias</a>
             <a href="#plataforma" className="hover:text-white transition-colors">Plataforma</a>
-            <a href="#seguridad" className="hover:text-white transition-colors">Seguridad</a>
             <button 
               onClick={() => navigate('/login')}
               className="px-6 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-2"
@@ -77,14 +115,12 @@ export default function LandingPage() {
       {/* HERO SECTION */}
       <main className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] -z-10 pointer-events-none" />
-        
         <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
           <motion.div animate={{ y: [0, -20, 0], opacity: [0.3, 0.6, 0.3] }} transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }} className="absolute top-1/4 left-1/4 w-32 h-[1px] bg-gradient-to-r from-blue-500 to-transparent rotate-45" />
           <motion.div animate={{ y: [0, 20, 0], opacity: [0.2, 0.5, 0.2] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut", delay: 1 }} className="absolute bottom-1/3 right-1/4 w-48 h-[1px] bg-gradient-to-r from-transparent to-purple-500 -rotate-12" />
           <motion.circle animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 3 }} className="absolute top-1/4 left-1/4 w-4 h-4 bg-blue-500 rounded-full blur-sm" />
           <motion.circle animate={{ scale: [1, 1.5, 1] }} transition={{ repeat: Infinity, duration: 4, delay: 1 }} className="absolute bottom-1/3 right-1/4 w-6 h-6 bg-purple-500 rounded-full blur-sm" />
         </div>
-
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: "easeOut" }} className="max-w-4xl relative z-10">
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
             No adaptes tu empresa al software. <br />
@@ -112,7 +148,6 @@ export default function LandingPage() {
               Un BPM no es solo un sistema. Es el cerebro operativo de tu empresa. Transforma tareas caóticas, cuellos de botella y trabajo manual en flujos automatizados, predecibles y medibles.
             </p>
           </div>
-
           <div className="relative flex flex-col md:flex-row items-center justify-center h-64 w-full">
             <motion.div initial={{ x: -100, opacity: 0, rotate: -20 }} whileInView={{ x: 100, opacity: [1, 1, 0], rotate: 180, scale: 0.5 }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute left-1/4 top-1/4 text-red-400/50">
               <FileSpreadsheet className="w-12 h-12" />
@@ -120,11 +155,9 @@ export default function LandingPage() {
             <motion.div initial={{ x: -100, opacity: 0, y: 50 }} whileInView={{ x: 120, opacity: [1, 1, 0], y: 0, scale: 0.5 }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} className="absolute left-1/4 bottom-1/4 text-orange-400/50">
               <Mail className="w-10 h-10" />
             </motion.div>
-
             <div className="z-10 bg-[#0B0F19] p-4 rounded-full shadow-[0_0_50px_rgba(59,130,246,0.3)]">
               <img src="/aegisflow-logo.svg" alt="AegisFlow" className="w-24 h-24" />
             </div>
-
             <motion.div initial={{ x: -50, opacity: 0 }} whileInView={{ x: 100, opacity: [0, 1, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: 1 }} className="absolute right-1/3 text-emerald-400 flex gap-4">
               <CheckCircle2 className="w-8 h-8" />
               <ArrowRight className="w-8 h-8" />
@@ -134,7 +167,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 🔥 NUEVO: SECCIÓN 2.5 - EL PUENTE NARRATIVO (CÓMO FUNCIONA) 🔥 */}
+      {/* SECCIÓN 2.5: CÓMO FUNCIONA */}
       <section id="metodologia" className="py-24 relative bg-[#06090F]">
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-20">
@@ -143,61 +176,140 @@ export default function LandingPage() {
               No necesitas meses de desarrollo tradicional. AegisFlow te da las herramientas para orquestar toda tu empresa a la velocidad de tu pensamiento.
             </p>
           </motion.div>
-
           <div className="relative grid grid-cols-1 md:grid-cols-4 gap-8">
-            {/* Línea conectora de fondo (Solo visible en Desktop) */}
             <div className="hidden md:block absolute top-12 left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-emerald-500/20" />
-
-            {/* Paso 1 */}
             <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="relative flex flex-col items-center text-center group">
-              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-blue-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-blue-500 group-hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] transition-all">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-blue-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-blue-500 transition-all">
                 <PenTool className="w-10 h-10 text-blue-400" />
               </div>
               <h3 className="text-xl font-bold mb-3 text-white">1. Mapea tu proceso</h3>
               <p className="text-gray-400 text-sm">Dibuja el flujo exacto de tu negocio en nuestro lienzo visual. Mapea estados y transiciones sin código.</p>
             </motion.div>
-
-            {/* Paso 2 */}
             <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="relative flex flex-col items-center text-center group">
-              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-purple-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-purple-500 group-hover:shadow-[0_0_30px_rgba(168,85,247,0.3)] transition-all">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-purple-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-purple-500 transition-all">
                 <Zap className="w-10 h-10 text-purple-400" />
               </div>
               <h3 className="text-xl font-bold mb-3 text-white">2. Automatiza reglas</h3>
-              <p className="text-gray-400 text-sm">Añade cálculos de variables, alertas y validaciones. Deja que los robots hagan el trabajo repetitivo y matemático.</p>
+              <p className="text-gray-400 text-sm">Añade cálculos de variables, alertas y validaciones. Deja que los robots hagan el trabajo repetitivo.</p>
             </motion.div>
-
-            {/* Paso 3 */}
             <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="relative flex flex-col items-center text-center group">
-              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-emerald-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-emerald-500 group-hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-emerald-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-emerald-500 transition-all">
                 <Rocket className="w-10 h-10 text-emerald-400" />
               </div>
               <h3 className="text-xl font-bold mb-3 text-white">3. Despliega al instante</h3>
               <p className="text-gray-400 text-sm">Con un solo clic, tu proceso se convierte en formularios dinámicos listos para que tu equipo opere.</p>
             </motion.div>
-
-            {/* Paso 4 */}
             <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.4 }} className="relative flex flex-col items-center text-center group">
-              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-orange-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-orange-500 group-hover:shadow-[0_0_30px_rgba(249,115,22,0.3)] transition-all">
+              <div className="w-24 h-24 rounded-full bg-[#0B0F19] border-2 border-orange-500/30 flex items-center justify-center mb-6 z-10 group-hover:border-orange-500 transition-all">
                 <BarChart3 className="w-10 h-10 text-orange-400" />
               </div>
               <h3 className="text-xl font-bold mb-3 text-white">4. Mide y Optimiza</h3>
-              <p className="text-gray-400 text-sm">Analiza cuellos de botella en tiempo real. Visualiza los datos de tu empresa en tus propios dashboards gerenciales.</p>
+              <p className="text-gray-400 text-sm">Analiza cuellos de botella en tiempo real. Visualiza los datos en tus propios dashboards gerenciales.</p>
             </motion.div>
           </div>
         </div>
       </section>
 
-      {/* SECCIÓN 3: CONSTRUYE TU PROPIO ERP */}
-      <section id="plataforma" className="py-24 relative">
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold mb-6">Construye tu propio ERP</h2>
-            <p className="text-gray-400 text-lg max-w-2xl">
-              Demostramos que AegisFlow no es una herramienta de un solo uso, sino un creador de soluciones. Crea un multiverso de módulos.
+      {/* 🔥 NUEVO: SECCIÓN 2.7 - SOLUCIONES POR INDUSTRIA (TABS) 🔥 */}
+      <section id="industrias" className="py-24 relative bg-[#0B0F19]">
+        <div className="max-w-6xl mx-auto px-6 relative z-10">
+          <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+            <h2 className="text-3xl md:text-5xl font-bold mb-6">Construido para tu industria</h2>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+              AegisFlow es un lienzo en blanco. Descubre cómo las empresas están moldeando el motor para resolver sus mayores desafíos operativos.
             </p>
           </motion.div>
 
+          {/* Menú de Pestañas */}
+          <div className="flex flex-wrap justify-center gap-4 mb-12">
+            {industries.map((ind, index) => {
+              const Icon = ind.icon;
+              const isActive = activeTab === index;
+              return (
+                <button
+                  key={ind.id}
+                  onClick={() => setActiveTab(index)}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all duration-300 ${
+                    isActive 
+                    ? `bg-${ind.color}-500/20 text-${ind.color}-400 border border-${ind.color}-500/50 shadow-[0_0_20px_rgba(var(--${ind.color}-500),0.3)]` 
+                    : 'bg-white/5 text-gray-400 border border-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {ind.title}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Contenido Animado de la Pestaña Activa */}
+          <div className="relative min-h-[300px]">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="w-full"
+              >
+                <div className={`p-10 rounded-3xl bg-white/5 border border-${industries[activeTab].color}-500/30 backdrop-blur-xl grid grid-cols-1 md:grid-cols-2 gap-12 items-center`}>
+                  <div>
+                    <div className={`w-14 h-14 rounded-2xl bg-${industries[activeTab].color}-500/20 flex items-center justify-center mb-6 text-${industries[activeTab].color}-400`}>
+                      {React.createElement(industries[activeTab].icon, { className: "w-8 h-8" })}
+                    </div>
+                    <h3 className="text-3xl font-bold mb-4">{industries[activeTab].title}</h3>
+                    <p className="text-gray-400 text-lg leading-relaxed mb-8">
+                      {industries[activeTab].desc}
+                    </p>
+                    <ul className="space-y-4">
+                      {industries[activeTab].features.map((feat, i) => (
+                        <li key={i} className="flex items-center gap-3 text-gray-300">
+                          <CheckCircle2 className={`w-5 h-5 text-${industries[activeTab].color}-400`} />
+                          {feat}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  
+                  {/* Ilustración abstracta de la UI */}
+                  <div className="bg-[#06090F] p-6 rounded-2xl border border-gray-800 shadow-2xl relative overflow-hidden h-64">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-600 to-transparent opacity-30"></div>
+                    {/* Mockup de elementos del BPM */}
+                    <div className="flex flex-col gap-4">
+                      <div className="w-full h-8 bg-gray-800/50 rounded-md flex items-center px-4">
+                        <div className="w-24 h-2 bg-gray-600 rounded-full"></div>
+                      </div>
+                      <div className="w-full h-24 bg-gray-800/30 border border-gray-700/50 rounded-lg p-4">
+                        <div className="w-32 h-2 bg-gray-600 rounded-full mb-4"></div>
+                        <div className="w-full h-2 bg-gray-700 rounded-full mb-2"></div>
+                        <div className="w-4/5 h-2 bg-gray-700 rounded-full"></div>
+                      </div>
+                      <div className="flex gap-4">
+                        <div className={`w-24 h-8 bg-${industries[activeTab].color}-500/20 rounded-md border border-${industries[activeTab].color}-500/30`}></div>
+                        <div className="w-24 h-8 bg-gray-800/50 rounded-md"></div>
+                      </div>
+                    </div>
+                    {/* Brillo dinámico basado en el color */}
+                    <div className={`absolute -bottom-20 -right-20 w-64 h-64 bg-${industries[activeTab].color}-500/10 rounded-full blur-3xl pointer-events-none`}></div>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </section>
+
+      {/* SECCIÓN 3: CONSTRUYE TU PROPIO ERP (Mantenemos Spotlight Cards) */}
+      <section id="plataforma" className="py-24 relative border-t border-white/5">
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-16">
+            <h2 className="text-3xl md:text-5xl font-bold mb-6">Módulos sin límites</h2>
+            <p className="text-gray-400 text-lg max-w-2xl">
+              Crea un multiverso de módulos que hablen entre sí. Lo que antes te tomaba meses de desarrollo, ahora toma horas.
+            </p>
+          </motion.div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <SpotlightCard className="p-8 hover:border-blue-500/50">
               <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-6 text-blue-400 group-hover:scale-110 transition-transform">
@@ -206,7 +318,6 @@ export default function LandingPage() {
               <h3 className="text-xl font-bold mb-3">CRM & Ventas</h3>
               <p className="text-gray-400 text-sm leading-relaxed">Gestiona prospectos, automatiza el seguimiento y calcula comisiones.</p>
             </SpotlightCard>
-
             <SpotlightCard className="p-8 hover:border-emerald-500/50">
               <div className="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center mb-6 text-emerald-400 group-hover:scale-110 transition-transform">
                 <Layers className="w-6 h-6" />
@@ -214,20 +325,18 @@ export default function LandingPage() {
               <h3 className="text-xl font-bold mb-3">Gestor de Inventario</h3>
               <p className="text-gray-400 text-sm leading-relaxed">Controla stock en múltiples bodegas y automatiza alertas de reabastecimiento.</p>
             </SpotlightCard>
-
             <SpotlightCard className="p-8 hover:border-purple-500/50">
               <div className="w-12 h-12 rounded-lg bg-purple-500/20 flex items-center justify-center mb-6 text-purple-400 group-hover:scale-110 transition-transform">
                 <Smartphone className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold mb-3">Catálogo Web (B2C)</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">Expón tus productos al público en una app móvil ocultando información interna estratégica.</p>
+              <p className="text-gray-400 text-sm leading-relaxed">Expón tus productos al público en una app móvil ocultando información interna.</p>
             </SpotlightCard>
-
             <SpotlightCard className="p-8 hover:border-orange-500/50">
               <div className="w-12 h-12 rounded-lg bg-orange-500/20 flex items-center justify-center mb-6 text-orange-400 group-hover:scale-110 transition-transform">
                 <Calculator className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold mb-3">Créditos y Cobranzas</h3>
+              <h3 className="text-xl font-bold mb-3">Créditos y Cobros</h3>
               <p className="text-gray-400 text-sm leading-relaxed">Calcula saldos, programa fechas de vencimiento y audita pagos.</p>
             </SpotlightCard>
           </div>
@@ -254,20 +363,17 @@ export default function LandingPage() {
             <h2 className="text-3xl md:text-5xl font-bold mb-6">El Motor (Features Core)</h2>
             <p className="text-gray-400 text-lg max-w-2xl mx-auto">Explotamos las capacidades de un BPM Enterprise, presentándolas como superpoderes.</p>
           </motion.div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[300px]">
             <SpotlightCard className="md:col-span-2 p-8">
               <Workflow className="w-10 h-10 text-blue-400 mb-4" />
               <h3 className="text-2xl font-bold mb-2">Blueprints (Drag & Drop)</h3>
               <p className="text-gray-400 max-w-md">Diseña procesos sin escribir código. Mapea estados y transiciones en un lienzo interactivo basado en BPMN.</p>
             </SpotlightCard>
-
             <SpotlightCard className="p-8">
               <Database className="w-10 h-10 text-emerald-400 mb-4" />
               <h3 className="text-xl font-bold mb-2">Formularios Dinámicos</h3>
               <p className="text-gray-400 text-sm">Interfaz controlada por el servidor (Server-Driven UI). Modifica un campo y actualiza todo el sistema en tiempo real.</p>
             </SpotlightCard>
-
             <SpotlightCard className="md:col-span-3 p-0 flex flex-col md:flex-row">
               <div className="p-8 md:w-1/3 border-r border-white/10">
                 <Terminal className="w-10 h-10 text-orange-400 mb-4" />
