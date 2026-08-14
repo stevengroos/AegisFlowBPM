@@ -357,35 +357,106 @@ export default function LandingPage() {
               Crea un multiverso de módulos que hablen entre sí. Lo que antes te tomaba meses de desarrollo, ahora toma horas.
             </p>
           </motion.div>
+
+          {/* Línea Láser conectora de fondo */}
+          <div className="absolute top-[50%] left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent hidden lg:block -z-10"></div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <SpotlightCard className="p-8 hover:border-blue-500/50">
-              <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-6 text-blue-400 group-hover:scale-110 transition-transform">
-                <Activity className="w-6 h-6" />
+            
+            {/* 1. CRM & VENTAS */}
+            <SpotlightCard className="h-[360px] p-0 flex flex-col group">
+              <div className="p-8 relative z-10">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-6 text-blue-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">CRM & Ventas</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">Gestiona prospectos, automatiza el seguimiento y calcula comisiones.</p>
               </div>
-              <h3 className="text-xl font-bold mb-3">CRM & Ventas</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">Gestiona prospectos, automatiza el seguimiento y calcula comisiones.</p>
-            </SpotlightCard>
-            <SpotlightCard className="p-8 hover:border-emerald-500/50">
-              <div className="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center mb-6 text-emerald-400 group-hover:scale-110 transition-transform">
-                <Layers className="w-6 h-6" />
+              {/* Mockup Kanban */}
+              <div className="absolute -bottom-8 -right-4 w-56 h-36 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_30px_rgba(59,130,246,0.1)] p-4 flex gap-3 transform rotate-6 transition-transform group-hover:rotate-0">
+                 <div className="flex-1 space-y-2">
+                   <div className="w-1/2 h-2 bg-gray-700 rounded-full mb-3"></div>
+                   <div className="w-full h-10 bg-blue-500/20 border border-blue-500/30 rounded-md"></div>
+                   <div className="w-full h-10 bg-white/5 border border-white/10 rounded-md"></div>
+                 </div>
+                 <div className="flex-1 space-y-2">
+                   <div className="w-1/2 h-2 bg-gray-700 rounded-full mb-3"></div>
+                   <div className="w-full h-10 bg-white/5 border border-white/10 rounded-md"></div>
+                 </div>
               </div>
-              <h3 className="text-xl font-bold mb-3">Gestor de Inventario</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">Controla stock en múltiples bodegas y automatiza alertas de reabastecimiento.</p>
             </SpotlightCard>
-            <SpotlightCard className="p-8 hover:border-purple-500/50">
-              <div className="w-12 h-12 rounded-lg bg-purple-500/20 flex items-center justify-center mb-6 text-purple-400 group-hover:scale-110 transition-transform">
-                <Smartphone className="w-6 h-6" />
+
+            {/* 2. GESTOR DE INVENTARIO */}
+            <SpotlightCard className="h-[360px] p-0 flex flex-col group">
+              <div className="p-8 relative z-10">
+                <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center mb-6 text-emerald-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                  <Layers className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">Gestor de Inventario</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">Controla stock en múltiples bodegas y automatiza alertas de reabastecimiento.</p>
               </div>
-              <h3 className="text-xl font-bold mb-3">Catálogo Web (B2C)</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">Expón tus productos al público en una app móvil ocultando información interna.</p>
-            </SpotlightCard>
-            <SpotlightCard className="p-8 hover:border-orange-500/50">
-              <div className="w-12 h-12 rounded-lg bg-orange-500/20 flex items-center justify-center mb-6 text-orange-400 group-hover:scale-110 transition-transform">
-                <Calculator className="w-6 h-6" />
+              {/* Mockup Listado de Stock */}
+              <div className="absolute -bottom-4 -right-4 w-52 h-36 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_30px_rgba(16,185,129,0.1)] p-4 flex flex-col gap-2 transform -rotate-3 transition-transform group-hover:rotate-0">
+                <div className="flex items-center justify-between bg-white/5 p-2.5 rounded-md border border-white/5">
+                  <div className="w-16 h-2 bg-gray-600 rounded-full"></div>
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center"><div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div></div>
+                </div>
+                <div className="flex items-center justify-between bg-red-500/5 p-2.5 rounded-md border border-red-500/20">
+                  <div className="w-20 h-2 bg-gray-600 rounded-full"></div>
+                  <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center"><div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div></div>
+                </div>
+                <div className="flex items-center justify-between bg-white/5 p-2.5 rounded-md border border-white/5">
+                  <div className="w-12 h-2 bg-gray-600 rounded-full"></div>
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center"><div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div></div>
+                </div>
               </div>
-              <h3 className="text-xl font-bold mb-3">Créditos y Cobros</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">Calcula saldos, programa fechas de vencimiento y audita pagos.</p>
             </SpotlightCard>
+
+            {/* 3. CATÁLOGO WEB (B2C) */}
+            <SpotlightCard className="h-[360px] p-0 flex flex-col group">
+              <div className="p-8 relative z-10">
+                <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mb-6 text-purple-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(168,85,247,0.3)]">
+                  <Smartphone className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">Catálogo Web (B2C)</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">Expón tus productos al público en una app móvil ocultando información interna.</p>
+              </div>
+              {/* Mockup Teléfono Móvil */}
+              <div className="absolute -bottom-10 right-6 w-36 h-48 bg-[#0A0D12] rounded-t-[1.5rem] border-t-4 border-l-4 border-r-4 border-gray-800 shadow-[0_-10px_40px_rgba(168,85,247,0.15)] p-2.5 transform rotate-12 transition-transform group-hover:rotate-0">
+                 <div className="w-12 h-3 bg-gray-800 rounded-b-xl mx-auto mb-4"></div>
+                 <div className="w-full h-16 bg-purple-500/20 rounded-lg mb-3 border border-purple-500/30"></div>
+                 <div className="w-3/4 h-2 bg-gray-600 rounded-full mb-3 mx-auto"></div>
+                 <div className="w-1/2 h-2 bg-gray-700 rounded-full mx-auto mb-4"></div>
+                 <div className="w-full h-8 bg-purple-600 rounded-md"></div>
+              </div>
+            </SpotlightCard>
+
+            {/* 4. CRÉDITOS Y COBROS */}
+            <SpotlightCard className="h-[360px] p-0 flex flex-col group">
+              <div className="p-8 relative z-10">
+                <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center mb-6 text-orange-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(249,115,22,0.3)]">
+                  <Calculator className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">Créditos y Cobros</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">Calcula saldos, programa fechas de vencimiento y audita pagos.</p>
+              </div>
+              {/* Mockup Gráfico de Barras */}
+              <div className="absolute -bottom-6 -right-2 w-48 h-36 bg-[#0B0F19] rounded-tl-2xl border-t border-l border-white/10 shadow-[0_-10px_30px_rgba(249,115,22,0.1)] p-5 flex flex-col justify-end transform -rotate-6 transition-transform group-hover:rotate-0">
+                 <div className="flex items-end gap-3 h-full">
+                   <div className="w-1/4 bg-orange-500/20 border-t border-orange-500/50 rounded-t-sm h-[40%]"></div>
+                   <div className="w-1/4 bg-orange-500/40 border-t border-orange-500/50 rounded-t-sm h-[60%]"></div>
+                   <div className="w-1/4 bg-white/10 rounded-t-sm h-[30%]"></div>
+                   <div className="w-1/4 bg-orange-500/80 border-t border-orange-400 rounded-t-sm h-[90%] shadow-[0_0_15px_rgba(249,115,22,0.6)] relative">
+                     {/* Falso tooltip */}
+                     <div className="absolute -top-6 left-1/2 -translate-x-1/2 w-8 h-4 bg-white rounded flex items-center justify-center">
+                       <div className="w-4 h-1 bg-gray-800 rounded-full"></div>
+                     </div>
+                   </div>
+                 </div>
+                 <div className="w-full h-[2px] bg-gray-700 mt-2"></div>
+              </div>
+            </SpotlightCard>
+
           </div>
         </div>
       </section>
