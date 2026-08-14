@@ -117,6 +117,12 @@ export default function MiniSandbox() {
         nodeTypes={nodeTypes}
         fitView
         proOptions={{ hideAttribution: true }} // Oculta el logo de ReactFlow para que se vea premium
+        // 🔥 OPTIMIZACIONES PARA MOBILE Y RENDIMIENTO 🔥
+        preventScrolling={false} // Evita que el sandbox bloquee el scroll del celular
+        zoomOnScroll={false}     // Desactiva el zoom pesado
+        panOnDrag={false}        // Evita calcular físicas de arrastre del fondo
+        panOnScroll={false}      // Mejora la alerta de "Redistribución forzada"
+        zoomOnDoubleClick={false}
       >
         {/* Puntos de fondo elegantes */}
         <Background color="#ffffff" gap={24} size={1} opacity={0.05} />
