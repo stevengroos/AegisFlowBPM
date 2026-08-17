@@ -34,12 +34,12 @@ const CodeEditorModalGlobal = ({ isOpen, onClose, onSave, initialCode, mockDataI
     try {
       const res = await api.get(`/api/v1/cases/${loadCaseId}`);
       // Solo nos interesa el diccionario "data" interno del caso
-      setMockData(JSON.stringify(res.data.data, null, 2));
+      setMockData(JSON.stringify(res.data, null, 2));
       
       setTestResult({
         success: true,
         console_output: `✅ ¡Registro #${loadCaseId} cargado con éxito!\nPuedes ver sus datos reales en el panel superior.`,
-        modified_data: res.data.data
+        modified_data: res.data
       });
     } catch (error) {
       setTestResult({
