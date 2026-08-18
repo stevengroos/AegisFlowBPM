@@ -114,8 +114,16 @@ const SubformTable = ({ field, value, onChange, relationData, isEditing }) => {
                     <td key={cIdx} className="px-4 py-2 align-top">
                        {col.type === 'select' ? (
                           <select value={cellValue || ''} onChange={e => handleChangeCell(rIdx, col.label, e.target.value)} className={inputClass}>
-                             <option value="">...</option>
-                             {(col.options ? col.options.split(',') : []).map((o, i) => <option key={i} value={o.trim()}>{o.trim()}</option>)}
+                            <option value="">...</option>
+                            {/* 🔥 CORRECCIÓN: Validamos si es array o string antes de usar split */}
+                            {(Array.isArray(col.options) 
+                                ? col.options 
+                                : (typeof col.options === 'string' ? col.options.split(',') : [])
+                            ).map((o, i) => {
+                                // Aseguramos que solo hacemos trim() si es un texto
+                                const optValue = typeof o === 'string' ? o.trim() : String(o);
+                                return <option key={i} value={optValue}>{optValue}</option>;
+                            })}
                           </select>
                        ) : col.type === 'relation' ? (
                           <div className="min-w-[200px]">
