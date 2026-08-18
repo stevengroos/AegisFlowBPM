@@ -57,3 +57,7 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+
+repomix-output.xml
+.repomixignore
+frontend/repomix-output.xml
