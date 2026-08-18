@@ -1364,7 +1364,11 @@ def change_case_status(
                     execute_chatwoot_message(db, current_user.company_id, case.module_id, case, v)
 
                 elif t == "CUSTOM_FUNCTION" and act.function_code:
+                    # 🔥 FIX: Inyectamos el ID para que los scripts en las Transiciones no queden ciegos 🔥
+                    updated_data["id"] = case.id
+                    
                     local_env = {
+                        "record_id": case.id, # Lo exponemos como variable directa también
                         "case_data": updated_data,
                         "user_id": current_user.id,
                         "current_date": datetime.now().strftime("%Y-%m-%d"),
