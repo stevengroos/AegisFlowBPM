@@ -172,6 +172,9 @@ async def update_external_record(
     system_user_id = webhook.created_by or 0
     process_global_rules(db, case, system_user_id, "ON_UPDATE", old_data=old_data, background_tasks=background_tasks)
 
+    # 🔥 FIX: Refrescamos los datos locales para que la auditoría guarde la data limpia y el nuevo estado 🔥
+    current_data = dict(case.data) if case.data else {}
+
     # 🔥 1. REGISTRO EN LA LÍNEA DE TIEMPO DEL CASO (PRODUCTO)
     log_event(
         db=db, user_id=system_user_id, company_id=webhook.company_id,
@@ -327,6 +330,11 @@ def get_webhook_json_example(
             example_payload[key] = [sub_obj]
         else:
             example_payload[key] = f"Texto de ejemplo para {f.label}"
+
+    # =======================================================
+    # 🔥 FIX: DOCUMENTAR LA LLAVE SECRETA EN EL FRONTEND 🔥
+    # =======================================================
+    example_payload["_cambiar_estado_id"] = "OPCIONAL: Envía aquí el ID numérico del estado para mover la tarjeta."
 
     return {"example": example_payload}
 

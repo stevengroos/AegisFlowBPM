@@ -645,6 +645,33 @@ def process_global_rules(db: Session, case: models.Case, user_id: int, event_typ
                 
             ui_changed = True
 
+    # =================================================================
+    # 🔥 FIX: PUERTA TRASERA OFICIAL PARA CAMBIAR ESTADOS VÍA WEBHOOK 🔥
+    # =================================================================
+    if "_cambiar_estado_id" in updated_data:
+        try:
+            nuevo_estado = int(updated_data.pop("_cambiar_estado_id"))
+            if case.status_id != nuevo_estado:
+                old_status = case.status_id
+                
+                # Actualizamos el estado estructural en la base de datos
+                case.status_id = nuevo_estado
+                case.entered_status_at = func.now()
+                
+                # Dejamos un registro oficial en el historial del caso
+                log_event(
+                    db=db, user_id=user_id, company_id=case.company_id,
+                    case_id=case.id, action="UPDATE_STATUS_VIA_WEBHOOK",
+                    old_v={"status_id": old_status},
+                    new_v={"status_id": nuevo_estado}
+                )
+        except Exception as e:
+            print(f"Error al cambiar estado por palabra mágica: {e}")
+        
+        # Obligamos al sistema a guardar los datos (ya sin la palabra mágica)
+        data_changed = True
+    # =================================================================
+
     if data_changed:
         # 🔥 FIX: Recalculamos fórmulas del caso base si una automatización cambió sus datos 🔥
         updated_data = calculate_formulas(db, case.form_id, updated_data)
