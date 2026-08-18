@@ -500,7 +500,8 @@ def test_python_script(
 
     # 2. Preparamos el entorno aislado (Sandbox)
     local_env = {
-        "case_data": req.mock_data,
+        "record_id": req.mock_data.get("id"),
+        "case_data": req.mock_data.get("data", req.mock_data),
         "user_id": current_user.id,
         "current_date": datetime.now().strftime("%Y-%m-%d"),
         "http": MockHTTPClient()

@@ -251,8 +251,14 @@ def test_global_python_script(
             except Exception as e:
                 return {"status": 500, "error": str(e)}
 
+    # 2. Preparamos el entorno aislado (Sandbox de Automatizaciones)
     local_env = {
-        "case_data": req.mock_data,
+        # 🔥 FIX: Inyectamos explícitamente el record_id para paridad con producción 🔥
+        "record_id": req.mock_data.get("id"),
+        
+        # 🔥 FIX: Aislamos la 'data' interior del JSON para imitar el payload real 🔥
+        "case_data": req.mock_data.get("data", req.mock_data),
+        
         "user_id": current_user.id,
         "current_date": datetime.now().strftime("%Y-%m-%d"),
         "http": MockHTTPClient()
