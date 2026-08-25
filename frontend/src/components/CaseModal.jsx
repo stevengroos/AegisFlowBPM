@@ -325,9 +325,21 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
         const fieldKey = f.api_name || f.label;
         if (!fieldKey) continue;
         
-        if (f.field_type === 'checkbox') initialData[fieldKey] = false;
-        else if (f.field_type === 'subform') initialData[fieldKey] = [];
-        else initialData[fieldKey] = '';
+        if (f.field_type === 'checkbox') {
+          initialData[fieldKey] = false;
+        } else if (f.field_type === 'subform') {
+          initialData[fieldKey] = [];
+        } else if (f.field_type === 'date') {
+          // 🔥 FIX: Pre-llenar campos de fecha con el día actual (Formato YYYY-MM-DD)
+          // Usamos getFullYear/Month/Date para respetar la Zona Horaria local de la PC del usuario
+          const today = new Date();
+          const yyyy = today.getFullYear();
+          const mm = String(today.getMonth() + 1).padStart(2, '0'); // Los meses van de 0 a 11
+          const dd = String(today.getDate()).padStart(2, '0');
+          initialData[fieldKey] = `${yyyy}-${mm}-${dd}`;
+        } else {
+          initialData[fieldKey] = '';
+        }
 
         // 🔥 FIX: Analizador seguro de 'options' para descargar relaciones correctamente
         let fOpts = f.options;
