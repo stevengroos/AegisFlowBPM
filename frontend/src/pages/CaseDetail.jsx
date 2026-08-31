@@ -352,7 +352,7 @@ const CaseDetail = () => {
 
       // Limpiamos el número de espacios o signos +
       const cleanPhone = waConfig.phone.replace(/[^0-9]/g, '');
-      const mensaje = `¡Hola! Aquí tienes tu recibo de compra:\n\nVer Ticket: ${pdfUrl}\n\n¡Gracias por preferir Sol y Luna!`;
+      const mensaje = `¡Hola! Aquí tienes tu documento digital:\n\nVer Documento: ${pdfUrl}\n\n¡Gracias por preferirnos!`;
       
       window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
       setIsWaModalOpen(false);
