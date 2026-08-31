@@ -26,6 +26,8 @@ const LegalPage = lazy(() => import('./pages/LegalPage'));
 const StoreHome = lazy(() => import('./pages/StoreHome'));
 const StoreProductDetail = lazy(() => import('./pages/StoreProductDetail'));
 
+const SolYLunaLanding = lazy(() => import('./pages/SolYLunaLanding'));
+
 // 🚀 MEJORA DE RENDIMIENTO Y SEGURIDAD (Lazy Loading / Code Splitting)
 const Login = lazy(() => import('./features/auth/Login')); 
 
@@ -67,6 +69,7 @@ function App() {
                   {/* RUTAS PÚBLICAS Y REDIRECCIONES */}
                   {/* 🔥 FIX: Ahora la raíz apunta a nuestra nueva Landing Page en lugar de redirigir al Dashboard 🔥 */}
                   <Route path="/" element={<LandingPage />} />
+                  <Route path="/solyluna" element={<SolYLunaLanding />} />
                   <Route path="/login" element={<Login />} />
                   {/* 🔥 NUEVAS RUTAS LEGALES 🔥 */}
                   <Route path="/privacidad" element={<LegalPage title="Políticas de Privacidad" lastUpdated="14 de Agosto, 2026" />} />
