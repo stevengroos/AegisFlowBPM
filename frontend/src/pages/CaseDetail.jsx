@@ -316,8 +316,8 @@ const CaseDetail = () => {
     setIsWaModalOpen(true);
     setLoadingWaTemplates(true);
     try {
-      // Obtenemos las plantillas PDF del módulo actual
-      const res = await api.get(`/api/v1/templates/?module_id=${caseData.module_id}`);
+      // 🔥 FIX: Actualizamos la URL a la ruta correcta del backend de AegisFlow
+      const res = await api.get(`/api/v1/templates/module/${caseData.module_id}`);
       setWaPdfTemplates(res.data || []);
       
       // Auto-completamos el teléfono si existe en el JSON del caso
