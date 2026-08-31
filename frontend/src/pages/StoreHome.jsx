@@ -173,6 +173,21 @@ export default function StoreHome() {
   };
   const obtenerTextoPlano = (html) => html ? new DOMParser().parseFromString(html, "text/html").body.textContent || "" : "Sin descripción.";
 
+
+  // 🔥 NUEVO: Función para Paginación Inteligente (Elipsis) 🔥
+  const obtenerPaginasVisibles = () => {
+    if (totalPaginas <= 5) {
+      return Array.from({ length: totalPaginas }, (_, i) => i + 1);
+    }
+    if (paginaActual <= 3) {
+      return [1, 2, 3, 4, '...', totalPaginas];
+    }
+    if (paginaActual >= totalPaginas - 2) {
+      return [1, '...', totalPaginas - 3, totalPaginas - 2, totalPaginas - 1, totalPaginas];
+    }
+    return [1, '...', paginaActual - 1, paginaActual, paginaActual + 1, '...', totalPaginas];
+  };
+
   // --- RENDERIZADO ---
   if (error) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200">
@@ -359,16 +374,45 @@ export default function StoreHome() {
                 ))}
               </div>
 
-              {/* PAGINACIÓN */}
+              {/* PAGINACIÓN INTELIGENTE */}
               {totalPaginas > 1 && (
-                <div className="flex justify-center items-center gap-2 mt-10">
-                  <button onClick={() => { setPaginaActual(p => Math.max(p - 1, 1)); window.scrollTo({top: 0, behavior: 'smooth'}); }} disabled={paginaActual === 1} className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50"><ChevronLeft size={20}/></button>
-                  {Array.from({ length: totalPaginas }, (_, i) => (
-                    <button key={i} onClick={() => { setPaginaActual(i + 1); window.scrollTo({top: 0, behavior: 'smooth'}); }} className={`w-10 h-10 rounded-lg font-bold border transition-colors ${paginaActual === i + 1 ? 'text-white border-transparent' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`} style={paginaActual === i + 1 ? { backgroundColor: storeInfo.themeColor } : {}}>
-                      {i + 1}
-                    </button>
+                <div className="flex justify-center items-center gap-1.5 sm:gap-2 mt-12 mb-4 flex-wrap">
+                  <button 
+                    onClick={() => { setPaginaActual(p => Math.max(p - 1, 1)); window.scrollTo({top: 0, behavior: 'smooth'}); }} 
+                    disabled={paginaActual === 1} 
+                    className="p-2 sm:p-2.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 disabled:opacity-30 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <ChevronLeft size={20} className="text-gray-700 dark:text-gray-300"/>
+                  </button>
+                  
+                  {obtenerPaginasVisibles().map((pag, index) => (
+                    pag === '...' ? (
+                      <span key={`dots-${index}`} className="px-1 sm:px-2 text-gray-400 dark:text-gray-600 font-bold tracking-widest">
+                        ...
+                      </span>
+                    ) : (
+                      <button 
+                        key={pag} 
+                        onClick={() => { setPaginaActual(pag); window.scrollTo({top: 0, behavior: 'smooth'}); }} 
+                        className={`w-9 h-9 sm:w-11 sm:h-11 text-sm sm:text-base rounded-xl font-bold border transition-all duration-300 ${
+                          paginaActual === pag 
+                            ? 'text-white border-transparent shadow-lg scale-105' 
+                            : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`} 
+                        style={paginaActual === pag ? { backgroundColor: storeInfo.themeColor, boxShadow: `0 4px 14px ${storeInfo.themeColor}40` } : {}}
+                      >
+                        {pag}
+                      </button>
+                    )
                   ))}
-                  <button onClick={() => { setPaginaActual(p => Math.min(p + 1, totalPaginas)); window.scrollTo({top: 0, behavior: 'smooth'}); }} disabled={paginaActual === totalPaginas} className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50"><ChevronRight size={20}/></button>
+
+                  <button 
+                    onClick={() => { setPaginaActual(p => Math.min(p + 1, totalPaginas)); window.scrollTo({top: 0, behavior: 'smooth'}); }} 
+                    disabled={paginaActual === totalPaginas} 
+                    className="p-2 sm:p-2.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 disabled:opacity-30 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <ChevronRight size={20} className="text-gray-700 dark:text-gray-300"/>
+                  </button>
                 </div>
               )}
             </>
