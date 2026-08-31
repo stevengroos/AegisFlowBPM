@@ -37,7 +37,7 @@ export default function SolYLunaLanding() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/30">
-              <span className="text-white font-bold text-xl leading-none"></span>
+              <span className="text-white font-bold text-xl leading-none">S</span>
             </div>
             <span className="font-extrabold text-xl tracking-tight">SOL Y LUNA</span>
           </div>
@@ -199,7 +199,7 @@ export default function SolYLunaLanding() {
           </div>
           
           <div className="flex items-center gap-6 text-gray-500 dark:text-gray-400 text-sm">
-            <span className="flex items-center gap-1"><MapPin size={14}/> Luque, Paraguay</span>
+            <span className="flex items-center gap-1"><MapPin size={14}/> Asuncion, Paraguay</span>
             <a href="https://www.aegisflowbpm.com/c/10" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Ir al Catálogo</a>
           </div>
         </div>
