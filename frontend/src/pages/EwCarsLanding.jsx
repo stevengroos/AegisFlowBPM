@@ -197,7 +197,7 @@ export default function EwCarsLanding() {
 
       {/* BOTÓN FLOTANTE DE WHATSAPP */}
       <a 
-        href="https://wa.me/595983464526?text=Hola,%20vengo%20de%20la%20página%20web%20y%20quiero%20cotizar%20un%20accesorio%20para%20mi%20vehículo" 
+        href="https://wa.me/595987569674?text=Hola,%20vengo%20de%20la%20página%20web%20y%20quiero%20cotizar%20un%20accesorio%20para%20mi%20vehículo" 
         target="_blank" 
         rel="noopener noreferrer"
         className="fixed bottom-6 right-6 z-50 bg-[#25D366] hover:bg-[#20bd5a] text-white p-4 rounded-full shadow-xl hover:scale-110 transition-all duration-300 group flex items-center justify-center"
