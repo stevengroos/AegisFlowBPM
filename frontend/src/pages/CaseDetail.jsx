@@ -251,6 +251,13 @@ const CaseDetail = () => {
   const [sendingSignature, setSendingSignature] = useState(false);
   const [sigConfig, setSigConfig] = useState({ sourceType: 'template', templateId: '', file: null, signatureType: 'advanced', deliveryType: 'email', signers: [{ name: '', email: '' }] });
 
+  // --- ESTADOS PARA ENVÍO DE PDF POR WHATSAPP ---
+  const [isWaModalOpen, setIsWaModalOpen] = useState(false);
+  const [waPdfTemplates, setWaPdfTemplates] = useState([]);
+  const [loadingWaTemplates, setLoadingWaTemplates] = useState(false);
+  const [sendingWa, setSendingWa] = useState(false);
+  const [waConfig, setWaConfig] = useState({ templateId: '', phone: '' });
+
   const handleOpenSignatureModal = async () => {
     setIsSignatureModalOpen(true); setLoadingTemplates(true);
     try {
@@ -303,6 +310,57 @@ const CaseDetail = () => {
       if (sigConfig.deliveryType === 'url' && res.data.signature_url) { notify.success("¡Documento listo! Redirigiendo a la sala de firmas..."); window.open(res.data.signature_url, '_blank'); } 
       else { notify.success("¡Documento enviado a firmar por correo exitosamente!"); }
     } catch (error) { notify.error(error.response?.data?.detail || "Error al enviar a firma."); } finally { setSendingSignature(false); }
+  };
+
+  const handleOpenWaModal = async () => {
+    setIsWaModalOpen(true);
+    setLoadingWaTemplates(true);
+    try {
+      // Obtenemos las plantillas PDF del módulo actual
+      const res = await api.get(`/api/v1/templates/?module_id=${caseData.module_id}`);
+      setWaPdfTemplates(res.data || []);
+      
+      // Auto-completamos el teléfono si existe en el JSON del caso
+      const phoneFieldKey = Object.keys(caseData.data).find(k => k.toLowerCase().includes('telefono') || k.toLowerCase().includes('celular') || k.toLowerCase().includes('phone'));
+      const phoneVal = phoneFieldKey ? caseData.data[phoneFieldKey] : '';
+      setWaConfig({ templateId: '', phone: phoneVal });
+    } catch (e) {
+      notify.error("No se pudieron cargar las plantillas PDF.");
+    } finally {
+      setLoadingWaTemplates(false);
+    }
+  };
+
+  const handleSendWaLink = async (e) => {
+    e.preventDefault();
+    if (!waConfig.templateId) return notify.warning("Selecciona una plantilla PDF.");
+    if (!waConfig.phone) return notify.warning("Ingresa un número de WhatsApp.");
+    
+    setSendingWa(true);
+    try {
+      // Mandamos a generar el PDF
+      const res = await api.post(`/api/v1/templates/${waConfig.templateId}/generate/${id}`);
+      
+      // El backend de AegisFlow devuelve una URL prefirmada de Supabase/S3
+      const pdfUrl = res.data.url || res.data.public_url || res.data.download_url;
+      
+      if (!pdfUrl) {
+         notify.error("El servidor no devolvió una URL válida para el PDF.");
+         setSendingWa(false);
+         return;
+      }
+
+      // Limpiamos el número de espacios o signos +
+      const cleanPhone = waConfig.phone.replace(/[^0-9]/g, '');
+      const mensaje = `Hola! Aquí tienes el documento solicitado:\n\n📄 Ver PDF: ${pdfUrl}\n\nGracias por preferir Sol y Luna.`;
+      
+      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
+      setIsWaModalOpen(false);
+    } catch (error) {
+      notify.error("Error al generar el PDF. Revisa la plantilla.");
+    } finally {
+      setSendingWa(false);
+    }
   };
 
   useEffect(() => { 
@@ -796,6 +854,11 @@ const CaseDetail = () => {
               )}
               <ExportPdfButton moduleId={caseData.module_id} recordId={caseData.id} />
 
+              {/* NUEVO BOTÓN WHATSAPP */}
+              <button onClick={handleOpenWaModal} className="bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366]/20 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
+                <MessageCircle size={16}/> Enviar PDF
+              </button>
+
               {canEdit && <button onClick={handleEditClick} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"><Edit2 size={16} /> Editar</button>}
             </>
           ) : (
@@ -1232,6 +1295,65 @@ const CaseDetail = () => {
                <button type="button" onClick={() => setIsSignatureModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors">Cancelar</button>
                <button onClick={handleSendToSignaturit} disabled={sendingSignature} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-70">
                  {sendingSignature ? <Loader2 size={16} className="animate-spin" /> : <PenTool size={16} />} Enviar Documento
+               </button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+      {isWaModalOpen && createPortal(
+        <div className="fixed inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl border border-[#25D366]/30 overflow-hidden flex flex-col">
+            <div className="p-1 h-1 bg-[#25D366]"></div>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-[#25D366]/5 dark:bg-[#25D366]/10">
+              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <MessageCircle size={18} className="text-[#25D366]" /> Enviar PDF por WhatsApp
+              </h3>
+              <button onClick={() => !sendingWa && setIsWaModalOpen(false)} className="text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+            </div>
+            
+            <form onSubmit={handleSendWaLink} className="p-6 space-y-5">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Plantilla a generar</label>
+                {loadingWaTemplates ? (
+                  <p className="text-sm text-[#25D366] flex items-center gap-2 animate-pulse"><Loader2 size={16} className="animate-spin"/> Cargando plantillas...</p>
+                ) : waPdfTemplates.length === 0 ? (
+                  <p className="text-sm text-red-500 italic">No hay plantillas PDF en este módulo.</p>
+                ) : (
+                  <select 
+                    required 
+                    value={waConfig.templateId} 
+                    onChange={e => setWaConfig({...waConfig, templateId: e.target.value})} 
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none text-sm text-gray-900 dark:text-white focus:border-[#25D366] focus:ring-1 focus:ring-[#25D366]/50 transition-all"
+                  >
+                    <option value="">Selecciona una plantilla...</option>
+                    {waPdfTemplates.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Número de WhatsApp</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="Ej: 595981123456" 
+                    value={waConfig.phone} 
+                    onChange={e => setWaConfig({...waConfig, phone: e.target.value})} 
+                    className="w-full pl-9 pr-4 py-2.5 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl outline-none text-sm text-gray-900 dark:text-white focus:border-[#25D366] focus:ring-1 focus:ring-[#25D366]/50 transition-all" 
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1.5">Incluye el código de país sin el símbolo + (Ej: 595 para Paraguay).</p>
+              </div>
+            </form>
+            
+            <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end gap-3">
+               <button type="button" onClick={() => setIsWaModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors">Cancelar</button>
+               <button onClick={handleSendWaLink} disabled={sendingWa || waPdfTemplates.length === 0} className="px-6 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-50">
+                 {sendingWa ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />} Generar y Enviar
                </button>
             </div>
           </div>
