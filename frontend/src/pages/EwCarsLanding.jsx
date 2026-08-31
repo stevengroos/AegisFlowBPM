@@ -189,7 +189,7 @@ export default function EwCarsLanding() {
           </div>
           
           <div className="flex items-center gap-6 text-zinc-500 dark:text-zinc-400 text-sm font-medium">
-            <span className="flex items-center gap-1"><MapPin size={16}/> Luque, Paraguay</span>
+            <span className="flex items-center gap-1"><MapPin size={16}/> Asuncion, Paraguay</span>
             <a href="https://www.aegisflowbpm.com/c/37" className="hover:text-cyan-500 transition-colors uppercase tracking-wider text-xs font-bold">Ir al Catálogo</a>
           </div>
         </div>
