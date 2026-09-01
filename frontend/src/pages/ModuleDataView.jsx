@@ -325,9 +325,31 @@ const ModuleDataView = () => {
       }));
       setRelationMap(newRelationMap); 
 
-      const savedColumns = localStorage.getItem(`module_${moduleId}_columns`);
-      if (savedColumns) setSelectedColumns(JSON.parse(savedColumns).slice(0, 5)); 
-      else if (fetchedFields.length > 0) setSelectedColumns(fetchedFields.slice(0, 4).map(f => f.api_name || f.label));
+      // 🔥 FIX: Lectura Inteligente de Columnas y Limpieza de Caché
+      const savedColumnsStr = localStorage.getItem(`module_${moduleId}_columns`);
+      
+      if (savedColumnsStr) {
+          const parsedColumns = JSON.parse(savedColumnsStr);
+          
+          // 1. Filtramos: Solo nos quedamos con las columnas que existen físicamente en 'fetchedFields'
+          const validColumns = parsedColumns.filter(savedKey => 
+              fetchedFields.some(f => (f.api_name || f.label) === savedKey)
+          );
+          
+          if (validColumns.length > 0) {
+              setSelectedColumns(validColumns.slice(0, 5));
+              // 2. Si detectamos columnas "fantasma", actualizamos la memoria del navegador para limpiarla
+              if (validColumns.length !== parsedColumns.length) {
+                  localStorage.setItem(`module_${moduleId}_columns`, JSON.stringify(validColumns.slice(0, 5)));
+              }
+          } else {
+              // 3. Si TODAS eran fantasma (se eliminaron todas), volvemos a la configuración por defecto
+              setSelectedColumns(fetchedFields.slice(0, 4).map(f => f.api_name || f.label));
+          }
+      } else if (fetchedFields.length > 0) {
+          // Comportamiento por defecto para usuarios nuevos
+          setSelectedColumns(fetchedFields.slice(0, 4).map(f => f.api_name || f.label));
+      }
 
       const recordsRes = await api.get(`/api/v1/cases/?module_id=${moduleId}`, { signal });
       setRecords(recordsRes.data);
