@@ -406,12 +406,14 @@ export default function StoreProductDetail() {
             </div>
 
             {/* BOTONERA DE ACCIÓN */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8 sm:mb-10">
-               <button onClick={comprarPorWhatsApp} disabled={stockMostrar <= 0} className="flex-1 bg-[#25D366] hover:bg-[#20b858] text-white py-3.5 sm:py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base">
-                  <MessageCircle size={20}/> {stockMostrar > 0 ? 'Consultar' : 'Agotado'}
+            <div className="flex flex-row gap-2 sm:gap-4 mb-8 sm:mb-10">
+               <button onClick={comprarPorWhatsApp} disabled={stockMostrar <= 0} className="flex-1 bg-[#25D366] hover:bg-[#20b858] text-white py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black flex items-center justify-center gap-1.5 sm:gap-2 shadow-lg shadow-green-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-base">
+                  <MessageCircle size={18} className="sm:w-5 sm:h-5"/> 
+                  <span className="truncate">{stockMostrar > 0 ? 'Consultar' : 'Agotado'}</span>
                </button>
-               <button onClick={agregarAlCarrito} disabled={stockMostrar <= 0} className="flex-1 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 border-2 py-3.5 sm:py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base" style={stockMostrar > 0 ? {borderColor: storeInfo.themeColor, color: storeInfo.themeColor} : {borderColor: '#9ca3af', color: '#9ca3af'}}>
-                  <ShoppingCart size={20}/> Añadir al Carrito
+               <button onClick={agregarAlCarrito} disabled={stockMostrar <= 0} className="flex-1 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 border-2 py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black flex items-center justify-center gap-1.5 sm:gap-2 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-base" style={stockMostrar > 0 ? {borderColor: storeInfo.themeColor, color: storeInfo.themeColor} : {borderColor: '#9ca3af', color: '#9ca3af'}}>
+                  <ShoppingCart size={18} className="sm:w-5 sm:h-5"/> 
+                  <span className="truncate">Al Carrito</span>
                </button>
             </div>
 
