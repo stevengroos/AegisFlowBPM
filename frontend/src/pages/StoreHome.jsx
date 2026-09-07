@@ -146,8 +146,10 @@ export default function StoreHome() {
   const categoriasUnicas = [...new Set(products.map(p => p.category).filter(Boolean))]; 
 
   const productosFiltrados = products.filter((p) => {
-    // 🔥 REGLA DE ORO: SI NO HAY STOCK, SE DESCARTA INMEDIATAMENTE 🔥
-    if (p.stock <= 0) return false;
+    // 🔥 FIX: Solo ocultamos el producto si el stock ESTÁ controlado (no es null/vacío) y llega a 0
+    if (p.stock !== null && p.stock !== undefined && p.stock !== '' && Number(p.stock) <= 0) {
+        return false;
+    }
 
     const texto = filtroDebounced.toLowerCase();
     const tituloValido = p.title ? p.title.toLowerCase().includes(texto) : false;
