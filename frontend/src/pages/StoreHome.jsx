@@ -363,10 +363,16 @@ export default function StoreHome() {
                         </div>
                       </div>
 
-                      {/* COMO FILTRAMOS LOS AGOTADOS, AQUÍ SIEMPRE HABRÁ STOCK */}
-                      <div className="text-xs font-bold px-3 py-1.5 rounded-lg w-fit mb-4 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">
-                        ✓ {p.stock} Disponibles
-                      </div>
+                      {/* ETIQUETA DE DISPONIBILIDAD INTELIGENTE */}
+                      {(p.stock !== null && p.stock !== undefined && p.stock !== '') ? (
+                        <div className="text-xs font-bold px-3 py-1.5 rounded-lg w-fit mb-4 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">
+                          ✓ {p.stock} Disponibles
+                        </div>
+                      ) : (
+                        <div className="text-xs font-bold px-3 py-1.5 rounded-lg w-fit mb-4 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">
+                          ✓ Disponible
+                        </div>
+                      )}
 
                       <button onClick={() => navigate(`/p/${moduleId}/${p.id}`)} className="w-full py-2.5 rounded-xl font-bold text-sm transition-all text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">
                         Ver Detalles
