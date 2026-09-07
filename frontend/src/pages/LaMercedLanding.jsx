@@ -18,7 +18,6 @@ export default function LaMercedLanding() {
           
           {/* LOGO */}
           <div className="flex items-center gap-3">
-            {/* Si ya guardaste el logo, cambia el src por "/images/logo-lamerced.jpg" */}
             <div className="w-12 h-14 bg-[#141414] border border-[#d4af37]/30 rounded flex items-center justify-center p-1">
               <span className="font-serif text-[#d4af37] font-black text-2xl tracking-tighter">LM</span>
             </div>
@@ -26,9 +25,8 @@ export default function LaMercedLanding() {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Reemplaza el ID '999' por el ID real de tu módulo Menú */}
             <a 
-              href="https://www.aegisflowbpm.com/modules/40" 
+              href="https://www.aegisflowbpm.com/c/40" 
               className="flex items-center gap-2 bg-[#d4af37] hover:bg-[#c29b2b] text-black px-6 py-2.5 rounded-full text-sm font-bold transition-all shadow-[0_0_15px_rgba(212,175,55,0.3)] hover:shadow-[0_0_25px_rgba(212,175,55,0.5)]"
             >
               <ShoppingBag size={16} />
@@ -38,7 +36,7 @@ export default function LaMercedLanding() {
         </div>
       </nav>
 
-      {/* HERO SECTION (Fotos de Unsplash como Placeholder) */}
+      {/* HERO SECTION */}
       <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-40 overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img 
@@ -62,7 +60,7 @@ export default function LaMercedLanding() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a 
-              href="https://www.aegisflowbpm.com/modules/40" 
+              href="https://www.aegisflowbpm.com/c/40" 
               className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#d4af37] text-black px-8 py-4 rounded-full text-lg font-bold transition-all hover:scale-105"
             >
               Realizar Pedido <ArrowRight size={20} />
@@ -77,7 +75,7 @@ export default function LaMercedLanding() {
         </div>
       </section>
 
-      {/* FILOSOFÍA (Iconos y texto, no necesita fotos) */}
+      {/* FILOSOFÍA */}
       <section className="py-24 bg-[#0f0f0f] border-y border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
@@ -110,7 +108,7 @@ export default function LaMercedLanding() {
         </div>
       </section>
 
-      {/* ESPECIALIDADES DE LA CASA (Inspirado en el menú de Word) */}
+      {/* ESPECIALIDADES DE LA CASA */}
       <section id="especialidades" className="py-24 bg-[#0a0a0a]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
@@ -125,7 +123,6 @@ export default function LaMercedLanding() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
-            {/* Tarjeta 1 - Blue Pear */}
             <div className="p-8 md:p-10 bg-[#121212] rounded-3xl border border-white/5 hover:border-[#d4af37]/30 transition-colors flex flex-col justify-center">
               <div className="flex justify-between items-start mb-4">
                 <h3 className="text-2xl font-serif text-white">Blue Pear <span className="text-sm font-sans text-[#d4af37] uppercase tracking-widest ml-2 block sm:inline mt-2 sm:mt-0">Agridulce</span></h3>
@@ -134,12 +131,11 @@ export default function LaMercedLanding() {
               <p className="text-stone-400 font-light leading-relaxed mb-6">
                 Queso mozzarella, queso azul, rodajas de pera caramelizada, un toque de miel natural, queso parmesano y orégano sobre nuestra salsa de la casa.
               </p>
-              <a href="https://www.aegisflowbpm.com/modules/40" className="text-[#d4af37] font-bold text-sm uppercase tracking-widest hover:text-white transition-colors flex items-center gap-2 w-fit">
+              <a href="https://www.aegisflowbpm.com/c/40" className="text-[#d4af37] font-bold text-sm uppercase tracking-widest hover:text-white transition-colors flex items-center gap-2 w-fit">
                 Pedir ahora <ArrowRight size={16}/>
               </a>
             </div>
 
-            {/* Tarjeta 2 - Arrabbiata */}
             <div className="p-8 md:p-10 bg-[#121212] rounded-3xl border border-white/5 hover:border-[#d4af37]/30 transition-colors flex flex-col justify-center">
               <div className="flex justify-between items-start mb-4">
                 <h3 className="text-2xl font-serif text-white">Arrabbiata <span className="text-sm font-sans text-red-500 uppercase tracking-widest ml-2 block sm:inline mt-2 sm:mt-0">Semi Picante</span></h3>
@@ -148,12 +144,11 @@ export default function LaMercedLanding() {
               <p className="text-stone-400 font-light leading-relaxed mb-6">
                 Ajo picado, tomates cherry, rodajas de ají picante, tiras de locote verde y rojo, chorrito de aceite de oliva y mozzarella.
               </p>
-              <a href="https://www.aegisflowbpm.com/modules/40" className="text-[#d4af37] font-bold text-sm uppercase tracking-widest hover:text-white transition-colors flex items-center gap-2 w-fit">
+              <a href="https://www.aegisflowbpm.com/c/40" className="text-[#d4af37] font-bold text-sm uppercase tracking-widest hover:text-white transition-colors flex items-center gap-2 w-fit">
                 Pedir ahora <ArrowRight size={16}/>
               </a>
             </div>
 
-             {/* Tarjeta 3 - La Merced */}
              <div className="p-8 md:p-10 bg-[#121212] rounded-3xl border border-white/5 hover:border-[#d4af37]/30 transition-colors flex flex-col justify-center lg:col-span-2 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-64 h-64 bg-[#d4af37] opacity-5 blur-[100px] rounded-full pointer-events-none"></div>
               <div className="relative z-10 md:w-2/3">
@@ -164,7 +159,7 @@ export default function LaMercedLanding() {
                 <p className="text-stone-400 font-light leading-relaxed mb-8 text-lg">
                   La estrella de la casa. Mozzarella, cebolla caramelizada, tomates cherry, aceitunas negras, rúcula fresca y aceite de oliva extra virgen.
                 </p>
-                <a href="https://www.aegisflowbpm.com/modules/40" className="bg-white text-black px-8 py-3 rounded-full font-bold text-sm uppercase tracking-widest hover:bg-[#d4af37] transition-colors flex items-center gap-2 w-fit">
+                <a href="https://www.aegisflowbpm.com/c/40" className="bg-white text-black px-8 py-3 rounded-full font-bold text-sm uppercase tracking-widest hover:bg-[#d4af37] transition-colors flex items-center gap-2 w-fit">
                   Ver Menú Completo
                 </a>
               </div>
@@ -174,7 +169,7 @@ export default function LaMercedLanding() {
         </div>
       </section>
 
-      {/* GALERÍA MOODBOARD (Placeholders elegantes) */}
+      {/* GALERÍA MOODBOARD */}
       <section className="bg-[#0f0f0f] py-12">
          <div className="flex overflow-x-auto gap-4 px-4 sm:px-6 lg:px-8 pb-8 custom-scrollbar snap-x">
             <img src="https://images.unsplash.com/photo-1590947132387-155cc02f3212?auto=format&fit=crop&w=800&q=80" alt="Preparación" className="h-64 md:h-80 w-auto object-cover rounded-2xl snap-center opacity-80 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"/>
@@ -195,12 +190,12 @@ export default function LaMercedLanding() {
           
           <div className="flex flex-col sm:flex-row items-center gap-6 text-stone-500 text-sm font-medium">
             <span className="flex items-center gap-1.5"><MapPin size={16} className="text-[#d4af37]"/> Luque, Paraguay</span>
-            <a href="https://www.aegisflowbpm.com/modules/40" className="hover:text-[#d4af37] transition-colors uppercase tracking-widest text-xs font-bold">Ver Catálogo</a>
+            <a href="https://www.aegisflowbpm.com/c/40" className="hover:text-[#d4af37] transition-colors uppercase tracking-widest text-xs font-bold">Ver Catálogo</a>
           </div>
         </div>
       </footer>
 
-      {/* BOTÓN FLOTANTE DE WHATSAPP (Ajustado para Pizzería) */}
+      {/* BOTÓN FLOTANTE DE WHATSAPP */}
       <a 
         href="https://wa.me/595986251631?text=Hola,%20quisiera%20hacer%20un%20pedido%20para%20delivery." 
         target="_blank" 
