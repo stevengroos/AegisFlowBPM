@@ -4,7 +4,6 @@ import { ArrowRight, ShoppingBag, ShieldCheck, MapPin, Moon, Sun, CarFront, Wren
 export default function EwCarsLanding() {
   const [isDark, setIsDark] = useState(false);
 
-  // Efecto para detectar la preferencia del usuario al cargar la página
   useEffect(() => {
     if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setIsDark(true);
@@ -34,7 +33,6 @@ export default function EwCarsLanding() {
       <nav className="fixed w-full z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
-          {/* LOGO TIPOGRÁFICO ADAPTADO A LA NUEVA IMAGEN */}
           <div className="flex flex-col justify-center leading-none select-none">
             <div className="font-black text-3xl tracking-tighter italic">
               <span className="text-zinc-900 dark:text-white">E</span>
@@ -102,7 +100,6 @@ export default function EwCarsLanding() {
       <section className="py-24 bg-zinc-900 dark:bg-zinc-900 text-white transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 border-y border-zinc-800 py-16">
-            
             <div className="flex flex-col items-center text-center group">
               <div className="w-16 h-16 bg-zinc-800 text-cyan-400 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-cyan-500 group-hover:text-white transition-all duration-300 transform group-hover:-translate-y-2">
                 <ShieldCheck size={32} strokeWidth={1.5} />
@@ -126,51 +123,80 @@ export default function EwCarsLanding() {
               <h3 className="text-xl font-bold mb-3 uppercase tracking-wide">Estética Interior</h3>
               <p className="text-zinc-400 leading-relaxed">Volantes deportivos, cobertores, iluminación LED y todo lo necesario para personalizar el habitáculo de tu auto.</p>
             </div>
-
           </div>
         </div>
       </section>
 
-      {/* SHOWROOM */}
+      {/* GALERÍA SHOWROOM BENTO */}
       <section id="showroom" className="py-24 bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center gap-12">
-            
-            <div className="flex-1 space-y-6">
-              <h2 className="text-4xl font-black uppercase italic tracking-tight">Visita nuestra<br/><span className="text-cyan-500">Boutique Automotriz</span></h2>
-              <p className="text-lg text-zinc-600 dark:text-zinc-400">
-                Diseñamos nuestro local para que tu experiencia de compra sea tan premium como los accesorios que instalas en tu vehículo. Contamos con un amplio stock de exhibición para que compruebes la calidad de los materiales antes de comprar.
-              </p>
-              <ul className="space-y-3 pt-4">
-                <li className="flex items-center gap-3 font-bold text-zinc-800 dark:text-zinc-200">
-                  <CheckCircle2 className="text-cyan-500" size={20}/> Alfombras Ultra Mats & Heavy Duty
-                </li>
-                <li className="flex items-center gap-3 font-bold text-zinc-800 dark:text-zinc-200">
-                  <CheckCircle2 className="text-cyan-500" size={20}/> Exhibición de volantes deportivos
-                </li>
-                <li className="flex items-center gap-3 font-bold text-zinc-800 dark:text-zinc-200">
-                  <CheckCircle2 className="text-cyan-500" size={20}/> Taller de instalación integrado
-                </li>
-              </ul>
-            </div>
+          
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-4xl font-black uppercase italic tracking-tight mb-6">
+              Visita nuestra <span className="text-cyan-500">Boutique Automotriz</span>
+            </h2>
+            <p className="text-lg text-zinc-600 dark:text-zinc-400">
+              Diseñamos nuestro local para que tu experiencia de compra sea tan premium como los accesorios que instalas en tu vehículo. Contamos con un amplio stock de exhibición para que compruebes la calidad de los materiales antes de comprar.
+            </p>
+          </div>
 
-            <div className="flex-1 w-full">
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl dark:shadow-cyan-900/10 border-4 border-white dark:border-zinc-800 group">
-                <img 
-                  src="/images/showroom-ewcars.jpg" 
-                  alt="Interior del Showroom EW Cars" 
-                  className="w-full object-cover aspect-[4/5] sm:aspect-square md:aspect-[4/5] transform transition-transform duration-700 group-hover:scale-105"
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none"></div>
-                <div className="absolute bottom-8 left-8 text-white">
-                  <p className="font-black text-2xl uppercase tracking-widest">Showroom</p>
-                  <p className="text-zinc-300 font-medium flex items-center gap-1.5 mt-1"><MapPin size={16}/> Te esperamos en el local</p>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 auto-rows-[250px]">
+            {/* Imagen Principal (Mesa central y estantes) */}
+            <div className="md:col-span-8 md:row-span-2 relative rounded-3xl overflow-hidden shadow-2xl dark:shadow-cyan-900/10 border-4 border-white dark:border-zinc-800 group">
+              <img 
+                src="/images/showroom-principal.jpg" 
+                alt="Showroom Principal EW Cars" 
+                className="w-full h-full object-cover transform transition-transform duration-700 group-hover:scale-105"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none"></div>
+              <div className="absolute bottom-8 left-8 text-white">
+                <p className="font-black text-2xl uppercase tracking-widest">Showroom Principal</p>
+                <p className="text-zinc-300 font-medium flex items-center gap-1.5 mt-1"><MapPin size={16}/> Audio, Multimedia & Detailing</p>
               </div>
             </div>
 
+            {/* Imagen Secundaria Arriba (Ángulo Detailing) */}
+            <div className="md:col-span-4 md:row-span-1 relative rounded-3xl overflow-hidden shadow-2xl dark:shadow-cyan-900/10 border-4 border-white dark:border-zinc-800 group">
+              <img 
+                src="/images/showroom-detailing.jpg" 
+                alt="Cuidado Automotriz" 
+                className="w-full h-full object-cover transform transition-transform duration-700 group-hover:scale-105"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent pointer-events-none"></div>
+              <div className="absolute bottom-6 left-6 text-white">
+                <p className="font-bold text-xl uppercase tracking-wide">Cuidado Automotriz</p>
+              </div>
+            </div>
+
+            {/* Imagen Secundaria Abajo (Volantes y Alfombras) */}
+            <div className="md:col-span-4 md:row-span-1 relative rounded-3xl overflow-hidden shadow-2xl dark:shadow-cyan-900/10 border-4 border-white dark:border-zinc-800 group">
+              <img 
+                src="/images/showroom-accesorios.jpg" 
+                alt="Accesorios Premium" 
+                className="w-full h-full object-cover transform transition-transform duration-700 group-hover:scale-105"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent pointer-events-none"></div>
+              <div className="absolute bottom-6 left-6 text-white">
+                <p className="font-bold text-xl uppercase tracking-wide">Accesorios Premium</p>
+              </div>
+            </div>
           </div>
+          
+          <div className="mt-12 flex flex-wrap justify-center gap-4 sm:gap-6">
+              <div className="flex items-center gap-2 font-bold text-zinc-800 dark:text-zinc-200 bg-white dark:bg-zinc-900 px-6 py-3 rounded-full shadow-sm border border-zinc-200 dark:border-zinc-800">
+                <CheckCircle2 className="text-cyan-500" size={20}/> Alfombras Ultra Mats
+              </div>
+              <div className="flex items-center gap-2 font-bold text-zinc-800 dark:text-zinc-200 bg-white dark:bg-zinc-900 px-6 py-3 rounded-full shadow-sm border border-zinc-200 dark:border-zinc-800">
+                <CheckCircle2 className="text-cyan-500" size={20}/> Volantes Deportivos
+              </div>
+              <div className="flex items-center gap-2 font-bold text-zinc-800 dark:text-zinc-200 bg-white dark:bg-zinc-900 px-6 py-3 rounded-full shadow-sm border border-zinc-200 dark:border-zinc-800">
+                <CheckCircle2 className="text-cyan-500" size={20}/> Taller de Instalación
+              </div>
+          </div>
+
         </div>
       </section>
 
