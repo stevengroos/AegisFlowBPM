@@ -103,10 +103,47 @@ const ModuleDataView = () => {
   const formatCellValue = (val, fieldType, apiName) => {
     if (val === null || val === undefined || val === '') return '';
     
-    // 🔥 FIX 1: Mejor Práctica para Subformularios (Resumen Visual)
+    // 🔥 FIX: Extracción Inteligente de Nombres en Subformularios
     if (fieldType === 'subform' && Array.isArray(val)) {
         const count = val.length;
         if (count === 0) return 'Vacío';
+
+        // Intentamos extraer los nombres de los ítems de cada fila
+        const itemNames = val.map(row => {
+            // 1. Buscamos columnas clave ("Producto", "Servicio", "Detalle") que contengan texto (No IDs)
+            const nameKey = Object.keys(row).find(k => 
+                /producto|servicio|artículo|nombre|detalle/i.test(k) && 
+                typeof row[k] === 'string' && 
+                isNaN(Number(row[k])) 
+            );
+            
+            if (nameKey && row[nameKey]) return row[nameKey];
+            
+            // 2. Si no hay clave obvia, tomamos el primer texto descriptivo que encontremos
+            const firstString = Object.values(row).find(v => 
+                typeof v === 'string' && 
+                isNaN(Number(v)) && 
+                v.length > 2 && 
+                !/^\d{4}-\d{2}-\d{2}/.test(v) // Evitamos que agarre fechas
+            );
+            
+            return firstString || null;
+        }).filter(Boolean); // Limpiamos los nulos
+
+        // Si logramos extraer nombres, armamos el string elegante
+        if (itemNames.length > 0) {
+            const maxToShow = 2; // Cuántos nombres mostrar antes de truncar
+            const shownNames = itemNames.slice(0, maxToShow);
+            let displayStr = shownNames.join(', ');
+            
+            if (itemNames.length > maxToShow) {
+                displayStr += `, y ${itemNames.length - maxToShow} más`;
+            }
+            
+            return `📦 ${displayStr}`;
+        }
+
+        // Fallback por si la tabla solo guardó IDs numéricos puros
         return `📦 ${count} ítem${count !== 1 ? 's' : ''}`;
     }
 
@@ -120,6 +157,7 @@ const ModuleDataView = () => {
       const num = Number(val);
       return !isNaN(num) ? num.toLocaleString('es-PY') : val;
     }
+    
     return val;
   };
 
