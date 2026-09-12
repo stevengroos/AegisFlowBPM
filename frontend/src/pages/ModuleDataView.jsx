@@ -103,36 +103,36 @@ const ModuleDataView = () => {
   const formatCellValue = (val, fieldType, apiName) => {
     if (val === null || val === undefined || val === '') return '';
     
-    // 🔥 FIX: Extracción Inteligente de Nombres en Subformularios
+    // 🔥 FIX 2: Traducción Inteligente de IDs a Nombres en Subformularios
     if (fieldType === 'subform' && Array.isArray(val)) {
         const count = val.length;
         if (count === 0) return 'Vacío';
 
-        // Intentamos extraer los nombres de los ítems de cada fila
         const itemNames = val.map(row => {
-            // 1. Buscamos columnas clave ("Producto", "Servicio", "Detalle") que contengan texto (No IDs)
+            // 1. TRADUCCIÓN MÁGICA: Verificamos si la celda es un ID de catálogo y traemos su nombre real
+            for (const key of Object.keys(row)) {
+                if (relationMap[key] && relationMap[key][row[key]]) {
+                    return relationMap[key][row[key]]; 
+                }
+            }
+            
+            // 2. Fallback: Si alguien escribió el nombre a mano en un campo de texto
             const nameKey = Object.keys(row).find(k => 
                 /producto|servicio|artículo|nombre|detalle/i.test(k) && 
                 typeof row[k] === 'string' && 
                 isNaN(Number(row[k])) 
             );
-            
             if (nameKey && row[nameKey]) return row[nameKey];
             
-            // 2. Si no hay clave obvia, tomamos el primer texto descriptivo que encontremos
             const firstString = Object.values(row).find(v => 
-                typeof v === 'string' && 
-                isNaN(Number(v)) && 
-                v.length > 2 && 
-                !/^\d{4}-\d{2}-\d{2}/.test(v) // Evitamos que agarre fechas
+                typeof v === 'string' && isNaN(Number(v)) && v.length > 2 && !/^\d{4}-\d{2}-\d{2}/.test(v) 
             );
-            
             return firstString || null;
-        }).filter(Boolean); // Limpiamos los nulos
+        }).filter(Boolean);
 
-        // Si logramos extraer nombres, armamos el string elegante
+        // Armamos el string elegante
         if (itemNames.length > 0) {
-            const maxToShow = 2; // Cuántos nombres mostrar antes de truncar
+            const maxToShow = 2; // Cuántos nombres mostrar antes de los 3 puntos
             const shownNames = itemNames.slice(0, maxToShow);
             let displayStr = shownNames.join(', ');
             
@@ -143,7 +143,6 @@ const ModuleDataView = () => {
             return `📦 ${displayStr}`;
         }
 
-        // Fallback por si la tabla solo guardó IDs numéricos puros
         return `📦 ${count} ítem${count !== 1 ? 's' : ''}`;
     }
 
@@ -345,7 +344,23 @@ const ModuleDataView = () => {
         setFields(fetchedFields); 
       }
 
-      const relFields = fetchedFields.filter(f => f.field_type === 'relation');
+      // 🔥 FIX 1: Extraer también las relaciones ocultas dentro de los subformularios
+      let relFields = fetchedFields.filter(f => f.field_type === 'relation');
+      
+      fetchedFields.forEach(f => {
+          if (f.field_type === 'subform' && Array.isArray(f.subform_config)) {
+              f.subform_config.forEach(subCol => {
+                  if (subCol.type === 'relation' || subCol.field_type === 'relation') {
+                      relFields.push({
+                          api_name: subCol.id || subCol.api_name || subCol.label,
+                          label: subCol.label,
+                          options: { target_module_id: subCol.target_module_id }
+                      });
+                  }
+              });
+          }
+      });
+
       const newRelationMap = {};
       
       await Promise.all(relFields.map(async (f) => {
