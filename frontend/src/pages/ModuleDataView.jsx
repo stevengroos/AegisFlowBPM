@@ -102,6 +102,14 @@ const ModuleDataView = () => {
 
   const formatCellValue = (val, fieldType, apiName) => {
     if (val === null || val === undefined || val === '') return '';
+    
+    // 🔥 FIX 1: Mejor Práctica para Subformularios (Resumen Visual)
+    if (fieldType === 'subform' && Array.isArray(val)) {
+        const count = val.length;
+        if (count === 0) return 'Vacío';
+        return `📦 ${count} ítem${count !== 1 ? 's' : ''}`;
+    }
+
     if (typeof val === 'object') return 'Datos...';
     
     if (fieldType === 'relation' && relationMap[apiName] && relationMap[apiName][val]) {
@@ -420,7 +428,14 @@ const ModuleDataView = () => {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const matchId = rec.id.toString().includes(term);
-      const matchData = Object.values(rec.data).some(v => String(v).toLowerCase().includes(term));
+      
+      // 🔥 FIX 2: Búsqueda Profunda (Permite buscar productos dentro del carrito)
+      const matchData = Object.values(rec.data).some(v => 
+          typeof v === 'object' && v !== null 
+            ? JSON.stringify(v).toLowerCase().includes(term) 
+            : String(v).toLowerCase().includes(term)
+      );
+      
       const matchStatus = getStatusName(rec.status_id).toLowerCase().includes(term);
       const matchUser = getUserName(rec.assigned_to || rec.created_by).toLowerCase().includes(term);
       if (!matchId && !matchData && !matchStatus && !matchUser) return false;
@@ -464,9 +479,11 @@ const ModuleDataView = () => {
           }
       }
 
-      // Lógica clásica para el resto de campos
+      // 🔥 FIX 3: Permitir filtrar específicamente dentro del subformulario
       let recValue = key === 'SYSTEM_STATUS' ? getStatusName(rec.status_id).toLowerCase() 
                    : key === 'SYSTEM_OWNER' ? getUserName(rec.assigned_to || rec.created_by).toLowerCase() 
+                   : fieldDef?.field_type === 'subform' && Array.isArray(rec.data[key]) 
+                      ? JSON.stringify(rec.data[key]).toLowerCase()
                    : String(rec.data[key] || '').toLowerCase();
                    
       if (!recValue.includes(String(filterValue).toLowerCase())) return false;
