@@ -103,22 +103,35 @@ const ModuleDataView = () => {
   const formatCellValue = (val, fieldType, apiName) => {
     if (val === null || val === undefined || val === '') return '';
     
-    // 🔥 FIX 2: Traducción Inteligente de IDs a Nombres en Subformularios
+    // 🔥 FIX 2: Traducción Profunda y Fuerza Bruta en Subformularios 🔥
     if (fieldType === 'subform' && Array.isArray(val)) {
         const count = val.length;
         if (count === 0) return 'Vacío';
 
         const itemNames = val.map(row => {
-            // 1. TRADUCCIÓN MÁGICA: Verificamos si la celda es un ID de catálogo y traemos su nombre real
+            // 1. Traducción Exacta (Busca por la llave de la columna)
             for (const key of Object.keys(row)) {
                 if (relationMap[key] && relationMap[key][row[key]]) {
                     return relationMap[key][row[key]]; 
                 }
             }
             
-            // 2. Fallback: Si alguien escribió el nombre a mano en un campo de texto
+            // 2. FUERZA BRUTA: Si la llave no coincide, escaneamos todos los IDs
+            // contra todos los diccionarios de catálogo disponibles
+            for (const key of Object.keys(row)) {
+                const cellValue = row[key];
+                if (cellValue && !isNaN(Number(cellValue))) {
+                    for (const relKey in relationMap) {
+                        if (relationMap[relKey][cellValue]) {
+                            return relationMap[relKey][cellValue];
+                        }
+                    }
+                }
+            }
+            
+            // 3. Fallback: Buscar texto plano si todo lo demás falla
             const nameKey = Object.keys(row).find(k => 
-                /producto|servicio|artículo|nombre|detalle/i.test(k) && 
+                /producto|servicio|artículo|nombre|detalle|item/i.test(k) && 
                 typeof row[k] === 'string' && 
                 isNaN(Number(row[k])) 
             );
@@ -130,19 +143,19 @@ const ModuleDataView = () => {
             return firstString || null;
         }).filter(Boolean);
 
-        // Armamos el string elegante
+        // Si encontramos nombres, los formateamos elegantemente
         if (itemNames.length > 0) {
-            const maxToShow = 2; // Cuántos nombres mostrar antes de los 3 puntos
+            const maxToShow = 2;
             const shownNames = itemNames.slice(0, maxToShow);
             let displayStr = shownNames.join(', ');
             
             if (itemNames.length > maxToShow) {
                 displayStr += `, y ${itemNames.length - maxToShow} más`;
             }
-            
             return `📦 ${displayStr}`;
         }
-
+        
+        // Si todo falla, mostramos la cantidad bruta
         return `📦 ${count} ítem${count !== 1 ? 's' : ''}`;
     }
 
@@ -344,20 +357,28 @@ const ModuleDataView = () => {
         setFields(fetchedFields); 
       }
 
-      // 🔥 FIX 1: Extraer también las relaciones ocultas dentro de los subformularios
+      // 🔥 FIX 1: Extracción a prueba de fallos para Subformularios (Soporta JSON stringificado) 🔥
       let relFields = fetchedFields.filter(f => f.field_type === 'relation');
       
       fetchedFields.forEach(f => {
-          if (f.field_type === 'subform' && Array.isArray(f.subform_config)) {
-              f.subform_config.forEach(subCol => {
-                  if (subCol.type === 'relation' || subCol.field_type === 'relation') {
-                      relFields.push({
-                          api_name: subCol.id || subCol.api_name || subCol.label,
-                          label: subCol.label,
-                          options: { target_module_id: subCol.target_module_id }
-                      });
-                  }
-              });
+          if (f.field_type === 'subform') {
+              let config = f.subform_config;
+              // Si viene como texto (string), lo convertimos a Array real
+              if (typeof config === 'string') {
+                  try { config = JSON.parse(config); } catch(e) { config = []; }
+              }
+              
+              if (Array.isArray(config)) {
+                  config.forEach(subCol => {
+                      if (subCol.type === 'relation' || subCol.field_type === 'relation') {
+                          relFields.push({
+                              api_name: subCol.id || subCol.api_name || subCol.label,
+                              label: subCol.label,
+                              options: { target_module_id: subCol.target_module_id }
+                          });
+                      }
+                  });
+              }
           }
       });
 
