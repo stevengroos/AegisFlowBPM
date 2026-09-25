@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle, Phone, CircleDollarSign, Binary, ChevronDown, Search } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle, Activity, FileText, ArrowRight, Edit2, Save, Loader2, Trash2, Lock, Link as LinkIcon, Users, History, Link2, LayoutGrid, MessageSquare, AlertTriangle, PenTool, Plus, X, UploadCloud, Download, MapPin, Calculator, MessageCircle, Phone, CircleDollarSign, Binary, ChevronDown, SearchChevronLeft, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useNotification } from '../context/NotificationContext';
 import FileUploadField from '../components/ui/FileUploadField';
@@ -118,6 +118,7 @@ const CaseDetail = () => {
   const [transitions, setTransitions] = useState([]);
   const [blueprints, setBlueprints] = useState([]); 
   const [loading, setLoading] = useState(true);
+  const [adjacentCases, setAdjacentCases] = useState({ prev: null, next: null }); // 🔥 NUEVO ESTADO
 
   const [activeTab, setActiveTab] = useState('details'); 
   const [isEditing, setIsEditing] = useState(false);
@@ -144,15 +145,29 @@ const CaseDetail = () => {
       const moduleId = currentCase.module_id; 
 
       try {
-        const [moduleRes, settingsRes] = await Promise.all([
+        // 🔥 FIX 1: Traemos también la lista de casos del módulo para saber cuáles son los vecinos
+        const [moduleRes, settingsRes, casesListRes] = await Promise.all([
           api.get(`/api/v1/modules/${moduleId}`, { signal }),
-          api.get(`/api/v1/mobile/settings/mobile`, { signal }).catch(() => ({ data: {} }))
+          api.get(`/api/v1/mobile/settings/mobile`, { signal }).catch(() => ({ data: {} })),
+          api.get(`/api/v1/cases/?module_id=${moduleId}`, { signal }).catch(() => ({ data: [] }))
         ]);
         
         const isPublished = moduleRes.data?.mobile_config?.is_published === true;
         const isPurchasesModule = String(settingsRes.data?.purchases_module_id) === String(moduleId);
-        
         setIsModulePublished(isPublished || isPurchasesModule);
+
+        // 🔥 FIX 2: Calcular ID del registro Anterior y Siguiente
+        const sortedIds = (casesListRes.data || []).map(c => c.id).sort((a, b) => b - a); // Ordenados del más nuevo al más viejo
+        const currentIndex = sortedIds.indexOf(Number(id));
+        
+        let nextId = null; // El registro más nuevo
+        let prevId = null; // El registro más viejo
+        
+        if (currentIndex > 0) nextId = sortedIds[currentIndex - 1]; 
+        if (currentIndex !== -1 && currentIndex < sortedIds.length - 1) prevId = sortedIds[currentIndex + 1]; 
+        
+        setAdjacentCases({ prev: prevId, next: nextId });
+
       } catch (err) {}
 
       const sigPromise = api.get(`/api/v1/modules/${moduleId}/integrations/signaturit`, { signal }).catch(() => ({ data: { is_active: false, has_token: false } }));
@@ -801,7 +816,16 @@ const CaseDetail = () => {
     <>
       <div className="sticky -top-8 -mx-8 px-8 pt-8 pb-4 mb-8 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4 z-40 transition-colors shadow-sm dark:shadow-none">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate(`/modules/${caseData.module_id}`)} className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-200 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 rounded-lg transition"><ArrowLeft size={20} /></button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => navigate(`/modules/${caseData.module_id}`)} title="Volver al módulo" className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-200 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 rounded-lg transition"><ArrowLeft size={20} /></button>
+            
+            {/* 🔥 NUEVOS BOTONES DE NAVEGACIÓN ENTRE REGISTROS 🔥 */}
+            <div className="flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-0.5 shadow-sm ml-1">
+                <button disabled={!adjacentCases.prev} onClick={() => navigate(`/cases/${adjacentCases.prev}`)} title="Registro más antiguo" className="p-1.5 text-gray-500 dark:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"><ChevronLeft size={16} /></button>
+                <button disabled={!adjacentCases.next} onClick={() => navigate(`/cases/${adjacentCases.next}`)} title="Registro más reciente" className="p-1.5 text-gray-500 dark:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"><ChevronRight size={16} /></button>
+            </div>
+          </div>
+
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">{displayTitle}</h1>
