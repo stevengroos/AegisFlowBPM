@@ -418,11 +418,14 @@ export default function StoreProductDetail() {
             </div>
 
             {/* DESCRIPCIÓN */}
-            <div>
+            <div className="w-full overflow-hidden">
                <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-200 dark:border-gray-800 pb-3 mb-4 flex items-center gap-2">
                  <ChevronRight size={16} style={{color: storeInfo.themeColor}}/> Detalles del Producto
                </h3>
-               <div className="prose dark:prose-invert prose-sm max-w-none text-gray-600 dark:text-gray-400 leading-relaxed text-sm sm:text-base" dangerouslySetInnerHTML={{ __html: formatearDescripcion(producto.description) }} />
+               <div 
+                 className="prose dark:prose-invert prose-sm max-w-full w-full break-words text-gray-600 dark:text-gray-400 leading-relaxed text-sm sm:text-base" 
+                 dangerouslySetInnerHTML={{ __html: formatearDescripcion(producto.description) }} 
+               />
             </div>
 
           </div>
