@@ -1,188 +1,151 @@
-import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { 
+  HardHat, LayoutDashboard, Zap, Users, Wallet, 
+  SlidersHorizontal, ShoppingBag, Settings, LogOut, Bell 
+} from 'lucide-react';
 
-// 🔥 NUEVO: IMPORTAMOS EL PROVEEDOR DE SEO (HELMET) 🔥
-import { HelmetProvider } from 'react-helmet-async';
+import Dashboard from './views/Dashboard'; 
+import Login from './views/Login'; // <-- IMPORTAMOS EL LOGIN
 
-// 🔥 IMPORTAMOS EL MOTOR DE IDIOMAS (INTERNACIONALIZACIÓN) 🔥
+// ==========================================
+// COMPONENTE: GUARDIA DE SEGURIDAD (RUTAS PROTEGIDAS)
+// ==========================================
+const ProtectedRoute = ({ children }) => {
+  const token = localStorage.getItem('sipar_token');
+  if (!token) {
+    // Si no hay token, lo mandamos al login inmediatamente
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
 
+// ==========================================
+// COMPONENTE: LAYOUT ADMINISTRATIVO
+// ==========================================
+function AdminLayout() {
+  const location = useLocation();
+  const navigate = useNavigate();
 
-// 🔥 IMPORTAMOS NUESTRO CEREBRO, GUARDIÁN Y MARCO 🔥
-import { AuthProvider } from './context/AuthContext';
-import ProtectedRoute from './components/ProtectedRoute';
-import MainLayout from './components/layout/MainLayout';
+  // Función para cerrar sesión
+  const handleLogout = () => {
+    localStorage.removeItem('sipar_token'); // Borramos el token
+    navigate('/login'); // Redirigimos al login
+  };
 
-// 🔥 1. IMPORTAMOS EL PROVEEDOR DE NOTIFICACIONES 🔥
-import { NotificationProvider } from './context/NotificationContext';
+  const NavItem = ({ to, icon: Icon, label }) => {
+    const isActive = location.pathname.includes(to);
+    return (
+      <Link
+        to={to}
+        className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg font-medium transition ${
+          isActive 
+            ? 'bg-sipar-orange text-white font-semibold' 
+            : 'text-gray-400 hover:text-white hover:bg-gray-800'
+        }`}
+      >
+        <Icon className="w-5 h-5" /> {label}
+      </Link>
+    );
+  };
 
-// 🔥 NUEVO: IMPORTAMOS EL PROVEEDOR DEL CHAT 🔥
-import { SupportChatProvider } from './context/SupportChatContext'; 
-
-// 🔥 NUEVA LANDING PAGE (WEB) 🔥
-const LandingPage = lazy(() => import('./pages/LandingPage'));
-const CookieBanner = lazy(() => import('./components/CookieBanner')); 
-const LegalPage = lazy(() => import('./pages/LegalPage')); 
-
-const StoreHome = lazy(() => import('./pages/StoreHome'));
-const StoreProductDetail = lazy(() => import('./pages/StoreProductDetail'));
-
-const SolYLunaLanding = lazy(() => import('./pages/SolYLunaLanding'));
-const EwCarsLanding = lazy(() => import('./pages/EwCarsLanding'));
-const LaMercedLanding = lazy(() => import('./pages/LaMercedLanding'));
-
-// 🚀 MEJORA DE RENDIMIENTO Y SEGURIDAD (Lazy Loading / Code Splitting)
-const Login = lazy(() => import('./features/auth/Login')); 
-
-// 🔥 FASE 6: IMPORTAMOS EL RECEPTOR DE SSO 🔥
-const SsoSuccess = lazy(() => import('./features/auth/SsoSuccess')); 
-
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Settings = lazy(() => import('./pages/Settings'));
-const CaseDetail = lazy(() => import('./pages/CaseDetail'));
-const RecycleBin = lazy(() => import('./components/RecycleBin')); 
-const ModuleDataView = lazy(() => import('./pages/ModuleDataView'));
-const UserProfile = lazy(() => import('./pages/UserProfile'));
-const Dashboards = lazy(() => import('./pages/Dashboards'));
-const SecurityDashboard = lazy(() => import('./pages/SecurityDashboard'));
-const SupportInbox = lazy(() => import('./pages/SupportInbox'));
-const SetPassword = lazy(() => import('./pages/SetPassword'));
-
-// Un componente visual simple mientras React descarga la pantalla solicitada
-const FullScreenLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-  </div>
-);
-
-function App() {
   return (
-    /* 🔥 ENVOLVEMOS TODA LA APLICACIÓN CON EL HELMET PROVIDER 🔥 */
-    <HelmetProvider>
-      <Router>
-        <AuthProvider>
-          <NotificationProvider>
-            {/* 🔥 NUEVO: ENVOLVEMOS LA APP CON EL CHAT PROVIDER 🔥 */}
-            <SupportChatProvider>
-              <Suspense fallback={<FullScreenLoader />}>
+    <div className="flex h-screen overflow-hidden bg-[#F8F9FA]">
+      {/* SIDEBAR */}
+      <aside className="w-64 bg-sipar-dark text-white flex flex-col h-full shadow-2xl z-20 flex-shrink-0">
+        <div className="h-20 flex items-center px-6 border-b border-gray-700/50">
+          <HardHat className="text-sipar-orange w-6 h-6 mr-3" />
+          <span className="text-2xl font-bold tracking-tight">SIPAR<span className="text-sipar-orange">.</span></span>
+          <span className="ml-2 text-[10px] bg-gray-700 px-2 py-0.5 rounded text-gray-300 font-bold tracking-wider mt-1">ADMIN</span>
+        </div>
 
-                <CookieBanner /> {/* NUEVO: Banner de cookies */}
-                <Routes>
-                  
-                  {/* RUTAS PÚBLICAS Y REDIRECCIONES */}
-                  {/* 🔥 FIX: Ahora la raíz apunta a nuestra nueva Landing Page en lugar de redirigir al Dashboard 🔥 */}
-                  <Route path="/" element={<LandingPage />} />
-                  <Route path="/solyluna" element={<SolYLunaLanding />} />
-                  <Route path="/ewcars" element={<EwCarsLanding />} />
-                  <Route path="/lamerced" element={<LaMercedLanding />} />
-                  <Route path="/login" element={<Login />} />
-                  {/* 🔥 NUEVAS RUTAS LEGALES 🔥 */}
-                  <Route path="/privacidad" element={<LegalPage title="Políticas de Privacidad" lastUpdated="14 de Agosto, 2026" />} />
-                  <Route path="/terminos" element={<LegalPage title="Términos y Condiciones" lastUpdated="14 de Agosto, 2026" />} />
-                  
-                  {/* 🔥 FASE 6: RUTA PARA ATRAPAR EL TOKEN DE SSO 🔥 */}
-                  <Route path="/sso-success" element={<SsoSuccess />} />
+        <nav className="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1 hide-scroll">
+          <p className="px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Principal</p>
+          <NavItem to="/admin/dashboard" icon={LayoutDashboard} label="Dashboard en Vivo" />
+          <NavItem to="/admin/cargadores" icon={Zap} label="Red de Cargadores" />
+          <NavItem to="/admin/usuarios" icon={Users} label="Usuarios & Flota" />
+          <NavItem to="/admin/finanzas" icon={Wallet} label="Finanzas & Billeteras" />
 
-                  {/* 🔥 NUEVO: RUTA PARA ACEPTAR INVITACIONES POR CORREO 🔥 */}
-                  <Route path="/set-password" element={<SetPassword />} />
-                  
-                  <Route path="/c/:moduleId" element={<StoreHome />} />
-                  <Route path="/p/:moduleId/:productId" element={<StoreProductDetail />} />
+          <p className="px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6">Administración</p>
+          <NavItem to="/admin/parametros" icon={SlidersHorizontal} label="Tarifas & Parámetros" />
+          <NavItem to="/admin/tienda" icon={ShoppingBag} label="Tienda Accesorios" />
+          <NavItem to="/admin/configuracion" icon={Settings} label="Configuración" />
+        </nav>
 
-                  {/* RUTAS PRIVADAS (Requieren estar logueado y usan el MainLayout) */}
-                  <Route path="/dashboard" element={
-                    <ProtectedRoute>
-                      <MainLayout>
-                        <Dashboard />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
-                  
-                  <Route path="/cases/:id" element={
-                    <ProtectedRoute>
-                      <MainLayout>
-                        <CaseDetail />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
-                  
-                  <Route path="/modules/:moduleId" element={
-                    <ProtectedRoute>
-                      <MainLayout>
-                        <ModuleDataView />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
-                  
-                  <Route path="/profile" element={
-                    <ProtectedRoute>
-                      <MainLayout>
-                        <UserProfile />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
-                  
-                  <Route path="/recycle-bin" element={
-                    <ProtectedRoute>
-                      <MainLayout>
-                        <RecycleBin />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
-                  
-                  <Route path="/dashboards" element={
-                    <ProtectedRoute requireDashboard={true}>
-                      <MainLayout>
-                        <Dashboards />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
-                  
-                  <Route path="/settings/*" element={
-                    <ProtectedRoute requireSettings={true}>
-                      <MainLayout>
-                        <Settings />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
+        <div className="p-4 border-t border-gray-700/50">
+          {/* BOTÓN DE CERRAR SESIÓN ACTIVADO */}
+          <div 
+            onClick={handleLogout}
+            className="flex items-center gap-3 bg-gray-800 p-3 rounded-xl cursor-pointer hover:bg-gray-700 transition"
+          >
+            <div className="w-10 h-10 bg-sipar-orange rounded-full flex justify-center items-center text-white font-bold">SG</div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-white leading-tight">Steven Groos</p>
+              <p className="text-xs text-gray-400">Super Admin</p>
+            </div>
+            <LogOut className="w-4 h-4 text-gray-400" />
+          </div>
+        </div>
+      </aside>
 
-                  <Route path="/security-dashboard" element={
-                    <ProtectedRoute>
-                      <MainLayout>
-                        <SecurityDashboard />
-                      </MainLayout>
-                    </ProtectedRoute>
-                  } />
+      {/* ÁREA PRINCIPAL */}
+      <main className="flex-1 flex flex-col h-full relative overflow-hidden">
+        <header className="h-20 bg-white shadow-sm flex items-center justify-between px-8 z-10 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-sipar-dark capitalize">
+              {location.pathname.split('/').pop().replace('-', ' ')}
+            </h1>
+            <div className="flex items-center gap-2 bg-green-50 text-green-600 px-3 py-1 rounded-full text-[11px] font-bold border border-green-100">
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sistema en línea
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="bg-gray-50 rounded-full p-2.5 text-gray-500 hover:text-sipar-orange cursor-pointer transition relative">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+            </div>
+          </div>
+        </header>
 
-                  <Route path="/support-inbox" element={
-                  <ProtectedRoute requireHq={true}> {/* 🔥 NUEVO: Activamos el candado aquí */}
-                    <MainLayout>
-                      <SupportInbox />
-                    </MainLayout>
-                  </ProtectedRoute>
-                } />
-
-                  {/* 🔥 PENTEST FIX: Ruta 404 (Catch-All) */}
-                  <Route path="*" element={
-                    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200">
-                      <h1 className="text-6xl font-bold mb-4">404</h1>
-                      <p className="text-xl mb-6">Página no encontrada</p>
-                      <button 
-                        onClick={() => window.location.href = '/dashboard'}
-                        className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Volver al inicio
-                      </button>
-                    </div>
-                  } />
-
-                </Routes>
-              </Suspense>
-            </SupportChatProvider>
-          </NotificationProvider>
-        </AuthProvider>
-      </Router>
-    </HelmetProvider>
+        <div className="flex-1 overflow-y-auto p-8 hide-scroll">
+          <Outlet />
+        </div>
+      </main>
+    </div>
   );
 }
 
-export default App;
+// ==========================================
+// COMPONENTE: RUTAS PRINCIPALES
+// ==========================================
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Raíz redirige al login por defecto */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        
+        {/* RUTA PÚBLICA DE LOGIN */}
+        <Route path="/login" element={<Login />} />
+        
+        {/* RUTAS PROTEGIDAS (Envueltas en ProtectedRoute) */}
+        <Route path="/admin" element={
+          <ProtectedRoute>
+            <AdminLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="cargadores" element={<div className="p-10 text-center border-2 border-dashed border-gray-300 rounded-2xl"><p className="text-gray-500 font-medium">Módulo de Cargadores en desarrollo...</p></div>} />
+          <Route path="usuarios" element={<div className="p-10 text-center border-2 border-dashed border-gray-300 rounded-2xl"><p className="text-gray-500 font-medium">Módulo de Usuarios en desarrollo...</p></div>} />
+          <Route path="finanzas" element={<div className="p-10 text-center border-2 border-dashed border-gray-300 rounded-2xl"><p className="text-gray-500 font-medium">Módulo de Finanzas en desarrollo...</p></div>} />
+          <Route path="parametros" element={<div className="p-10 text-center border-2 border-dashed border-gray-300 rounded-2xl"><p className="text-gray-500 font-medium">Módulo de Parámetros en desarrollo...</p></div>} />
+          <Route path="tienda" element={<div className="p-10 text-center border-2 border-dashed border-gray-300 rounded-2xl"><p className="text-gray-500 font-medium">Módulo de Tienda en desarrollo...</p></div>} />
+          <Route path="configuracion" element={<div className="p-10 text-center border-2 border-dashed border-gray-300 rounded-2xl"><p className="text-gray-500 font-medium">Módulo de Configuración en desarrollo...</p></div>} />
+        </Route>
+
+        {/* Cualquier ruta que no exista, manda al login */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}

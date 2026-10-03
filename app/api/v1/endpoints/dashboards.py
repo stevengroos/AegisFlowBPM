@@ -408,7 +408,7 @@ def execute_report(
                 final_data = []
                 
                 if df.empty:
-                     final_response = {"report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": []}
+                     final_response = {"report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": [], "raw_records": []}
                 else:
                     # 🔥 FIX CRÍTICO: LIMPIEZA INTELIGENTE DE MONEDAS Y EXCEL 🔥
                     if y_axis_type in ["sum", "avg"] and y_axis_field and y_axis_field in df.columns:
@@ -480,7 +480,7 @@ def execute_report(
                             final_data = sorted(final_data, key=lambda x: x["value"], reverse=True)
 
                     final_response = {
-                        "report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": final_data
+                        "report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": final_data, "raw_records": filtered_cases_data
                     }
                     
             except Exception as e:
@@ -497,7 +497,7 @@ def execute_report(
             final_data = local_env.get("result")
             if final_data is None: raise ValueError("El script no definió 'result'.")
             final_response = {
-                "report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": final_data
+                "report_id": report.id, "chart_type": report.chart_type, "config": report.config, "data": final_data, "raw_records": local_env.get("raw_records", [])
             }
         except Exception as e:
             print(traceback.format_exc())
