@@ -54,31 +54,44 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
   // ==========================================
   // 🔥 FUNCIONES DE EXPORTACIÓN SEGURAS 🔥
   // ==========================================
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     setShowMenu(false);
-    if (!data || data.length === 0) {
-      return notify.warning("No hay datos para exportar."); 
+    try {
+        const res = await api.get(`/api/v1/dashboards/reports/${report.id}/export-full-data`);
+        const fullData = res.data.data || [];
+        
+        if (!fullData || fullData.length === 0) {
+            return notify.warning("No hay datos para exportar."); 
+        }
+        
+        // Obtener todas las columnas únicas
+        const allKeys = [...new Set(fullData.flatMap(obj => Object.keys(obj)))];
+        
+        const sanitizeCSV = (str) => {
+            let text = String(str).replace(/"/g, '""'); 
+            if (/^[=\-+@]/.test(text)) {
+                text = "'" + text; 
+            }
+            return `"${text}"`;
+        };
+        
+        // Header
+        const csvHeader = allKeys.join(",") + "\n";
+        
+        // Rows
+        const csvContent = fullData.map(row => 
+            allKeys.map(key => sanitizeCSV(row[key] ?? "")).join(",")
+        ).join("\n");
+        
+        const fullCsv = csvHeader + csvContent;
+        const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8" });
+        saveAs(blob, `${report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_datos_completos.csv`);
+        
+        notify.success("Datos completos exportados exitosamente."); 
+    } catch (err) {
+        notify.error("Error exportando datos: " + (err.response?.data?.detail || err.message));
     }
-
-    const sanitizeCSV = (str) => {
-      let text = String(str).replace(/"/g, '""'); 
-      if (/^[=\-+@]/.test(text)) {
-        text = "'" + text; 
-      }
-      return `"${text}"`;
-    };
-
-    const isMetric = report.chart_type === 'metric';
-    const csvHeader = isMetric ? "Métrica,Valor\n" : "Categoría,Valor\n";
-    
-    const csvContent = data.map(row => `${sanitizeCSV(row.name)},${row.value}`).join("\n");
-    const fullCsv = csvHeader + csvContent;
-
-    const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8" });
-    saveAs(blob, `${report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_datos.csv`);
-    
-    notify.success("Datos exportados exitosamente en formato CSV."); 
-  };
+};
 
   // ==========================================
   // 🔥 BORRADO SEGURO CON CONFIRMACIÓN 🔥

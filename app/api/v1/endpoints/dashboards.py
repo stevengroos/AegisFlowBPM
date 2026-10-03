@@ -510,7 +510,44 @@ def execute_report(
         }
         
     return final_response
-
+@router.get("/reports/{report_id}/export-full-data")
+def export_report_full_data(
+    report_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(deps.get_current_user)
+):
+    report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
+    if not report: 
+        raise HTTPException(404, "Reporte no encontrado")
+    
+    if report.function_code == "VISUAL_MODE_FLAG":
+        config = report.config or {}
+        module_id = config.get("module_id")
+        raw_filters_str = config.get("raw_filters", "{}") 
+        
+        if not module_id: 
+            raise HTTPException(400, "Falta definir el módulo de origen de datos.")
+        
+        cases = db.query(models.Case).filter(
+            models.Case.module_id == module_id, 
+            models.Case.company_id == current_user.company_id, 
+            models.Case.deleted_at == None
+        ).all()
+        
+        filtered_cases_data = []
+        if cases:
+            try:
+                filter_rules = json.loads(raw_filters_str) if raw_filters_str else {}
+                for c in cases:
+                    case_payload = {**c.data, "created_at": str(c.created_at), "status_id": c.status_id, "case_id": c.id}
+                    if evaluate_group(case_payload, filter_rules):
+                        filtered_cases_data.append(case_payload)
+            except Exception as e:
+                raise HTTPException(400, f"Error filtrando datos: {str(e)}")
+        
+        return {"data": filtered_cases_data}
+    else:
+        raise HTTPException(400, "Solo se puede exportar datos completos de reportes visuales")
 # ==========================================
 # SANDBOX SEGURA: PROBADOR DE SCRIPTS
 # ==========================================
