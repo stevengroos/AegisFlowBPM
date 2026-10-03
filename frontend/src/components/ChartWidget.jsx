@@ -15,7 +15,6 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
   const [data, setData] = useState([]);
-  const [rawRecords, setRawRecords] = useState([]); // Agrega este estado
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showMenu, setShowMenu] = useState(false);
@@ -32,14 +31,11 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
       setLoading(true);
       setError(null);
       try {
-    const res = await api.get(`/api/v1/dashboards/reports/${report.id}/execute`, {
-      signal: controller.signal
-    });
-    setData(res.data.data);
-    if (res.data.raw_records) {
-      setRawRecords(res.data.raw_records); // Guarda la data detallada
-    }
-  } catch (err) {
+        const res = await api.get(`/api/v1/dashboards/reports/${report.id}/execute`, {
+          signal: controller.signal
+        });
+        setData(res.data.data);
+      } catch (err) {
         if (err.name !== 'CanceledError') {
           setError(err.response?.data?.detail || "Error al ejecutar el script del reporte.");
         }
@@ -59,50 +55,30 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
   // 🔥 FUNCIONES DE EXPORTACIÓN SEGURAS 🔥
   // ==========================================
   const handleExportCSV = () => {
-  setShowMenu(false);
-  
-  const sanitizeCSV = (str) => {
-    if (str === null || str === undefined) return '""';
-    let text = String(str).replace(/"/g, '""'); 
-    if (/^[=\-+@]/.test(text)) {
-      text = "'" + text; 
-    }
-    return `"${text}"`;
-  };
-
-  let fullCsv = "";
-
-  // Si tenemos los registros crudos, construimos un CSV detallado
-  if (rawRecords && rawRecords.length > 0) {
-    // Obtener todas las columnas (llaves) escaneando los registros
-    const headersSet = new Set();
-    rawRecords.forEach(record => {
-      Object.keys(record).forEach(key => headersSet.add(key));
-    });
-    const headers = Array.from(headersSet);
-    
-    const csvHeader = headers.map(sanitizeCSV).join(",") + "\n";
-    const csvContent = rawRecords.map(record => {
-      return headers.map(header => sanitizeCSV(record[header])).join(",");
-    }).join("\n");
-    
-    fullCsv = csvHeader + csvContent;
-  } else {
-    // Fallback: Exportar el resumen visual/agrupado si no hay data detallada
+    setShowMenu(false);
     if (!data || data.length === 0) {
       return notify.warning("No hay datos para exportar."); 
     }
+
+    const sanitizeCSV = (str) => {
+      let text = String(str).replace(/"/g, '""'); 
+      if (/^[=\-+@]/.test(text)) {
+        text = "'" + text; 
+      }
+      return `"${text}"`;
+    };
+
     const isMetric = report.chart_type === 'metric';
     const csvHeader = isMetric ? "Métrica,Valor\n" : "Categoría,Valor\n";
+    
     const csvContent = data.map(row => `${sanitizeCSV(row.name)},${row.value}`).join("\n");
-    fullCsv = csvHeader + csvContent;
-  }
+    const fullCsv = csvHeader + csvContent;
 
-  const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8" });
-  saveAs(blob, `${report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_detalle.csv`);
-  
-  notify.success("Datos detallados exportados exitosamente en formato CSV."); 
-};
+    const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8" });
+    saveAs(blob, `${report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_datos.csv`);
+    
+    notify.success("Datos exportados exitosamente en formato CSV."); 
+  };
 
   // ==========================================
   // 🔥 BORRADO SEGURO CON CONFIRMACIÓN 🔥
