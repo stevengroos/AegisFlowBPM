@@ -7,6 +7,7 @@ import { useNotification } from '../context/NotificationContext';
 import FileUploadField from '../components/ui/FileUploadField';
 import SubformTable from '../features/cases/SubformTable';
 import ExportPdfButton from '../components/ExportPdfButton';
+import OdontogramWidget from '../components/ui/OdontogramWidget'; // 🔥 NUEVO IMPORT 🔥
 import CaseComments from '../features/cases/CaseComments';
 import CaseExternalChat from '../features/cases/CaseExternalChat';
 
@@ -623,6 +624,14 @@ const CaseDetail = () => {
                  dangerouslySetInnerHTML={{ __html: value || '<span class="text-gray-400 dark:text-gray-600 italic">--</span>' }} 
                />
              </div>
+
+             ) : field.field_type === 'odontogram' ? (
+             <div className="col-span-full bg-indigo-50/10 dark:bg-indigo-900/5 border border-indigo-100 dark:border-indigo-800/30 p-4 rounded-2xl overflow-x-auto opacity-90">
+               <OdontogramWidget value={value || {}} readOnly={true} />
+             </div>
+
+
+
           ) : (
              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-pre-wrap leading-relaxed">
                {value !== undefined && value !== "" && value !== false ? String(value) : <span className="text-gray-400 dark:text-gray-600 italic">--</span>}
@@ -798,6 +807,17 @@ const CaseDetail = () => {
              />
         )
         : field.field_type === 'url' ? <div className="relative"><Link2 className={`absolute left-3 top-1/2 -translate-y-1/2 ${isReadOnly ? 'hidden' : 'text-gray-400'}`} size={16} /><input type="url" required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={`${inputClasses} ${isReadOnly ? '' : 'pl-9'}`} placeholder="https://" /></div>
+        
+        : field.field_type === 'odontogram' ? (
+            <div className="col-span-full bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 p-4 rounded-2xl overflow-x-auto">
+               <OdontogramWidget 
+                  value={value || {}} 
+                  onChange={(val) => setEditFormData({...editFormData, [fieldKey]: val})} 
+                  readOnly={isReadOnly} 
+               />
+            </div>
+        )
+
         : field.field_type === 'subform' ? <SubformTable field={field} value={value || []} onChange={val => setEditFormData({...editFormData, [fieldKey]: val})} relationData={relationData} isEditing={!isReadOnly} />
         
         : <input type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : field.field_type === 'email' ? 'email' : 'text'} required={isRequired} disabled={isReadOnly} value={value || ''} onChange={(e) => setEditFormData({...editFormData, [fieldKey]: e.target.value})} className={inputClasses} />}

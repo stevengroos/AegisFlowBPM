@@ -48,7 +48,7 @@ class AutoNumberConfig(BaseModel):
 # ==========================================
 class FormFieldBase(BaseModel):
     label: str = Field(..., min_length=1, max_length=200, description="El nombre que ve el usuario (ej: 'Fecha de inicio')")
-    field_type: str = Field(..., max_length=50, description="Tipo: 'text', 'number', 'date', 'currency', 'phone','email', 'auto_number', etc.")
+    field_type: str = Field(..., max_length=50, description="Tipo: 'text', 'number', 'date', 'currency', 'phone','email', 'auto_number', 'odontogram' ,etc.")
     required: bool = False
     order: int = 0
     

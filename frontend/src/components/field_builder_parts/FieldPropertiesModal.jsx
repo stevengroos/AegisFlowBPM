@@ -294,6 +294,13 @@ const FieldPropertiesModal = ({
                <p className="text-xs text-gray-600 dark:text-gray-400">Este campo renderizará un mapa interactivo en el formulario. Al guardar, almacenará las coordenadas exactas de Latitud y Longitud.</p>
              </div>
            )}
+           {/* 🔥 NUEVA CONFIGURACIÓN: ODONTOGRAMA 🔥 */}
+           {editingField.field_type === 'odontogram' && (
+             <div className="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 p-4 rounded-xl">
+               <label className="block text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase mb-1.5 flex items-center gap-1"><Activity size={14}/> Odontograma Interactivo</label>
+               <p className="text-xs text-gray-600 dark:text-gray-400">Este campo renderizará un esquema dental visual interactivo. Al guardar, almacenará el estado y los procedimientos seleccionados para cada pieza dental en formato JSON.</p>
+             </div>
+           )}
 
            {editingField.field_type === 'subform' && (
              <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
@@ -307,7 +314,7 @@ const FieldPropertiesModal = ({
                          <div className="flex gap-2 items-center">
                            <input type="text" placeholder="Nombre Columna" value={col.label} onChange={e => updateSubformCol(idx, 'label', e.target.value)} className="flex-1 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500" required/>
                            <select value={col.type} onChange={e => updateSubformCol(idx, 'type', e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-blue-500">
-                              {PALETTE_ITEMS.filter(p => !['subform', 'map', 'formula', 'user_relation', 'auto_number'].includes(p.type)).map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
+                            {PALETTE_ITEMS.filter(p => !['subform', 'map', 'formula', 'user_relation', 'auto_number', 'odontogram'].includes(p.type)).map(p => <option key={p.type} value={p.type}>{p.label}</option>)}
                            </select>
                            <button type="button" onClick={() => removeSubformCol(idx)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16}/></button>
                          </div>

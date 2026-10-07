@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext'; 
 import FileUploadField from '../components/ui/FileUploadField';
+import OdontogramWidget from '../components/ui/OdontogramWidget'; // 🔥 NUEVO IMPORT 🔥
 
 import PhoneInputPkg from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
@@ -634,6 +635,15 @@ const CaseModal = ({ isOpen, onClose, onSuccess, moduleId }) => {
             <div className="relative">
               <Link2 className={`absolute left-3 top-1/2 -translate-y-1/2 ${isReadOnly ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`} size={16} />
               <input type="url" disabled={isReadOnly} required={field.required} value={formData[fieldKey] || ''} onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})} className={`${dynamicInputClasses} ${isReadOnly ? '' : 'pl-9'}`} placeholder="https://" />
+            </div>
+
+            ) : field.field_type === 'odontogram' ? (
+            <div className="col-span-full bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 p-4 rounded-2xl overflow-x-auto">
+               <OdontogramWidget 
+                  value={formData[fieldKey] || {}} 
+                  onChange={(val) => setFormData({...formData, [fieldKey]: val})} 
+                  readOnly={isReadOnly} 
+               />
             </div>
             
           ) : field.field_type === 'subform' ? (

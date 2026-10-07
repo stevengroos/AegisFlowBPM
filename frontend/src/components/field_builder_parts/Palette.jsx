@@ -1,5 +1,5 @@
 import React from 'react';
-import { Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, LinkIcon, MapPin, Calculator, Link2, Users, Phone, CircleDollarSign, Mail, Binary } from 'lucide-react';
+import { Type, AlignLeft, Hash, Calendar, CheckSquare, List, Image, FileBox, TableProperties, LinkIcon, MapPin, Calculator, Link2, Users, Phone, CircleDollarSign, Mail, Binary, Activity } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 
 // 🔥 AÑADIMOS LOS NUEVOS CAMPOS (Email, Auto Number) junto a los anteriores 🔥
@@ -21,7 +21,8 @@ export const PALETTE_ITEMS = [
   { type: 'formula', icon: <Calculator size={16} className="text-emerald-500"/>, label: 'Fórmula (Calculado)' },
   { type: 'file', icon: <FileBox size={16}/>, label: 'Archivo Adjunto' },
   { type: 'image', icon: <Image size={16}/>, label: 'Imagen' },
-  { type: 'subform', icon: <TableProperties size={16}/>, label: 'Subformulario (Tabla)' }
+  { type: 'subform', icon: <TableProperties size={16}/>, label: 'Subformulario (Tabla)' },
+  { type: 'odontogram', icon: <Activity size={16} className="text-indigo-400"/>, label: 'Odontograma' }
 ];
 
 export const getFieldTypeIcon = (type) => { 
