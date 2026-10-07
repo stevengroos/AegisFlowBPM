@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign, Binary } from 'lucide-react'; 
+import { Edit2, X, Plus, Trash2, Star, Calculator, LinkIcon, MapPin, Users, Phone, CircleDollarSign, Binary, Activity  } from 'lucide-react'; 
 import { PALETTE_ITEMS } from './Palette';
 
 const FieldPropertiesModal = ({ 
