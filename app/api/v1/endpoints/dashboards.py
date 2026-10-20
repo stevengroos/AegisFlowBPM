@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_, and_
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
 import pandas as pd
@@ -22,9 +22,16 @@ router = APIRouter()
 REPORT_CACHE = {}
 CACHE_EXPIRATION_MINUTES = 5
 
-def get_cache_key(company_id: int, report_id: int) -> str:
-    # 🔥 PENTEST FIX: Llave Multi-Tenant para evitar fuga de datos entre empresas 🔥
-    return f"{company_id}_{report_id}"
+def get_cache_key(company_id: int, report_id: int, dynamic_filters: str = None) -> str:
+    # 🔥 PENTEST FIX: Llave Multi-Tenant para evitar fuga de datos + Soporte Filtros
+    return f"{company_id}_{report_id}_{dynamic_filters or 'default'}"
+
+def clear_report_cache(company_id: int, report_id: int):
+    # Limpia la caché base y cualquier variación con filtros dinámicos de ese reporte
+    prefix = f"{company_id}_{report_id}_"
+    keys_to_delete = [k for k in REPORT_CACHE.keys() if k.startswith(prefix)]
+    for k in keys_to_delete:
+        REPORT_CACHE.pop(k, None)
 
 # ==========================================
 # ESQUEMAS PYDANTIC
@@ -149,12 +156,14 @@ def delete_dashboard(
 ):
     check_settings_permission(db, current_user, "manage_dashboards")
     
-    dashboard = db.query(models.Dashboard).filter(models.Dashboard.id == dashboard_id, models.Dashboard.company_id == current_user.company_id).first()
+    dashboard = db.query(models.Dashboard).filter(
+        models.Dashboard.id == dashboard_id, 
+        models.Dashboard.company_id == current_user.company_id
+    ).first()
     if not dashboard: raise HTTPException(404, "Dashboard no encontrado")
     
     for report in dashboard.reports:
-        cache_key = get_cache_key(current_user.company_id, report.id)
-        REPORT_CACHE.pop(cache_key, None)
+        clear_report_cache(current_user.company_id, report.id)
         
     dash_name = dashboard.name
     db.delete(dashboard)
@@ -194,8 +203,7 @@ def update_dashboard_layout(
             layout = dict(report.grid_layout) if report.grid_layout else {}
             layout["order"] = item.order
             report.grid_layout = layout
-            cache_key = get_cache_key(current_user.company_id, report.id)
-            REPORT_CACHE.pop(cache_key, None)
+            clear_report_cache(current_user.company_id, report.id)
 
     db.commit()
 
@@ -220,7 +228,10 @@ def create_report(
 ):
     check_settings_permission(db, current_user, "manage_dashboards")
     
-    dash = db.query(models.Dashboard).filter(models.Dashboard.id == dashboard_id, models.Dashboard.company_id == current_user.company_id).first()
+    dash = db.query(models.Dashboard).filter(
+        models.Dashboard.id == dashboard_id, 
+        models.Dashboard.company_id == current_user.company_id
+    ).first()
     if not dash: raise HTTPException(404, "Dashboard no encontrado")
     
     new_report = models.Report(**report_in.dict(), dashboard_id=dashboard_id, company_id=current_user.company_id)
@@ -245,7 +256,10 @@ def update_report(
 ):
     check_settings_permission(db, current_user, "manage_dashboards")
     
-    report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
+    report = db.query(models.Report).filter(
+        models.Report.id == report_id, 
+        models.Report.company_id == current_user.company_id
+    ).first()
     if not report: raise HTTPException(404, "Reporte no encontrado")
     
     for key, value in report_in.dict(exclude_unset=True).items():
@@ -254,8 +268,7 @@ def update_report(
     db.commit()
     db.refresh(report)
     
-    cache_key = get_cache_key(current_user.company_id, report.id)
-    REPORT_CACHE.pop(cache_key, None)
+    clear_report_cache(current_user.company_id, report.id)
     
     log_global_event(
         db=db, user_id=current_user.id, company_id=current_user.company_id,
@@ -273,11 +286,13 @@ def delete_report(
 ):
     check_settings_permission(db, current_user, "manage_dashboards")
     
-    report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
+    report = db.query(models.Report).filter(
+        models.Report.id == report_id, 
+        models.Report.company_id == current_user.company_id
+    ).first()
     if not report: raise HTTPException(404, "Reporte no encontrado")
     
-    cache_key = get_cache_key(current_user.company_id, report.id)
-    REPORT_CACHE.pop(cache_key, None)
+    clear_report_cache(current_user.company_id, report.id)
     
     rep_name = report.name
     db.delete(report)
@@ -349,6 +364,60 @@ def evaluate_group(data: dict, group: dict) -> bool:
     
     return True
 
+# 🔥 MOTOR DE FUSIÓN Y SOBRESCRITURA DE FILTROS (ESTILO ZOHO ANALYTICS) 🔥
+def _extract_fields_from_group(group: dict) -> Set[str]:
+    fields = set()
+    if not group or "rules" not in group:
+        return fields
+    for rule in group.get("rules", []):
+        if "rules" in rule:
+            fields.update(_extract_fields_from_group(rule))
+        elif rule.get("field"):
+            fields.add(rule["field"])
+    return fields
+
+def _prune_overridden_rules(group: dict, overridden_fields: Set[str]) -> Optional[dict]:
+    if not group or "rules" not in group:
+        return None
+    new_rules = []
+    for rule in group.get("rules", []):
+        if "rules" in rule:
+            pruned_sub = _prune_overridden_rules(rule, overridden_fields)
+            if pruned_sub and pruned_sub.get("rules"):
+                new_rules.append(pruned_sub)
+        else:
+            if rule.get("field") not in overridden_fields:
+                new_rules.append(rule)
+    if not new_rules:
+        return None
+    return {"combinator": group.get("combinator", "and"), "rules": new_rules}
+
+def merge_and_override_filters(base_rules: dict, dyn_rules: dict) -> dict:
+    """
+    Usa base_rules por defecto. Si se envían dyn_rules, cualquier campo presente en
+    dyn_rules pisa (sobrescribe) al campo equivalente en base_rules, manteniendo el
+    resto de las condiciones base activas.
+    """
+    if not dyn_rules or not dyn_rules.get("rules"):
+        return base_rules or {}
+    if not base_rules or not base_rules.get("rules"):
+        return dyn_rules
+
+    # Si el frontend indica explícitamente reemplazar todos los filtros base
+    if dyn_rules.get("override_all"):
+        return dyn_rules
+
+    overridden_fields = _extract_fields_from_group(dyn_rules)
+    pruned_base = _prune_overridden_rules(base_rules, overridden_fields)
+
+    if not pruned_base or not pruned_base.get("rules"):
+        return dyn_rules
+
+    return {
+        "combinator": "and",
+        "rules": [pruned_base, dyn_rules]
+    }
+
 
 SAFE_BUILTINS = {
     "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict, "float": float, 
@@ -361,15 +430,19 @@ SAFE_BUILTINS = {
 @router.get("/reports/{report_id}/execute")
 def execute_report(
     report_id: int, 
+    dynamic_filters: Optional[str] = Query(None),
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    cache_key = get_cache_key(current_user.company_id, report_id)
+    cache_key = get_cache_key(current_user.company_id, report_id, dynamic_filters)
     cached = REPORT_CACHE.get(cache_key)
     if cached and (datetime.now() - cached["timestamp"]) < timedelta(minutes=CACHE_EXPIRATION_MINUTES):
         return cached["data"]
         
-    report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
+    report = db.query(models.Report).filter(
+        models.Report.id == report_id, 
+        models.Report.company_id == current_user.company_id
+    ).first()
     if not report: 
         raise HTTPException(404, "Reporte no encontrado")
         
@@ -389,14 +462,18 @@ def execute_report(
         if not module_id: raise HTTPException(400, "Falta definir el módulo de origen de datos.")
             
         cases = db.query(models.Case).filter(
-            models.Case.module_id == module_id, models.Case.company_id == current_user.company_id, models.Case.deleted_at == None
+            models.Case.module_id == module_id, 
+            models.Case.company_id == current_user.company_id, 
+            models.Case.deleted_at == None
         ).all()
         
         if not cases:
             final_response = {"report_id": report.id, "chart_type": report.chart_type, "data": []}
         else:
             try:
-                filter_rules = json.loads(raw_filters_str) if raw_filters_str else {}
+                base_rules = json.loads(raw_filters_str) if raw_filters_str else {}
+                dyn_rules = json.loads(dynamic_filters) if dynamic_filters else {}
+                filter_rules = merge_and_override_filters(base_rules, dyn_rules)
                 
                 filtered_cases_data = []
                 for c in cases:
@@ -488,9 +565,17 @@ def execute_report(
                 raise HTTPException(400, f"Error calculando métricas: {str(e)}")
 
     else:
+        parsed_dyn_filters = {}
+        if dynamic_filters:
+            try:
+                parsed_dyn_filters = json.loads(dynamic_filters)
+            except Exception:
+                parsed_dyn_filters = {}
+
         local_env = {
             "db": SandboxDB(db), "models": models, "pd": pd,
-            "company_id": current_user.company_id, "user_id": current_user.id, "result": None 
+            "company_id": current_user.company_id, "user_id": current_user.id,
+            "dynamic_filters": parsed_dyn_filters, "result": None 
         }
         try:
             exec(report.function_code, {"__builtins__": SAFE_BUILTINS}, local_env)
@@ -510,13 +595,19 @@ def execute_report(
         }
         
     return final_response
+
+
 @router.get("/reports/{report_id}/export-full-data")
 def export_report_full_data(
     report_id: int, 
+    dynamic_filters: Optional[str] = Query(None),
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.company_id == current_user.company_id).first()
+    report = db.query(models.Report).filter(
+        models.Report.id == report_id, 
+        models.Report.company_id == current_user.company_id
+    ).first()
     if not report: 
         raise HTTPException(404, "Reporte no encontrado")
     
@@ -537,7 +628,10 @@ def export_report_full_data(
         filtered_cases_data = []
         if cases:
             try:
-                filter_rules = json.loads(raw_filters_str) if raw_filters_str else {}
+                base_rules = json.loads(raw_filters_str) if raw_filters_str else {}
+                dyn_rules = json.loads(dynamic_filters) if dynamic_filters else {}
+                filter_rules = merge_and_override_filters(base_rules, dyn_rules)
+
                 for c in cases:
                     case_payload = {**c.data, "created_at": str(c.created_at), "status_id": c.status_id, "case_id": c.id}
                     if evaluate_group(case_payload, filter_rules):
@@ -548,6 +642,8 @@ def export_report_full_data(
         return {"data": filtered_cases_data}
     else:
         raise HTTPException(400, "Solo se puede exportar datos completos de reportes visuales")
+
+
 # ==========================================
 # SANDBOX SEGURA: PROBADOR DE SCRIPTS
 # ==========================================

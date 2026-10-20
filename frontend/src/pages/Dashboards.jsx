@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { Loader2, Plus, LayoutDashboard, Edit3, Trash2, Undo2, Save, BarChart2, Download } from 'lucide-react'; 
+import { Loader2, Plus, LayoutDashboard, Edit3, Trash2, Undo2, Save, BarChart2, Download, Filter, X, RotateCcw } from 'lucide-react'; 
 import ChartWidget from '../components/ChartWidget';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -24,6 +24,15 @@ const Dashboards = () => {
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportToEdit, setReportToEdit] = useState(null);
+
+  // 🔥 ESTADOS PARA FILTROS DINÁMICOS (ESTILO ZOHO ANALYTICS) 🔥
+  const [dashboardFilters, setDashboardFilters] = useState(null);
+  const [availableFields, setAvailableFields] = useState([]);
+  const [filterField, setFilterField] = useState('created_at');
+  const [filterOperator, setFilterOperator] = useState('between');
+  const [filterValue, setFilterValue] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
 
   const fetchData = async (signal) => {
     try {
@@ -49,6 +58,85 @@ const Dashboards = () => {
     fetchData(controller.signal); 
     return () => controller.abort();
   }, []);
+
+  // Cargar automáticamente los campos de los módulos usados en el Dashboard activo
+  useEffect(() => {
+    const activeDash = dashboards.find(d => d.id === activeDashId);
+    if (!activeDash || !activeDash.reports) {
+      setAvailableFields([]);
+      return;
+    }
+
+    const moduleIds = [...new Set(
+      activeDash.reports.map(r => r.config?.module_id).filter(Boolean)
+    )];
+
+    if (moduleIds.length === 0) {
+      setAvailableFields([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    Promise.all(
+      moduleIds.map(mId => api.get(`/api/v1/fields/?module_id=${mId}`, { signal: controller.signal }).catch(() => ({ data: [] })))
+    ).then(results => {
+      const fieldsMap = new Map();
+      results.flatMap(r => r.data || []).forEach(f => {
+        const key = f.api_name || f.label;
+        if (key && !fieldsMap.has(key)) {
+          fieldsMap.set(key, { key, label: f.label, type: f.field_type });
+        }
+      });
+      setAvailableFields(Array.from(fieldsMap.values()));
+    }).catch(() => {});
+
+    return () => controller.abort();
+  }, [activeDashId, dashboards]);
+
+  const selectedFieldMeta = availableFields.find(f => f.key === filterField);
+  const isDateFilter = filterField === 'created_at' || selectedFieldMeta?.type === 'date';
+
+  const handleApplyDynamicFilter = () => {
+    let finalValue = filterValue;
+
+    if (filterOperator === 'between') {
+      if (!filterStartDate || !filterEndDate) {
+        return notify.warning("Selecciona la fecha de inicio y fin.");
+      }
+      finalValue = `${filterStartDate},${filterEndDate}`;
+    } else if (!['null', 'notNull'].includes(filterOperator) && !String(finalValue).trim()) {
+      return notify.warning("Ingresa un valor para aplicar el filtro.");
+    }
+
+    const newRule = {
+      field: filterField,
+      operator: filterOperator,
+      value: finalValue
+    };
+
+    const existingRules = dashboardFilters?.rules || [];
+    const updatedRules = [
+      ...existingRules.filter(r => r.field !== filterField),
+      newRule
+    ];
+
+    setDashboardFilters({
+      combinator: "and",
+      rules: updatedRules
+    });
+  };
+
+  const handleRemoveSingleFilter = (fieldToRemove) => {
+    const remaining = (dashboardFilters?.rules || []).filter(r => r.field !== fieldToRemove);
+    setDashboardFilters(remaining.length > 0 ? { combinator: "and", rules: remaining } : null);
+  };
+
+  const handleClearDynamicFilters = () => {
+    setDashboardFilters(null);
+    setFilterValue('');
+    setFilterStartDate('');
+    setFilterEndDate('');
+  };
 
   const handleOpenDashModal = (dashId = null, currentName = '') => {
     setEditingDashId(dashId); setDashFormName(currentName); setIsDashModalOpen(true);
@@ -165,6 +253,7 @@ const Dashboards = () => {
     }
     setActiveDashId(targetDashId);
     setHasUnsavedLayout(false);
+    handleClearDynamicFilters(); // Resetea los filtros al cambiar de tablero
   };
 
   const activeDashboard = dashboards.find(d => d.id === activeDashId);
@@ -236,6 +325,128 @@ const Dashboards = () => {
                 </div>
               </div>
 
+              {/* 🔥 BARRA DE FILTROS DINÁMICOS (ESTILO ZOHO ANALYTICS) 🔥 */}
+              <div className="print:hidden mb-6 shrink-0 bg-white dark:bg-gray-900 p-3.5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mr-1">
+                    <Filter size={14} className="text-blue-500" />
+                    <span>Filtro Dinámico:</span>
+                  </div>
+
+                  {/* Selector de Campo */}
+                  <select
+                    value={filterField}
+                    onChange={(e) => {
+                      const newField = e.target.value;
+                      setFilterField(newField);
+                      const meta = availableFields.find(f => f.key === newField);
+                      const isDate = newField === 'created_at' || meta?.type === 'date';
+                      setFilterOperator(isDate ? 'between' : '==');
+                    }}
+                    className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="created_at">Fecha de Creación (Sistema)</option>
+                    {availableFields.map(f => (
+                      <option key={f.key} value={f.key}>{f.label}</option>
+                    ))}
+                  </select>
+
+                  {/* Selector de Operador */}
+                  <select
+                    value={filterOperator}
+                    onChange={(e) => setFilterOperator(e.target.value)}
+                    className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {isDateFilter ? (
+                      <>
+                        <option value="between">Entre fechas</option>
+                        <option value="after">Después de</option>
+                        <option value="before">Antes de</option>
+                        <option value="==">Fecha exacta</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="==">Igual a</option>
+                        <option value="!=">Diferente de</option>
+                        <option value="contains">Contiene</option>
+                        <option value=">=">Mayor o igual a</option>
+                        <option value="<=">Menor o igual a</option>
+                      </>
+                    )}
+                  </select>
+
+                  {/* Inputs de Valor o Rango de Fechas */}
+                  {filterOperator === 'between' ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={filterStartDate}
+                        onChange={(e) => setFilterStartDate(e.target.value)}
+                        className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-gray-400">a</span>
+                      <input
+                        type="date"
+                        value={filterEndDate}
+                        onChange={(e) => setFilterEndDate(e.target.value)}
+                        className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  ) : (
+                    <input
+                      type={isDateFilter ? 'date' : 'text'}
+                      placeholder="Valor a filtrar..."
+                      value={filterValue}
+                      onChange={(e) => setFilterValue(e.target.value)}
+                      className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+
+                  <button
+                    onClick={handleApplyDynamicFilter}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                  >
+                    Aplicar Filtro
+                  </button>
+
+                  {dashboardFilters?.rules?.length > 0 && (
+                    <button
+                      onClick={handleClearDynamicFilters}
+                      className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
+                      title="Restaurar filtros por defecto del reporte"
+                    >
+                      <RotateCcw size={13} /> Restaurar por defecto
+                    </button>
+                  )}
+                </div>
+
+                {/* Etiquetas (Chips) de filtros activos */}
+                {dashboardFilters?.rules?.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                    <span className="text-[11px] font-semibold text-gray-400">Sobrescribiendo:</span>
+                    {dashboardFilters.rules.map((r, i) => {
+                      const fieldLabel = r.field === 'created_at'
+                        ? 'Fecha de Creación'
+                        : (availableFields.find(f => f.key === r.field)?.label || r.field);
+                      return (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2.5 py-1 rounded-full text-xs font-bold"
+                        >
+                          {fieldLabel} ({r.operator}): {r.value.replace(',', ' → ')}
+                          <button
+                            onClick={() => handleRemoveSingleFilter(r.field)}
+                            className="hover:text-red-500 transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="flex-1 overflow-y-auto custom-scrollbar pb-8 px-1 print:overflow-visible printable-area bg-transparent dark:bg-transparent">
                 
                 <div className="hidden print:block mb-8 text-center border-b pb-4">
@@ -262,6 +473,7 @@ const Dashboards = () => {
                                     report={report} 
                                     onEdit={(rep) => { setReportToEdit(rep); setIsReportModalOpen(true); }} 
                                     onDelete={handleDeleteReport} 
+                                    globalFilters={dashboardFilters}
                                   />
                                 </div>
                               )}

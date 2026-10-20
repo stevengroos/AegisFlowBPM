@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import { Loader2, AlertTriangle, BarChart2, TrendingUp, PieChart as PieChartIcon, MoreVertical, Edit, Trash2, FileText, Layers, GripHorizontal, Download } from 'lucide-react';
+import { Loader2, AlertTriangle, BarChart2, TrendingUp, PieChart as PieChartIcon, MoreVertical, Edit, Trash2, FileText, Layers, GripHorizontal, Download, Filter } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   LineChart, Line, PieChart, Pie, Cell 
@@ -13,7 +13,7 @@ import { useNotification } from '../context/NotificationContext';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
-const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
+const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps, globalFilters = null }) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -24,6 +24,12 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
   // Extraemos nuestras herramientas mágicas
   const { notify, confirm } = useNotification();
 
+  const hasActiveGlobalFilters = Boolean(
+    globalFilters && 
+    Array.isArray(globalFilters.rules) && 
+    globalFilters.rules.length > 0
+  );
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -31,7 +37,14 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.get(`/api/v1/dashboards/reports/${report.id}/execute`, {
+        const queryParams = new URLSearchParams();
+        if (hasActiveGlobalFilters) {
+          queryParams.append('dynamic_filters', JSON.stringify(globalFilters));
+        }
+        const queryString = queryParams.toString();
+        const url = `/api/v1/dashboards/reports/${report.id}/execute${queryString ? `?${queryString}` : ''}`;
+
+        const res = await api.get(url, {
           signal: controller.signal
         });
         setData(res.data.data);
@@ -49,7 +62,7 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
     fetchData();
 
     return () => controller.abort();
-  }, [report.id]); 
+  }, [report.id, globalFilters, hasActiveGlobalFilters]); 
 
   // ==========================================
   // 🔥 FUNCIONES DE EXPORTACIÓN SEGURAS 🔥
@@ -57,41 +70,50 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
   const handleExportCSV = async () => {
     setShowMenu(false);
     try {
-        const res = await api.get(`/api/v1/dashboards/reports/${report.id}/export-full-data`);
-        const fullData = res.data.data || [];
-        
-        if (!fullData || fullData.length === 0) {
-            return notify.warning("No hay datos para exportar."); 
+      const queryParams = new URLSearchParams();
+      if (hasActiveGlobalFilters) {
+        queryParams.append('dynamic_filters', JSON.stringify(globalFilters));
+      }
+      const queryString = queryParams.toString();
+      const url = `/api/v1/dashboards/reports/${report.id}/export-full-data${queryString ? `?${queryString}` : ''}`;
+
+      const res = await api.get(url);
+      const fullData = res.data.data || [];
+      
+      if (!fullData || fullData.length === 0) {
+        return notify.warning("No hay datos para exportar."); 
+      }
+      
+      // Obtener todas las columnas únicas
+      const allKeys = [...new Set(fullData.flatMap(obj => Object.keys(obj)))];
+      
+      const sanitizeCSV = (val) => {
+        if (val === null || val === undefined) return '""';
+        const rawStr = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        let text = rawStr.replace(/"/g, '""'); 
+        if (/^[=\-+@]/.test(text)) {
+          text = "'" + text; 
         }
-        
-        // Obtener todas las columnas únicas
-        const allKeys = [...new Set(fullData.flatMap(obj => Object.keys(obj)))];
-        
-        const sanitizeCSV = (str) => {
-            let text = String(str).replace(/"/g, '""'); 
-            if (/^[=\-+@]/.test(text)) {
-                text = "'" + text; 
-            }
-            return `"${text}"`;
-        };
-        
-        // Header
-        const csvHeader = allKeys.join(",") + "\n";
-        
-        // Rows
-        const csvContent = fullData.map(row => 
-            allKeys.map(key => sanitizeCSV(row[key] ?? "")).join(",")
-        ).join("\n");
-        
-        const fullCsv = csvHeader + csvContent;
-        const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8" });
-        saveAs(blob, `${report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_datos_completos.csv`);
-        
-        notify.success("Datos completos exportados exitosamente."); 
+        return `"${text}"`;
+      };
+      
+      // Header
+      const csvHeader = allKeys.join(",") + "\n";
+      
+      // Rows
+      const csvContent = fullData.map(row => 
+        allKeys.map(key => sanitizeCSV(row[key] ?? "")).join(",")
+      ).join("\n");
+      
+      const fullCsv = csvHeader + csvContent;
+      const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8" });
+      saveAs(blob, `${report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_datos_completos.csv`);
+      
+      notify.success("Datos completos exportados exitosamente."); 
     } catch (err) {
-        notify.error("Error exportando datos: " + (err.response?.data?.detail || err.message));
+      notify.error("Error exportando datos: " + (err.response?.data?.detail || err.message));
     }
-};
+  };
 
   // ==========================================
   // 🔥 BORRADO SEGURO CON CONFIRMACIÓN 🔥
@@ -152,19 +174,26 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
           <GripHorizontal size={16} />
         </div>
 
-        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => setShowMenu(!showMenu)} aria-label="Opciones del reporte" aria-expanded={showMenu} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg"><MoreVertical size={16} /></button>
-          {showMenu && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
-              <div role="menu" className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-20 py-1 overflow-hidden">
-                <button role="menuitem" onClick={handleExportCSV} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"><Download size={14} /> Descargar CSV</button>
-                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
-                <button role="menuitem" onClick={() => { setShowMenu(false); onEdit(report); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"><Edit size={14} /> Editar</button>
-                <button role="menuitem" onClick={handleDeleteClick} className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-2"><Trash2 size={14} /> Eliminar</button>
-              </div>
-            </>
+        <div className="absolute top-3 right-3 flex items-center gap-1">
+          {hasActiveGlobalFilters && (
+            <span title="Filtro dinámico aplicado" className="p-1 text-blue-500 bg-blue-50 dark:bg-blue-900/30 rounded-md">
+              <Filter size={12} />
+            </span>
           )}
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => setShowMenu(!showMenu)} aria-label="Opciones del reporte" aria-expanded={showMenu} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg"><MoreVertical size={16} /></button>
+            {showMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                <div role="menu" className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                  <button role="menuitem" onClick={handleExportCSV} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"><Download size={14} /> Descargar CSV</button>
+                  <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+                  <button role="menuitem" onClick={() => { setShowMenu(false); onEdit(report); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"><Edit size={14} /> Editar</button>
+                  <button role="menuitem" onClick={handleDeleteClick} className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-2"><Trash2 size={14} /> Eliminar</button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-5 ml-4">
@@ -264,12 +293,17 @@ const ChartWidget = ({ report, onEdit, onDelete, dragHandleProps }) => {
           <div className="p-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg shrink-0">{getIcon()}</div>
           <h3 className="font-bold text-gray-900 dark:text-white truncate" title={report.name}>{report.name}</h3>
         </div>
-        <div className="relative shrink-0">
+        <div className="relative shrink-0 flex items-center gap-1">
+          {hasActiveGlobalFilters && (
+            <span title="Filtro dinámico aplicado" className="p-1 text-blue-500 bg-blue-50 dark:bg-blue-900/30 rounded-md">
+              <Filter size={12} />
+            </span>
+          )}
           <button aria-label="Opciones del reporte" aria-expanded={showMenu} onClick={() => setShowMenu(!showMenu)} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"><MoreVertical size={16} /></button>
           {showMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
-              <div role="menu" className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+              <div role="menu" className="absolute right-0 top-8 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                 <button role="menuitem" onClick={handleExportCSV} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"><Download size={14} /> Descargar CSV</button>
                 <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
                 <button role="menuitem" onClick={() => { setShowMenu(false); onEdit(report); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"><Edit size={14} /> Editar</button>
