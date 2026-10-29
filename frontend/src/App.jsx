@@ -29,6 +29,7 @@ const StoreProductDetail = lazy(() => import('./pages/StoreProductDetail'));
 const SolYLunaLanding = lazy(() => import('./pages/SolYLunaLanding'));
 const EwCarsLanding = lazy(() => import('./pages/EwCarsLanding'));
 const LaMercedLanding = lazy(() => import('./pages/LaMercedLanding'));
+const groosdexlanding = lazy(() => import('./pages/groosdexlanding'));
 
 // 🚀 MEJORA DE RENDIMIENTO Y SEGURIDAD (Lazy Loading / Code Splitting)
 const Login = lazy(() => import('./features/auth/Login')); 
@@ -74,6 +75,7 @@ function App() {
                   <Route path="/solyluna" element={<SolYLunaLanding />} />
                   <Route path="/ewcars" element={<EwCarsLanding />} />
                   <Route path="/lamerced" element={<LaMercedLanding />} />
+                  <Route path="/groosdex" element={<groosdexlanding />} />
                   <Route path="/login" element={<Login />} />
                   {/* 🔥 NUEVAS RUTAS LEGALES 🔥 */}
                   <Route path="/privacidad" element={<LegalPage title="Políticas de Privacidad" lastUpdated="14 de Agosto, 2026" />} />
