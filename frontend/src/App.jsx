@@ -75,7 +75,7 @@ function App() {
                   <Route path="/solyluna" element={<SolYLunaLanding />} />
                   <Route path="/ewcars" element={<EwCarsLanding />} />
                   <Route path="/lamerced" element={<LaMercedLanding />} />
-                  <Route path="/groosdex" element={<groosdexlanding />} />
+                  <Route path="/groosdex" element={<GroosdexLanding />} />
                   <Route path="/login" element={<Login />} />
                   {/* 🔥 NUEVAS RUTAS LEGALES 🔥 */}
                   <Route path="/privacidad" element={<LegalPage title="Políticas de Privacidad" lastUpdated="14 de Agosto, 2026" />} />
