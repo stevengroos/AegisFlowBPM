@@ -29,7 +29,7 @@ const StoreProductDetail = lazy(() => import('./pages/StoreProductDetail'));
 const SolYLunaLanding = lazy(() => import('./pages/SolYLunaLanding'));
 const EwCarsLanding = lazy(() => import('./pages/EwCarsLanding'));
 const LaMercedLanding = lazy(() => import('./pages/LaMercedLanding'));
-const groosdexlanding = lazy(() => import('./pages/groosdexlanding'));
+const GroosdexLanding = lazy(() => import('./pages/groosdexlanding'));
 
 // 🚀 MEJORA DE RENDIMIENTO Y SEGURIDAD (Lazy Loading / Code Splitting)
 const Login = lazy(() => import('./features/auth/Login')); 
